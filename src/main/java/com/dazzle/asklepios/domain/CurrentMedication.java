@@ -3,6 +3,7 @@ package com.dazzle.asklepios.domain;
 import com.dazzle.asklepios.domain.enumeration.MedFrequency;
 import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import com.dazzle.asklepios.domain.enumeration.UOM;
+import com.dazzle.asklepios.domain.enumeration.Unit;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -53,7 +54,7 @@ public class CurrentMedication extends AbstractAuditingEntity<Long>
     @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;
 
-    @Column(name = "active_ingredient_id", nullable = false)
+    @Column(name = "active_ingredient_id")
     private Long activeIngredientId;
 
     @Column(name = "dosage", precision = 10, scale = 3)
@@ -67,10 +68,23 @@ public class CurrentMedication extends AbstractAuditingEntity<Long>
     @Column(name = "frequency", length = 100)
     private MedFrequency frequency;
 
-    @NotNull
-    @Column(name = "start_date", nullable = false)
+    @Column(name = "start_date")
     @Temporal(TemporalType.DATE)
     private Date startDate;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "start_duration_type", length = 50)
+    private Unit startDurationType;
+
+    @Column(name = "start_duration")
+    private Integer startDuration;
+
+    @Column(name = "patient_is_free", nullable = false)
+    @Builder.Default
+    private Boolean patientIsFree = Boolean.FALSE;
+
+    @Column(name = "free_text", columnDefinition = "text")
+    private String freeText;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)

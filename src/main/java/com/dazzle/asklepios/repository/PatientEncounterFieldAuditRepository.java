@@ -3,6 +3,7 @@ package com.dazzle.asklepios.repository;
 import com.dazzle.asklepios.domain.PatientEncounterFieldAudit;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface PatientEncounterFieldAuditRepository
@@ -11,5 +12,8 @@ public interface PatientEncounterFieldAuditRepository
     List<PatientEncounterFieldAudit> findByPatientEncounterIdOrderByLogDateDesc(
             Long patientEncounterId
     );
-    
+
+    List<PatientEncounterFieldAudit> findByReopenSessionIdInOrderByLogDateAscIdAsc(
+            Collection<Long> reopenSessionIds
+    );
 }

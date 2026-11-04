@@ -17,6 +17,7 @@ import com.dazzle.asklepios.integration.waseel.service.mapper.CchiBeneficiaryPat
 import com.dazzle.asklepios.integration.waseel.service.mapper.CchiBeneficiaryPatientMapper;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
+import com.dazzle.asklepios.service.helper.PatientCitizenFlag;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -149,12 +150,13 @@ public class WaseelCchiService {
 
         String documentId = cchiPatientLookupService.resolveInsuranceFetchDocumentId(patient, selectedDocumentId);
 
-        cchiPatientLookupService.markAsCchiPatient(patient, documentId);
-        patient = patientRepository.findById(patientId).orElse(patient);
-
         CchiMappedPatientResponse mapped = fetchMappedPatientByDocumentId(documentId);
         if (mapped == null) {
             return new CchiMappedPatientResponse(patient, null, null, List.of());
+        }
+
+        if (hasReturnedDocument(mapped.document())) {
+            patient = cchiPatientLookupService.markAsCchiPatient(patient, documentId);
         }
 
         List<PatientInsurance> insurances = mapped.insurances() == null
@@ -188,12 +190,14 @@ public class WaseelCchiService {
             );
         }
 
-        cchiPatientLookupService.markAsCchiPatient(patient);
-        patient = patientRepository.findById(patientId).orElse(patient);
-
         CchiMappedPatientResponse mapped = fetchMappedPatientByDocumentId(documentId);
         if (mapped == null) {
             return new CchiMappedPatientResponse(patient, null, null, List.of());
+        }
+
+        boolean documentReturned = hasReturnedDocument(mapped.document());
+        if (documentReturned) {
+            patient = cchiPatientLookupService.markAsCchiPatient(patient, documentId);
         }
 
         Patient refreshedPatient = mapped.patient();
@@ -201,7 +205,9 @@ public class WaseelCchiService {
             refreshedPatient.setId(patient.getId());
             refreshedPatient.setMedicalRecordNumber(patient.getMedicalRecordNumber());
             refreshedPatient.setDocumentId(patient.getDocumentId());
-            refreshedPatient.setIsCchiPatient(true);
+            refreshedPatient.setIsCchiPatient(
+                    documentReturned || Boolean.TRUE.equals(patient.getIsCchiPatient())
+            );
             refreshedPatient.setIsVerified(patient.getIsVerified());
             refreshedPatient.setIsCompletedPatient(patient.getIsCompletedPatient());
             refreshedPatient.setActivated(patient.isActivated());
@@ -339,6 +345,12 @@ public class WaseelCchiService {
         return mapInquiryResponse(response);
     }
 
+    private boolean hasReturnedDocument(PatientDocument document) {
+        return document != null
+                && document.getNumber() != null
+                && !document.getNumber().isBlank();
+    }
+
     private CchiMappedPatientResponse mapInquiryResponse(CchiInquiryResponse response) {
         if (response == null || response.data() == null) {
             return null;
@@ -349,6 +361,12 @@ public class WaseelCchiService {
         Patient patient = patientMapper.toPatient(beneficiary);
         Address address = addressMapper.toAddress(beneficiary);
         PatientDocument document = patientDocumentMapper.toPatientDocument(beneficiary);
+
+        if (patient != null) {
+            patient.setIsCitizen(
+                    PatientCitizenFlag.fromDocumentType(document != null ? document.getType() : null)
+            );
+        }
 
         List<PatientInsurance> insurances = mapPatientInsurances(
                 patient,

@@ -9,6 +9,7 @@ import java.util.List;
 
 public record PatientEncounterSearchFilterDTO(
         Long departmentId,
+        List<Long> departmentIds,
         Long practitionerId,
 
         LocalDate fromDate,
@@ -20,9 +21,14 @@ public record PatientEncounterSearchFilterDTO(
         String mrn,
         String encounterNumber,
 
+        String primaryMobileNumber,
+        String documentNumber,
+        LocalDate dateOfBirth,
+
         List<EncounterReason> encounterReasons,
 
         String chiefComplaint,
 
-        List<EncounterPriority> priorities
+        List<EncounterPriority> priorities,
+        Boolean sortByPriority
 ) {}

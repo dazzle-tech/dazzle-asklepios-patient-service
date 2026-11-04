@@ -17,6 +17,7 @@ import com.dazzle.asklepios.service.dto.appointment.DiagnosticTestAppointmentRes
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentDetailsVM;
+import com.dazzle.asklepios.web.rest.vm.appointment.PatientAppointmentOptionVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentLogResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentQuickAppointmentResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentTransferVM;
@@ -103,6 +104,19 @@ public class AppointmentController {
                 appointment
         );
         return new ResponseEntity<>(appointment.getContent(), headers, HttpStatus.OK);
+    }
+
+    @GetMapping("/appointments/by-patient/{patientId}")
+    public ResponseEntity<List<PatientAppointmentOptionVM>> findByPatient(
+            @PathVariable Long patientId,
+            Pageable pageable
+    ) {
+        Page<PatientAppointmentOptionVM> page = appointmentService.findByPatientId(patientId, pageable);
+        HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
+                ServletUriComponentsBuilder.fromCurrentRequest(),
+                page
+        );
+        return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
     }
 
     @PutMapping("/appointments/cancel")

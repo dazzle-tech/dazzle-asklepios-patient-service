@@ -8,6 +8,7 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
@@ -37,9 +38,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -59,6 +62,10 @@ public class DiagnosticOrderService {
     private final DepartmentHelper departmentHelper;
     private final NotificationHelper notificationHelper;
     private final DiagnosticPreAuthorizationService diagnosticPreAuthorizationService;
+    private final EncounterReopenGuard encounterReopenGuard;
+    private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
+    private final PatientActivityService patientActivityService;
+    private final PrintNumberService printNumberService;
 
 
     /**
@@ -76,6 +83,7 @@ public class DiagnosticOrderService {
      */
     public DiagnosticOrder create(DiagnosticOrderCreateDTO dto) {
         LOG.debug("[DiagnosticOrderService] CREATE - start. payload={}", dto);
+        encounterReopenGuard.rejectIfOpenReopenSession(dto.encounterId());
         Patient patient = patientRepository.findById(dto.patientId())
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Patient not found with id " + dto.patientId(),
@@ -124,6 +132,7 @@ public class DiagnosticOrderService {
 
     public DiagnosticOrder update(DiagnosticOrder existing, DiagnosticOrderUpdateDTO dto) {
         LOG.debug("[DiagnosticOrderService] UPDATE - start. id={} payload={}", existing.getId(), dto);
+        encounterReopenGuard.rejectIfOpenReopenSession(existing.getEncounterId());
 
         if (dto.isUrgent() != null) {
             existing.setIsUrgent(dto.isUrgent());
@@ -238,6 +247,7 @@ public class DiagnosticOrderService {
      */
     @Transactional
     public DiagnosticOrder submit(DiagnosticOrder existing, String submittedBy) {
+        encounterReopenGuard.rejectIfOpenReopenSession(existing.getEncounterId());
         LOG.debug("[DiagnosticOrderService] SUBMIT - start. orderId={} currentSaveDraft={} currentStatus={} submittedBy={}",
                 existing.getId(), existing.getSaveDraft(), existing.getStatus(), submittedBy);
 
@@ -270,6 +280,22 @@ public class DiagnosticOrderService {
                 saved.getId(), saved.getSaveDraft(), saved.getStatus(), saved.getSubmittedDate(), updatedTests);
 
         notificationForUrgentDiagnosticOrder(saved);
+        diagnosticOrderTestStatusService.chargeSubmittedOrder(saved.getId());
+        recordSubmittedOrderActivities(saved);
+
+        // Fixes each test's print group (by analyzer/tube) once at submit time, so
+        // "Print Selected" never has to (re)compute it. Best-effort: a failure here
+        // shouldn't block order submission - affected tests just show as "missing
+        // definition" when printed, and can be retried by re-submitting.
+        try {
+            printNumberService.assignPrintNumbersForOrder(saved.getId());
+        } catch (Exception ex) {
+            LOG.warn(
+                    "[DiagnosticOrderService] SUBMIT - failed to assign print numbers for orderId={}: {}",
+                    saved.getId(),
+                    ex.getMessage()
+            );
+        }
 
         return saved;
     }
@@ -277,6 +303,7 @@ public class DiagnosticOrderService {
     @Transactional
     public DiagnosticOrder submit(Long orderId, String submittedBy) {
         DiagnosticOrder order = findById(orderId);
+        encounterReopenGuard.rejectIfOpenReopenSession(order.getEncounterId());
         if (Boolean.FALSE.equals(order.getSaveDraft())) {
             throw new BadRequestAlertException(
                     "already_submitted",
@@ -285,6 +312,55 @@ public class DiagnosticOrderService {
             );
         }
         return submit(order, submittedBy);
+    }
+
+    private void recordSubmittedOrderActivities(DiagnosticOrder order) {
+        if (order == null || order.getId() == null || order.getPatientId() == null) {
+            return;
+        }
+
+        List<DiagnosticOrderTest> tests = diagnosticOrderTestRepository.findByOrderIdInAndStatusNot(
+                List.of(order.getId()),
+                DiagnosticOrderTestStatus.CANCELLED
+        );
+
+        boolean laboratory = false;
+        boolean radiology = false;
+        for (DiagnosticOrderTest test : tests) {
+            if (test.getOrderType() == TestType.RADIOLOGY) {
+                radiology = true;
+            } else if (test.getOrderType() != null) {
+                laboratory = true;
+            }
+        }
+
+        Long appointmentId = patientEncounterRepository.findById(order.getEncounterId())
+                .map(PatientEncounter::getAppointment)
+                .map(appointment -> appointment.getId())
+                .orElse(null);
+
+        if (laboratory) {
+            patientActivityService.recordOccurred(
+                    order.getPatientId(),
+                    order.getEncounterId(),
+                    appointmentId,
+                    PatientActivityType.LAB_TEST_PENDING,
+                    PatientActivityService.SOURCE_DIAGNOSTIC_ORDER,
+                    order.getId(),
+                    "Lab test pending"
+            );
+        }
+        if (radiology) {
+            patientActivityService.recordOccurred(
+                    order.getPatientId(),
+                    order.getEncounterId(),
+                    appointmentId,
+                    PatientActivityType.RADIOLOGY_APPOINTMENT_COORDINATION,
+                    PatientActivityService.SOURCE_DIAGNOSTIC_ORDER,
+                    order.getId(),
+                    "Radiology appointment coordination"
+            );
+        }
     }
 
     /**
@@ -296,6 +372,8 @@ public class DiagnosticOrderService {
      */
     public void delete(Long id) {
         LOG.debug("[DiagnosticOrderService] DELETE - start. id={}", id);
+        DiagnosticOrder existing = findById(id);
+        encounterReopenGuard.rejectIfOpenReopenSession(existing.getEncounterId());
         diagnosticOrderRepository.deleteById(id);
         LOG.debug("[DiagnosticOrderService] DELETE - done. id={}", id);
     }
@@ -305,6 +383,7 @@ public class DiagnosticOrderService {
             Long patientId,
             List<Long> patientIdIn,
             Long encounterId,
+            List<Long> encounterIdIn,
             DiagnosticStatus status,
             List<DiagnosticStatus> statusIn,
             List<DiagnosticStatus> statusNotIn,
@@ -343,6 +422,10 @@ public class DiagnosticOrderService {
 
             if (encounterId != null) {
                 filterPredicates.add(criteriaBuilder.equal(orderRoot.get("encounterId"), encounterId));
+            }
+
+            if (encounterIdIn != null && !encounterIdIn.isEmpty()) {
+                filterPredicates.add(orderRoot.get("encounterId").in(encounterIdIn));
             }
 
             if (status != null) {
@@ -476,6 +559,42 @@ public class DiagnosticOrderService {
                 .stream()
                 .map(DiagnosticOrder::getEncounterId)
                 .collect(Collectors.toSet());
+    }
+
+    /**
+     * Latest diagnostic order status per encounter (by createdDate desc, id desc).
+     * Includes cancelled/rejected orders; does not fall back to an older order.
+     */
+    public Map<Long, DiagnosticStatus> findLatestOrderStatusByEncounterIds(List<Long> encounterIds) {
+        if (encounterIds == null || encounterIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        return diagnosticOrderRepository.findDistinctByEncounterIdIn(encounterIds)
+                .stream()
+                .filter(order -> order.getEncounterId() != null)
+                .collect(Collectors.groupingBy(DiagnosticOrder::getEncounterId))
+                .entrySet()
+                .stream()
+                .map(entry -> {
+                    DiagnosticOrder latest = entry.getValue().stream()
+                            .max(Comparator
+                                    .comparing(
+                                            DiagnosticOrder::getCreatedDate,
+                                            Comparator.nullsLast(Comparator.naturalOrder())
+                                    )
+                                    .thenComparing(
+                                            DiagnosticOrder::getId,
+                                            Comparator.nullsLast(Comparator.naturalOrder())
+                                    ))
+                            .orElse(null);
+                    if (latest == null || latest.getStatus() == null) {
+                        return null;
+                    }
+                    return Map.entry(entry.getKey(), latest.getStatus());
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
     private void notificationForUrgentDiagnosticOrder(DiagnosticOrder order) {

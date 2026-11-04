@@ -28,5 +28,11 @@ public record PatientServiceProductUpdateDTO(
 
         Boolean isBilled,
         Long billingInvoiceId,
-        Long billingInvoiceItemId
+        Long billingInvoiceItemId,
+
+        /** MEDICATION only: UOM unit the quantity is charged in; null = the brand's price base unit */
+        Long uomGroupUnitId,
+
+        /** VACCINE only: the vaccine brand that was given */
+        Long vaccineBrandId
 ) implements Serializable {}

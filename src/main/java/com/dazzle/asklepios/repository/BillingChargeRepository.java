@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -17,7 +18,7 @@ import java.util.Optional;
 
 @Repository
 public interface BillingChargeRepository
-        extends JpaRepository<BillingCharge, Long> {
+        extends JpaRepository<BillingCharge, Long>, JpaSpecificationExecutor<BillingCharge> {
 
     @Override
     @Lock(LockModeType.PESSIMISTIC_WRITE)

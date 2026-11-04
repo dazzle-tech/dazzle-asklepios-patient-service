@@ -41,6 +41,11 @@ public class PointOfSaleWebhookLogController {
             @RequestParam(
                     required = false
             )
+            String encounterNumber,
+
+            @RequestParam(
+                    required = false
+            )
             String responseCode,
 
             @RequestParam(
@@ -73,6 +78,8 @@ public class PointOfSaleWebhookLogController {
                         externalTransactionId,
 
                         orderId,
+
+                        encounterNumber,
 
                         responseCode,
 

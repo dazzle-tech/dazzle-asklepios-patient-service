@@ -7,6 +7,7 @@ import jakarta.validation.constraints.FutureOrPresent;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import java.time.Instant;
 import java.time.LocalDate;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -20,7 +21,9 @@ public record AppointmentRequestCreateDTO(
         @NotNull EncounterPriority priority,
         @Size(max = 255) String reason,
         String note,
-        @FutureOrPresent LocalDate preferredDate
+        @FutureOrPresent LocalDate preferredDate,
+        Instant preferredStartTime,
+        Instant preferredEndTime
 ) {
 
 }

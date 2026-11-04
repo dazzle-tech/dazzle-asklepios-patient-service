@@ -72,6 +72,13 @@ public class PatientObservationsComplaints extends AbstractAuditingEntity<Long> 
     @Column(name = "blood_group", length = 20)
     private BloodGroup bloodGroup;
 
+    // Recorded for female patients only; null when not applicable or not recorded.
+    @Column(name = "is_pregnant")
+    private Boolean isPregnant;
+
+    @Column(name = "is_lactating")
+    private Boolean isLactating;
+
     @NotNull
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;

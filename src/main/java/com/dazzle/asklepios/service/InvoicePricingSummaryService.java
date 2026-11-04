@@ -5,12 +5,14 @@ import com.dazzle.asklepios.client.setup.dto.BillingAdjustmentResolveRequest;
 import com.dazzle.asklepios.client.setup.dto.BillingAdjustmentResolveResponse;
 import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
+import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.billing.DiscountApplicableOn;
 import com.dazzle.asklepios.domain.enumeration.billing.TaxApplicableOn;
 import com.dazzle.asklepios.repository.FinancialDocumentItemRepository;
 import com.dazzle.asklepios.repository.FinancialDocumentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.billing.InvoicePricingSummaryResponse;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import feign.FeignException;
@@ -42,6 +44,7 @@ public class InvoicePricingSummaryService {
     private final FinancialDocumentRepository financialDocumentRepository;
     private final FinancialDocumentItemRepository financialDocumentItemRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final PatientRepository patientRepository;
     private final SetupBillingAdjustmentClient setupBillingAdjustmentClient;
 
     public InvoicePricingSummaryResponse getByInvoiceId(Long invoiceId) {
@@ -96,12 +99,19 @@ public class InvoicePricingSummaryService {
                         discountAmount
                 );
 
+        Boolean patientCitizen = invoice.getPatientId() == null
+                ? null
+                : patientRepository.findById(invoice.getPatientId())
+                        .map(Patient::getIsCitizen)
+                        .orElse(null);
+
         List<InvoicePricingSummaryResponse.AppliedTaxRule> taxRules =
                 buildTaxRules(
                         encounter.getFacilityId(),
                         invoice.getCurrency(),
                         pricingDate,
-                        taxAmount
+                        taxAmount,
+                        patientCitizen
                 );
 
         return new InvoicePricingSummaryResponse(
@@ -133,7 +143,8 @@ public class InvoicePricingSummaryService {
                         currency,
                         pricingDate,
                         null,
-                        DiscountApplicableOn.INVOICE_LINE
+                        DiscountApplicableOn.INVOICE_LINE,
+                        null
                 ),
                 totalDiscountAmount,
                 true
@@ -145,7 +156,8 @@ public class InvoicePricingSummaryService {
                         currency,
                         pricingDate,
                         null,
-                        DiscountApplicableOn.INVOICE
+                        DiscountApplicableOn.INVOICE,
+                        null
                 ),
                 totalDiscountAmount,
                 rules.isEmpty()
@@ -173,7 +185,8 @@ public class InvoicePricingSummaryService {
             Long facilityId,
             com.dazzle.asklepios.domain.enumeration.Currency currency,
             LocalDate pricingDate,
-            BigDecimal totalTaxAmount
+            BigDecimal totalTaxAmount,
+            Boolean patientCitizen
     ) {
         List<InvoicePricingSummaryResponse.AppliedTaxRule> rules =
                 new ArrayList<>();
@@ -184,8 +197,9 @@ public class InvoicePricingSummaryService {
                         facilityId,
                         currency,
                         pricingDate,
-                        TaxApplicableOn.INVOICE_LINE,
-                        null
+                        TaxApplicableOn.CHARGE_LINE,
+                        null,
+                        patientCitizen
                 ),
                 totalTaxAmount,
                 true
@@ -197,7 +211,8 @@ public class InvoicePricingSummaryService {
                         currency,
                         pricingDate,
                         TaxApplicableOn.INVOICE,
-                        null
+                        null,
+                        patientCitizen
                 ),
                 totalTaxAmount,
                 rules.isEmpty()
@@ -276,7 +291,8 @@ public class InvoicePricingSummaryService {
             com.dazzle.asklepios.domain.enumeration.Currency currency,
             LocalDate pricingDate,
             TaxApplicableOn taxApplicableOn,
-            DiscountApplicableOn discountApplicableOn
+            DiscountApplicableOn discountApplicableOn,
+            Boolean patientCitizen
     ) {
         if (taxApplicableOn == null && discountApplicableOn == null) {
             return null;
@@ -289,7 +305,8 @@ public class InvoicePricingSummaryService {
                             currency,
                             taxApplicableOn,
                             discountApplicableOn,
-                            pricingDate
+                            pricingDate,
+                            patientCitizen
                     )
             );
         } catch (FeignException exception) {

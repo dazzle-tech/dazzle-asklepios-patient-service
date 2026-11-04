@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.service.ClinicalFulfillmentStatusResolver;
 import com.dazzle.asklepios.service.CoveragePreApprovalLimitService;
+import com.dazzle.asklepios.service.EncounterReopenGuard;
 import com.dazzle.asklepios.service.PatientServiceAndProductService;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductUpdateDTO;
@@ -43,15 +44,18 @@ public class PatientServiceAndProductController {
     private final PatientServiceAndProductService patientServiceAndProductService;
     private final ClinicalFulfillmentStatusResolver clinicalFulfillmentStatusResolver;
     private final CoveragePreApprovalLimitService coveragePreApprovalLimitService;
+    private final EncounterReopenGuard encounterReopenGuard;
 
     public PatientServiceAndProductController(
             PatientServiceAndProductService patientServiceAndProductService,
             ClinicalFulfillmentStatusResolver clinicalFulfillmentStatusResolver,
-            CoveragePreApprovalLimitService coveragePreApprovalLimitService
+            CoveragePreApprovalLimitService coveragePreApprovalLimitService,
+            EncounterReopenGuard encounterReopenGuard
     ) {
         this.patientServiceAndProductService = patientServiceAndProductService;
         this.clinicalFulfillmentStatusResolver = clinicalFulfillmentStatusResolver;
         this.coveragePreApprovalLimitService = coveragePreApprovalLimitService;
+        this.encounterReopenGuard = encounterReopenGuard;
     }
 
     @PostMapping("/patient-services-products")
@@ -66,8 +70,11 @@ public class PatientServiceAndProductController {
                 patientServiceProductCreateDTO.brandMedicationId(),
                 patientServiceProductCreateDTO.diagnosticTestId(),
                 patientServiceProductCreateDTO.serviceId(),
-                patientServiceProductCreateDTO.procedureId()
+                patientServiceProductCreateDTO.procedureId(),
+                patientServiceProductCreateDTO.vaccineBrandId()
         );
+
+        encounterReopenGuard.rejectIfOpenReopenSession(patientServiceProductCreateDTO.encounterId());
 
         PatientServiceAndProduct created = patientServiceAndProductService.create(patientServiceProductCreateDTO);
 
@@ -139,7 +146,8 @@ public class PatientServiceAndProductController {
                 patientServiceProductUpdateDTO.brandMedicationId(),
                 patientServiceProductUpdateDTO.diagnosticTestId(),
                 patientServiceProductUpdateDTO.serviceId(),
-                patientServiceProductUpdateDTO.procedureId()
+                patientServiceProductUpdateDTO.procedureId(),
+                patientServiceProductUpdateDTO.vaccineBrandId()
         );
 
         PatientServiceAndProduct updated =
@@ -168,7 +176,8 @@ public class PatientServiceAndProductController {
                     dto.brandMedicationId(),
                     dto.diagnosticTestId(),
                     dto.serviceId(),
-                    dto.procedureId()
+                    dto.procedureId(),
+                    dto.vaccineBrandId()
             );
         }
 
@@ -228,7 +237,8 @@ public class PatientServiceAndProductController {
             Long brandMedicationId,
             Long diagnosticTestId,
             Long serviceId,
-            Long procedureId
+            Long procedureId,
+            Long vaccineBrandId
     ) {
         if (billingItemType == null) {
             throw new BadRequestAlertException(
@@ -307,6 +317,24 @@ public class PatientServiceAndProductController {
                             "invalidReferenceCombination",
                             "patientServicesAndProducts",
                             "Only procedureId is allowed for PROCEDURE"
+                    );
+                }
+            }
+
+            case VACCINE -> {
+                if (vaccineBrandId == null) {
+                    throw new BadRequestAlertException(
+                            "vaccineBrandIdRequired",
+                            "patientServicesAndProducts",
+                            "Vaccine brand is required when billing item type is VACCINE"
+                    );
+                }
+
+                if (brandMedicationId != null || diagnosticTestId != null || serviceId != null || procedureId != null) {
+                    throw new BadRequestAlertException(
+                            "invalidReferenceCombination",
+                            "patientServicesAndProducts",
+                            "Only vaccineBrandId is allowed for VACCINE"
                     );
                 }
             }

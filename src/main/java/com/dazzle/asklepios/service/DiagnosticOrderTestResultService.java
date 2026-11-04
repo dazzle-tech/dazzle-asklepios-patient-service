@@ -8,6 +8,8 @@ import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestReport;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
+import com.dazzle.asklepios.domain.DiagnosticTest;
+import com.dazzle.asklepios.domain.DiagnosticTestProfile;
 import com.dazzle.asklepios.domain.LabResultLog;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
@@ -17,11 +19,14 @@ import com.dazzle.asklepios.domain.enumeration.TestResultType;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
+import com.dazzle.asklepios.repository.ApLovValueRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestResultRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestResultTechnicianNoteRepository;
+import com.dazzle.asklepios.repository.DiagnosticTestProfileRepository;
+import com.dazzle.asklepios.repository.DiagnosticTestRepository;
 import com.dazzle.asklepios.repository.LabResultLogRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
@@ -49,8 +54,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -76,6 +83,9 @@ public class DiagnosticOrderTestResultService {
     private final DepartmentHelper departmentHelper;
     private final NotificationHelper notificationHelper;
     private final DiagnosticOrderTestService diagnosticOrderTestService;
+    private final DiagnosticTestRepository diagnosticTestRepository;
+    private final DiagnosticTestProfileRepository diagnosticTestProfileRepository;
+    private final ApLovValueRepository apLovValueRepository;
 
     private void validateResultValue(
             Long profileTestId,
@@ -292,6 +302,23 @@ public class DiagnosticOrderTestResultService {
         return diagnosticOrderTestResultRepository.save(testResult);
     }
 
+    public DiagnosticOrderTestResult toggleReview(Long resultId, String username) {
+        DiagnosticOrderTestResult saved = orderTestResultStatusService.toggleReview(resultId, username);
+        if (saved.getReviewDate() != null) {
+            notificationForLaboratoryResultReviewed(saved);
+        }
+        return saved;
+    }
+
+    public void bulkToggleReview(List<Long> resultIds, String username) {
+        if (resultIds == null || resultIds.isEmpty()) {
+            return;
+        }
+        for (Long resultId : resultIds) {
+            toggleReview(resultId, username);
+        }
+    }
+
     /**
      * Approve a single result using full business logic.
      */
@@ -377,6 +404,15 @@ public class DiagnosticOrderTestResultService {
         Page<DiagnosticOrderTestResult> page =
                 diagnosticOrderTestResultRepository.findAll(spec, pageable);
 
+        Map<Long, DiagnosticOrderTest> orderTestsById = loadOrderTests(page.getContent());
+        Map<Long, String> testNamesById = loadTestNames(orderTestsById);
+        Map<Long, String> profileNamesById = loadProfileNames(page.getContent());
+        Map<Long, TestResultType> resultTypesById = resolveResultTypesForView(page.getContent());
+        Map<String, String> lovDisplayByKey = loadResultValueTextDisplayValues(
+                page.getContent(),
+                resultTypesById
+        );
+
         return page.map(result -> {
 
             Long patientId =
@@ -385,8 +421,7 @@ public class DiagnosticOrderTestResultService {
             TestResultMarker viewMarker = TestResultMarker.UNKNOWN;
             String viewNormalRange = " ";
 
-            TestResultType resultType =
-                    resolveEffectiveResultTypeForView(result);
+            TestResultType resultType = resultTypesById.get(result.getId());
 
             if (patientId != null && resultType != null) {
 
@@ -410,9 +445,137 @@ public class DiagnosticOrderTestResultService {
                             result.getId()
                     );
 
+            DiagnosticOrderTest orderTest = orderTestsById.get(result.getOrderTestId());
+            String testName = orderTest == null || orderTest.getTestId() == null
+                    ? null
+                    : blankToNull(testNamesById.get(orderTest.getTestId()));
+            String profileName = result.getProfileTestId() == null
+                    ? null
+                    : blankToNull(profileNamesById.get(result.getProfileTestId()));
+
             return DiagnosticOrderTestResultResponseVM
-                    .ofEntityWithViewNote(result, viewMarker, viewNormalRange, hasNote);
+                    .ofEntityWithViewNote(
+                            result,
+                            viewMarker,
+                            viewNormalRange,
+                            hasNote,
+                            testName,
+                            profileName,
+                            orderTest,
+                            resultValueTextDisplayValue(result, resultType, lovDisplayByKey)
+                    );
         });
+    }
+
+    private Map<Long, TestResultType> resolveResultTypesForView(List<DiagnosticOrderTestResult> results) {
+        Map<Long, TestResultType> resultTypesById = new LinkedHashMap<>();
+        for (DiagnosticOrderTestResult result : results) {
+            if (result.getId() == null) {
+                continue;
+            }
+            resultTypesById.put(result.getId(), resolveEffectiveResultTypeForView(result));
+        }
+        return resultTypesById;
+    }
+
+    private Map<String, String> loadResultValueTextDisplayValues(
+            List<DiagnosticOrderTestResult> results,
+            Map<Long, TestResultType> resultTypesById
+    ) {
+        List<String> keys = results.stream()
+                .filter(result -> resultTypesById.get(result.getId()) == TestResultType.LOV)
+                .map(DiagnosticOrderTestResult::getResultValueText)
+                .filter(value -> value != null && !value.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+        if (keys.isEmpty()) {
+            return Map.of();
+        }
+
+        return apLovValueRepository.findByKeyIn(keys).stream()
+                .filter(value -> value.getKey() != null
+                        && value.getLovDisplayVale() != null
+                        && !value.getLovDisplayVale().isBlank())
+                .collect(Collectors.toMap(
+                        value -> value.getKey().trim(),
+                        value -> value.getLovDisplayVale().trim(),
+                        (left, right) -> left
+                ));
+    }
+
+    private String resultValueTextDisplayValue(
+            DiagnosticOrderTestResult result,
+            TestResultType resultType,
+            Map<String, String> lovDisplayByKey
+    ) {
+        if (resultType != TestResultType.LOV
+                || result.getResultValueText() == null
+                || result.getResultValueText().isBlank()) {
+            return null;
+        }
+        return lovDisplayByKey.get(result.getResultValueText().trim());
+    }
+
+    private Map<Long, DiagnosticOrderTest> loadOrderTests(List<DiagnosticOrderTestResult> results) {
+        Set<Long> orderTestIds = results.stream()
+                .map(DiagnosticOrderTestResult::getOrderTestId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (orderTestIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return diagnosticOrderTestRepository.findAllById(orderTestIds).stream()
+                .filter(orderTest -> orderTest.getId() != null)
+                .collect(Collectors.toMap(
+                        DiagnosticOrderTest::getId,
+                        Function.identity(),
+                        (left, right) -> left
+                ));
+    }
+
+    private Map<Long, String> loadTestNames(Map<Long, DiagnosticOrderTest> orderTestsById) {
+        Set<Long> testIds = orderTestsById.values().stream()
+                .map(DiagnosticOrderTest::getTestId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (testIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return diagnosticTestRepository.findAllById(testIds).stream()
+                .filter(test -> test.getId() != null)
+                .collect(Collectors.toMap(
+                        DiagnosticTest::getId,
+                        test -> test.getName() == null ? "" : test.getName(),
+                        (left, right) -> left
+                ));
+    }
+
+    private Map<Long, String> loadProfileNames(List<DiagnosticOrderTestResult> results) {
+        Set<Long> profileIds = results.stream()
+                .map(DiagnosticOrderTestResult::getProfileTestId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (profileIds.isEmpty()) {
+            return Map.of();
+        }
+
+        return diagnosticTestProfileRepository.findAllById(profileIds).stream()
+                .filter(profile -> profile.getId() != null)
+                .collect(Collectors.toMap(
+                        DiagnosticTestProfile::getId,
+                        profile -> profile.getName() == null ? "" : profile.getName(),
+                        (left, right) -> left
+                ));
+    }
+
+    private String blankToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 
     @Transactional(readOnly = true)
@@ -702,6 +865,100 @@ public class DiagnosticOrderTestResultService {
             TestResultMarker.CRITICAL_UPPER,
             TestResultMarker.CRITICAL_LOWER
     );
+
+    private void notificationForLaboratoryResultReviewed(DiagnosticOrderTestResult result) {
+        if (result == null || result.getOrderTestId() == null) {
+            return;
+        }
+
+        DiagnosticOrderTest orderTest = diagnosticOrderTestRepository.findById(result.getOrderTestId())
+                .orElse(null);
+
+        if (orderTest == null || orderTest.getOrderId() == null) {
+            LOG.warn(
+                    "Skip laboratory result reviewed notification because order test/order is missing. resultId={}, orderTestId={}",
+                    result.getId(),
+                    result.getOrderTestId()
+            );
+            return;
+        }
+
+        if (!isLaboratoryTest(orderTest)) {
+            return;
+        }
+
+        DiagnosticOrder order = diagnosticOrderRepository.findById(orderTest.getOrderId())
+                .orElse(null);
+
+        if (order == null) {
+            LOG.warn(
+                    "Skip laboratory result reviewed notification because order is missing. resultId={}, orderId={}",
+                    result.getId(),
+                    orderTest.getOrderId()
+            );
+            return;
+        }
+
+        Long departmentId = resolveDepartmentId(order, orderTest);
+        if (departmentId == null) {
+            LOG.warn(
+                    "Skip laboratory result reviewed notification because department is missing. resultId={}, orderTestId={}, orderId={}",
+                    result.getId(),
+                    orderTest.getId(),
+                    order.getId()
+            );
+            return;
+        }
+
+        DepartmentDTO department = departmentHelper.getDepartment(departmentId);
+        String login = SecurityUtils.getCurrentUserLogin().orElse(null);
+        Patient patient = resolvePatient(order.getPatientId()).orElse(null);
+
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
+                notificationHelper.resolveRecipients(departmentId, login, result.getCreatedBy(), patient, null, false);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("result_id", result.getId());
+        data.put("order_test_id", orderTest.getId());
+        data.put("order_id", order.getId());
+        data.put("patient_id", order.getPatientId());
+        data.put("patient_name", notificationHelper.getPatientName(patient));
+        data.put("encounter_id", order.getEncounter() != null ? order.getEncounter().getId() : "");
+        data.put("department_id", departmentId);
+        data.put("department_name", department != null ? department.name() : "");
+        data.put("test_id", orderTest.getTestId());
+        data.put("test_type", orderTest.getOrderType() != null ? orderTest.getOrderType().toString() : "");
+        data.put("marker", result.getMarker() != null ? result.getMarker().toString() : "");
+        data.put("normal_range", result.getNormalRangeValue() != null ? result.getNormalRangeValue() : "");
+        data.put("result_value_number", result.getResultValueNumber() != null ? result.getResultValueNumber() : "");
+        data.put("result_value_text", result.getResultValueText() != null ? result.getResultValueText() : "");
+        data.put("reviewed_by", result.getReviewBy() != null ? result.getReviewBy() : "");
+        data.put("reviewed_date", result.getReviewDate() != null ? result.getReviewDate().toString() : "");
+
+        try {
+            LOG.debug(
+                    "Creating laboratory result reviewed notification. resultId={}, departmentId={}, recipientsByRule={}",
+                    result.getId(),
+                    departmentId,
+                    recipientsByRule
+            );
+
+            notificationHelper.sendNotification(
+                    null,
+                    NotificationCode.LABORATORY_RESULT_REVIEWED,
+                    recipientsByRule,
+                    data,
+                    "DIAGNOSTIC_ORDER_TEST_RESULT",
+                    result.getId()
+            );
+        } catch (Exception e) {
+            LOG.warn(
+                    "Failed to create laboratory result reviewed notification. resultId={}, error={}",
+                    result.getId(),
+                    e.getMessage()
+            );
+        }
+    }
 
     private void notificationForResultReady(DiagnosticOrderTestResult result, TestResultMarker calculatedMarker) {
         if (result == null || result.getOrderTestId() == null) {
@@ -998,7 +1255,8 @@ public class DiagnosticOrderTestResultService {
             String patientName,
             String mrn,
             List<Long> patientIdIn,
-            String orderNumber
+            String orderNumber,
+            String encounterNumber
     ) {
 
         return (testResultRoot, criteriaQuery, criteriaBuilder) -> {
@@ -1014,6 +1272,9 @@ public class DiagnosticOrderTestResultService {
             boolean needOrderNumberFilter =
                     orderNumber != null;
 
+            boolean needEncounterNumberFilter =
+                    encounterNumber != null && !encounterNumber.isBlank();
+
             boolean needPatientIdFilter =
                     patientIdIn != null && !patientIdIn.isEmpty();
 
@@ -1025,6 +1286,7 @@ public class DiagnosticOrderTestResultService {
                     needOrderIdFilter ||
                             needOrderFilter ||
                             needOrderNumberFilter ||
+                            needEncounterNumberFilter ||
                             needPatientIdFilter ||
                             needPatientFilter;
 
@@ -1068,6 +1330,22 @@ public class DiagnosticOrderTestResultService {
                                             orderRoot.get("orderNumber")
                                     ),
                                     "%" + orderNumber
+                                            .trim()
+                                            .toLowerCase() + "%"
+                            )
+                    );
+                }
+
+                if (needEncounterNumberFilter) {
+
+                    var encounterRoot = orderRoot.join("encounter");
+
+                    subPredicates.add(
+                            criteriaBuilder.like(
+                                    criteriaBuilder.lower(
+                                            encounterRoot.get("encounterNumber")
+                                    ),
+                                    "%" + encounterNumber
                                             .trim()
                                             .toLowerCase() + "%"
                             )

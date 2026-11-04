@@ -33,6 +33,13 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long>,
 
     List<Appointment> findByAvailabilityGenerationBatch_IdAndStatusAndStartDatetimeGreaterThanAndBookingModeInOrderByStartDatetimeAsc(Long availabilityGenerationBatchId, AppointmentStatus status, Instant startDatetime, List<BookingMode> bookingMode);
 
+    List<Appointment> findByAvailabilityGenerationBatch_IdAndStatusAndStartDatetimeGreaterThanEqualAndBookingModeInAndPatientIsNullOrderByStartDatetimeAsc(
+            Long availabilityGenerationBatchId,
+            AppointmentStatus status,
+            Instant startDatetime,
+            List<BookingMode> bookingMode
+    );
+
     List<Appointment> findByStatusInAndStartDatetimeBetween(List<AppointmentStatus> status, Instant startDatetime, Instant endDatetime);
 
     List<Appointment> findByStatusInAndStartDatetimeBefore(
@@ -126,5 +133,23 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long>,
             BookingMode bookingMode,
             Long departmentId
     );
+
+    List<Appointment> findByFacilityIdAndDepartmentIdAndResourceTypeAndResourceIdAndStartDatetimeGreaterThanEqualAndStartDatetimeLessThanOrderByStartDatetimeAsc(
+            Long facilityId,
+            Long departmentId,
+            TemplateType resourceType,
+            Long resourceId,
+            Instant startDatetimeFrom,
+            Instant startDatetimeTo
+    );
+
+    List<Appointment> findByFacilityIdAndPatient_IdAndStartDatetimeGreaterThanEqualAndStartDatetimeLessThan(
+            Long facilityId,
+            Long patientId,
+            Instant startDatetimeFrom,
+            Instant startDatetimeTo
+    );
+
+    Page<Appointment> findByPatient_IdOrderByStartDatetimeDesc(Long patientId, Pageable pageable);
 }
 

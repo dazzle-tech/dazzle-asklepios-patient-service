@@ -5,12 +5,14 @@ import com.dazzle.asklepios.client.setup.DiagnosticTestClient;
 import com.dazzle.asklepios.client.setup.ProcedureClient;
 import com.dazzle.asklepios.client.setup.ServiceClient;
 import com.dazzle.asklepios.client.setup.SetupBillingPricingClient;
+import com.dazzle.asklepios.client.setup.VaccineBrandClient;
 import com.dazzle.asklepios.client.setup.dto.BillingPricingResolveRequest;
 import com.dazzle.asklepios.client.setup.dto.BillingPricingResolveResponse;
 import com.dazzle.asklepios.client.setup.dto.BrandMedicationSetupDTO;
 import com.dazzle.asklepios.client.setup.dto.DiagnosticTestSetupDTO;
 import com.dazzle.asklepios.client.setup.dto.ProcedureSetupDTO;
 import com.dazzle.asklepios.client.setup.dto.ServiceSetupDTO;
+import com.dazzle.asklepios.client.setup.dto.VaccineBrandSetupDTO;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
@@ -51,6 +53,9 @@ public class SetupBillingPricingService {
 
     private final BrandMedicationClient
             brandMedicationClient;
+
+    private final VaccineBrandClient
+            vaccineBrandClient;
 
     /*
      * ============================================================
@@ -125,7 +130,7 @@ public class SetupBillingPricingService {
                         + "Using Setup fallback facilityId={} encounterId={} "
                         + "coverageType={} itemType={} sourceId={} "
                         + "patientInsuranceId={} payerId={} currency={} "
-                        + "setupUnitPrice={}",
+                        + "setupUnitPrice={} taxId={} discountId={}",
                 request.facilityId(),
                 request.encounterId(),
                 request.coverageType(),
@@ -134,11 +139,18 @@ public class SetupBillingPricingService {
                 request.patientInsuranceId(),
                 request.payerId(),
                 request.currency(),
-                setupUnitPrice
+                setupUnitPrice,
+                priceListResponse == null
+                        ? null
+                        : priceListResponse.taxId(),
+                priceListResponse == null
+                        ? null
+                        : priceListResponse.discountId()
         );
 
-        return resolveFromSetupFallback(
-                request
+        return attachResolvedAdjustments(
+                resolveFromSetupFallback(request),
+                priceListResponse
         );
     }
 
@@ -190,12 +202,15 @@ public class SetupBillingPricingService {
             )) {
                 LOG.info(
                         "[PRICE_LIST] Resolver returned no usable "
-                                + "Price List item itemType={} sourceId={}",
+                                + "Price List item itemType={} sourceId={} "
+                                + "taxId={} discountId={}",
                         request.billingItemType(),
-                        request.sourceId()
+                        request.sourceId(),
+                        response == null ? null : response.taxId(),
+                        response == null ? null : response.discountId()
                 );
 
-                return null;
+                return response;
             }
 
             return response;
@@ -293,6 +308,11 @@ public class SetupBillingPricingService {
                  RADIOLOGY,
                  PATHOLOGY ->
                     resolveDiagnosticTestFallback(
+                            request
+                    );
+
+            case VACCINE ->
+                    resolveVaccineBrandFallback(
                             request
                     );
         };
@@ -462,6 +482,48 @@ public class SetupBillingPricingService {
 
     /*
      * ============================================================
+     * VACCINE FALLBACK
+     * ============================================================
+     */
+
+    private ResolvedBillingPrice
+    resolveVaccineBrandFallback(
+            BillingPricingResolveRequest request
+    ) {
+        VaccineBrandSetupDTO vaccineBrand =
+                callSetupItem(
+                        request.billingItemType(),
+                        request.sourceId(),
+                        () ->
+                                vaccineBrandClient
+                                        .getVaccineBrand(
+                                                request.sourceId()
+                                        )
+                );
+
+        validateActive(
+                vaccineBrand.isActive(),
+                request.billingItemType(),
+                request.sourceId()
+        );
+
+        Currency currency =
+                parseCurrency(
+                        vaccineBrand.currency()
+                );
+
+        return buildFallbackResult(
+                request,
+                vaccineBrand.price(),
+                currency,
+                vaccineBrand.id(),
+                vaccineBrand.code(),
+                vaccineBrand.name()
+        );
+    }
+
+    /*
+     * ============================================================
      * BUILD FALLBACK RESULT
      * ============================================================
      */
@@ -555,6 +617,58 @@ public class SetupBillingPricingService {
         );
     }
 
+    /**
+     * Catalog fallback has no price-list item, but the pricing resolver
+     * still selects the facility tax and discount for this item category.
+     * Those rules must stay on the result so a service tax is calculated
+     * on the setup price.
+     */
+    private ResolvedBillingPrice attachResolvedAdjustments(
+            ResolvedBillingPrice fallback,
+            BillingPricingResolveResponse resolverResponse
+    ) {
+        if (fallback == null || !hasTaxOrDiscount(resolverResponse)) {
+            return fallback;
+        }
+
+        LOG.info(
+                "[SETUP_FALLBACK] Applying facility tax/discount "
+                        + "on catalog price sourceId={} taxId={} taxType={} "
+                        + "taxRate={} discountId={}",
+                fallback.setupSourceId(),
+                resolverResponse.taxId(),
+                resolverResponse.taxType(),
+                resolverResponse.taxRate(),
+                resolverResponse.discountId()
+        );
+
+        return new ResolvedBillingPrice(
+                fallback.unitPrice(),
+                fallback.currency(),
+                BillingPriceSource.SETUP_FALLBACK,
+                fallback.setupSourceId(),
+                null,
+                null,
+                resolverResponse,
+                fallback.setupUnitPrice(),
+                fallback.setupItemCode(),
+                fallback.setupItemName()
+        );
+    }
+
+    private boolean hasTaxOrDiscount(
+            BillingPricingResolveResponse response
+    ) {
+        if (response == null) {
+            return false;
+        }
+
+        return response.taxId() != null
+                || response.taxType() != null
+                || response.discountId() != null
+                || response.discountType() != null;
+    }
+
     private String blankToNull(String value) {
         if (value == null || value.isBlank()) {
             return null;
@@ -622,6 +736,19 @@ public class SetupBillingPricingService {
                                                 )
                         );
                 yield diagnosticTest.price();
+            }
+            case VACCINE -> {
+                VaccineBrandSetupDTO vaccineBrand =
+                        callSetupItem(
+                                request.billingItemType(),
+                                request.sourceId(),
+                                () ->
+                                        vaccineBrandClient
+                                                .getVaccineBrand(
+                                                        request.sourceId()
+                                                )
+                        );
+                yield vaccineBrand.price();
             }
         };
     }

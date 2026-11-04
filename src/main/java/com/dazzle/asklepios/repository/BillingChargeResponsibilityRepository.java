@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.enumeration.billing.ResponsiblePartyType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingResponsibilityStatus;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -17,7 +18,7 @@ import java.util.Optional;
 
 @Repository
 public interface BillingChargeResponsibilityRepository
-        extends JpaRepository<BillingChargeResponsibility, Long> {
+        extends JpaRepository<BillingChargeResponsibility, Long>, JpaSpecificationExecutor<BillingChargeResponsibility> {
 
 
     @Override
@@ -85,6 +86,13 @@ public interface BillingChargeResponsibilityRepository
     List<BillingChargeResponsibility>
     findAllByCharge_IdAndStatusNotInOrderByIdAsc(
             Long chargeId,
+            Collection<BillingResponsibilityStatus> excludedStatuses
+    );
+
+    List<BillingChargeResponsibility>
+    findAllByPatientServiceProduct_IdInAndResponsiblePartyTypeAndStatusNotInOrderByIdAsc(
+            Collection<Long> patientServiceProductIds,
+            ResponsiblePartyType responsiblePartyType,
             Collection<BillingResponsibilityStatus> excludedStatuses
     );
 

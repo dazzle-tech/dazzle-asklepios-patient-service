@@ -3,7 +3,9 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.GlasgowComaScaleAssessment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.enumeration.GCSEye;
 import com.dazzle.asklepios.domain.enumeration.GCSScoreInterpretation;
+import com.dazzle.asklepios.domain.enumeration.GCSVerbal;
 import com.dazzle.asklepios.repository.GlasgowComaScaleAssessmentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -39,6 +41,7 @@ public class GlasgowComaScaleAssessmentService {
     private final GlasgowComaScaleAssessmentRepository glasgowComaScaleAssessmentRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientRepository patientRepository;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public GlasgowComaScaleAssessment create(GlasgowComaScaleAssessmentCreateDTO createDTO) {
         LOG.info("[CREATE] GlasgowComaScaleAssessment payload={}", createDTO);
@@ -58,6 +61,7 @@ public class GlasgowComaScaleAssessmentService {
                 ));
 
         validatePatientMatchesEncounter(encounter, patient);
+        validateNotRetired(createDTO.eyeOpening(), createDTO.verbalResponse(), null);
 
         Integer eyeScore = createDTO.eyeOpening().getScore();
         Integer verbalScore = createDTO.verbalResponse().getScore();
@@ -78,7 +82,9 @@ public class GlasgowComaScaleAssessmentService {
                 .build();
 
         try {
-            return glasgowComaScaleAssessmentRepository.saveAndFlush(entity);
+            reopenSessionAuditContext.applyOpenSession(encounter.getId());
+            GlasgowComaScaleAssessment saved = glasgowComaScaleAssessmentRepository.saveAndFlush(entity);
+            return saved;
         } catch (DataIntegrityViolationException | JpaSystemException exception) {
             throw handleConstraintViolation(exception);
         }
@@ -94,6 +100,8 @@ public class GlasgowComaScaleAssessmentService {
                         "id.notfound"
                 ));
 
+        Long ownedEncounterId = existing.getEncounter() == null ? null : existing.getEncounter().getId();
+        validateNotRetired(updateDTO.eyeOpening(), updateDTO.verbalResponse(), existing);
 
         Integer eyeScore = updateDTO.eyeOpening().getScore();
         Integer verbalScore = updateDTO.verbalResponse().getScore();
@@ -110,7 +118,9 @@ public class GlasgowComaScaleAssessmentService {
         existing.setScoreInterpretation(resolveScoreInterpretation(totalScore));
 
         try {
-            return glasgowComaScaleAssessmentRepository.saveAndFlush(existing);
+            reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
+            GlasgowComaScaleAssessment saved = glasgowComaScaleAssessmentRepository.saveAndFlush(existing);
+            return saved;
         } catch (DataIntegrityViolationException | JpaSystemException exception) {
             throw handleConstraintViolation(exception);
         }
@@ -131,12 +141,15 @@ public class GlasgowComaScaleAssessmentService {
                         "id.notfound"
                 ));
 
+        Long ownedEncounterId = existing.getEncounter() == null ? null : existing.getEncounter().getId();
         existing.setCancelledAt(LocalDateTime.now());
         existing.setCancelledBy(currentUser);
         existing.setCancellationReason(cancelDTO.cancellationReason());
 
         try {
-            return glasgowComaScaleAssessmentRepository.saveAndFlush(existing);
+            reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
+            GlasgowComaScaleAssessment saved = glasgowComaScaleAssessmentRepository.saveAndFlush(existing);
+            return saved;
         } catch (DataIntegrityViolationException | JpaSystemException exception) {
             throw handleConstraintViolation(exception);
         }
@@ -192,9 +205,36 @@ public class GlasgowComaScaleAssessmentService {
         return eyeScore + verbalScore + motorScore;
     }
 
+    /**
+     * Retired GCS values can no longer be chosen. They are only accepted when the assessment
+     * already had that value (editing an old record without changing that field).
+     */
+    private void validateNotRetired(GCSEye eyeOpening, GCSVerbal verbalResponse, GlasgowComaScaleAssessment existing) {
+        if (eyeOpening != null && eyeOpening.isRetired()
+                && (existing == null || existing.getEyeOpening() != eyeOpening)) {
+            throw new BadRequestAlertException(
+                    "Eye opening '" + eyeOpening + "' is no longer available",
+                    ENTITY_NAME,
+                    "eyeOpening.retired"
+            );
+        }
+        if (verbalResponse != null && verbalResponse.isRetired()
+                && (existing == null || existing.getVerbalResponse() != verbalResponse)) {
+            throw new BadRequestAlertException(
+                    "Verbal response '" + verbalResponse + "' is no longer available",
+                    ENTITY_NAME,
+                    "verbalResponse.retired"
+            );
+        }
+    }
+
     private GCSScoreInterpretation resolveScoreInterpretation(Integer totalScore) {
 
-        if (totalScore >= 13 && totalScore <= 15) {
+        if (totalScore == 15) {
+            return GCSScoreInterpretation.NORMAL;
+        }
+
+        if (totalScore >= 13 && totalScore <= 14) {
             return GCSScoreInterpretation.MILD_TRAUMATIC_BRAIN_INJURY;
         }
 

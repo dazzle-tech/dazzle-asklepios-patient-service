@@ -36,6 +36,7 @@ public class BodyMeasurementsService {
     private final BodyMeasurementsRepository bodyMeasurementsRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public BodyMeasurements create(BodyMeasurementsCreateDTO dto) {
         LOG.info("[CREATE] BodyMeasurements payload={}", dto);
@@ -46,21 +47,23 @@ public class BodyMeasurementsService {
                         "bodyMeasurements",
                         "patient.notfound"
                 ));
-        getEncounter(dto.encounterId());
+        PatientEncounter encounter = getEncounter(dto.encounterId());
 
         try {
-            resetIsActiveForEncounterToday(dto.encounterId());
+            resetIsActiveForEncounterToday(encounter.getId());
 
             BodyMeasurements bodyMeasurements = BodyMeasurements.builder()
                     .patient(patient)
-                    .encounterId(dto.encounterId())
+                    .encounterId(encounter.getId())
                     .weight(dto.weight())
                     .height(dto.height())
                     .headCircumference(dto.headCircumference())
                     .isActive(true)
                     .build();
 
-            return bodyMeasurementsRepository.saveAndFlush(bodyMeasurements);
+            reopenSessionAuditContext.applyOpenSession(encounter.getId());
+            BodyMeasurements saved = bodyMeasurementsRepository.saveAndFlush(bodyMeasurements);
+            return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);
@@ -73,6 +76,7 @@ public class BodyMeasurementsService {
         LOG.info("[UPDATE] BodyMeasurements id={} payload={}", targetId, dto);
 
         return bodyMeasurementsRepository.findById(targetId).map(bodyMeasurements -> {
+            Long ownedEncounterId = bodyMeasurements.getEncounterId();
 
             Patient patient = patientRepository.findById(dto.patientId())
                     .orElseThrow(() -> new NotFoundAlertException(
@@ -90,7 +94,9 @@ public class BodyMeasurementsService {
             bodyMeasurements.setIsActive(dto.isActive());
 
             try {
-                return bodyMeasurementsRepository.saveAndFlush(bodyMeasurements);
+                reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
+                BodyMeasurements saved = bodyMeasurementsRepository.saveAndFlush(bodyMeasurements);
+                return saved;
             } catch (DataIntegrityViolationException | JpaSystemException ex) {
                 throw handleConstraintViolation(ex);
             }
@@ -170,7 +176,9 @@ public class BodyMeasurementsService {
                         dayEnd
                 )
                 .ifPresentOrElse(bodyMeasurements -> {
+                    Long ownedEncounterId = bodyMeasurements.getEncounterId();
                     bodyMeasurements.setIsActive(false);
+                    reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
                     bodyMeasurementsRepository.flush();
                     LOG.debug(
                             "[RESET ACTIVE] Reset done. bodyMeasurementsId={} encounterId={}",

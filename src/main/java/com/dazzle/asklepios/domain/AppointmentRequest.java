@@ -2,6 +2,7 @@ package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.AppointmentRequestStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
+import com.dazzle.asklepios.domain.enumeration.RecurrenceUnit;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -72,6 +73,28 @@ public class AppointmentRequest extends AbstractAuditingEntity<Long> implements 
 
     @Column(name = "preferred_date")
     private LocalDate preferredDate;
+
+    @Column(name = "preferred_start_time")
+    private Instant preferredStartTime;
+
+    @Column(name = "preferred_end_time")
+    private Instant preferredEndTime;
+
+    @Column(name = "recurring", nullable = false)
+    private Boolean recurring = false;
+
+    @Column(name = "recurrence_days", length = 100)
+    private String recurrenceDays;
+
+    @Column(name = "recurrence_start_date")
+    private LocalDate recurrenceStartDate;
+
+    @Column(name = "recurrence_period")
+    private Integer recurrencePeriod;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "recurrence_unit", length = 10)
+    private RecurrenceUnit recurrenceUnit;
 
     @Column(name = "cancelled_at")
     private Instant cancelledAt;

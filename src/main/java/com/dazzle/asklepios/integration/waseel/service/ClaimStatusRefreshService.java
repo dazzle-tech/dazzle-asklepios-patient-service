@@ -6,6 +6,7 @@ import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimValidationError;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimUploadResponse;
 import com.dazzle.asklepios.repository.ClaimRequestRepository;
 import com.dazzle.asklepios.service.ClaimSettlementNumberService;
+import com.dazzle.asklepios.service.PatientActivityService;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -36,6 +37,7 @@ public class ClaimStatusRefreshService {
     private final WaseelClaimService waseelClaimService;
     private final ClaimPayloadValidationService claimPayloadValidationService;
     private final ObjectMapper objectMapper;
+    private final PatientActivityService patientActivityService;
     private final Map<Long, TimedLookup> recentLookups = new ConcurrentHashMap<>();
 
     @Transactional
@@ -115,7 +117,9 @@ public class ClaimStatusRefreshService {
             claim.setSettlementNo(null);
         }
 
-        return claimRequestRepository.save(claim);
+        ClaimRequest saved = claimRequestRepository.save(claim);
+        patientActivityService.recordClaimStatus(saved);
+        return saved;
     }
 
     /**

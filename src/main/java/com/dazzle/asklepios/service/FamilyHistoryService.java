@@ -3,6 +3,7 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.FamilyHistory;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
+import com.dazzle.asklepios.domain.enumeration.Relations;
 import com.dazzle.asklepios.repository.FamilyHistoryRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
@@ -51,14 +52,33 @@ public class FamilyHistoryService {
     public FamilyHistory create(FamilyHistoryCreateDTO familyHistoryCreateDTO) {
         LOG.info("[CREATE] FamilyHistory payload={}", familyHistoryCreateDTO);
 
+        validate(
+                familyHistoryCreateDTO.patientIsFree(),
+                familyHistoryCreateDTO.freeText(),
+                familyHistoryCreateDTO.condition(),
+                familyHistoryCreateDTO.relation()
+        );
+
+        boolean isFree = Boolean.TRUE.equals(
+                familyHistoryCreateDTO.patientIsFree()
+        );
+
         FamilyHistory entity = FamilyHistory.builder()
                 .patient(refPatient(familyHistoryCreateDTO.patientId()))
-                .condition(familyHistoryCreateDTO.condition())
-                .relation(familyHistoryCreateDTO.relation())
-                .inheritedDiseases(familyHistoryCreateDTO.inheritedDiseases())
-
+                .condition(isFree ? null : familyHistoryCreateDTO.condition())
+                .relation(isFree ? null : familyHistoryCreateDTO.relation())
+                .inheritedDiseases(
+                        isFree
+                                ? null
+                                : familyHistoryCreateDTO.inheritedDiseases()
+                )
+                .patientIsFree(isFree)
+                .freeText(
+                        isFree
+                                ? familyHistoryCreateDTO.freeText().trim()
+                                : null
+                )
                 .status(PatientHistoryStatus.ACTIVE)
-
                 .build();
 
         try {
@@ -66,6 +86,7 @@ public class FamilyHistoryService {
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
+
             throw new BadRequestAlertException(
                     "Database constraint violated while creating family history.",
                     "familyHistory",
@@ -73,26 +94,62 @@ public class FamilyHistoryService {
             );
         }
     }
+
     public FamilyHistory update(FamilyHistoryUpdateDTO familyHistoryUpdateDTO) {
         LOG.info("[UPDATE] FamilyHistory payload={}", familyHistoryUpdateDTO);
 
-        FamilyHistory entity = familyHistoryRepository.findById(familyHistoryUpdateDTO.id())
+        validate(
+                familyHistoryUpdateDTO.patientIsFree(),
+                familyHistoryUpdateDTO.freeText(),
+                familyHistoryUpdateDTO.condition(),
+                familyHistoryUpdateDTO.relation()
+        );
+
+        FamilyHistory entity = familyHistoryRepository
+                .findById(familyHistoryUpdateDTO.id())
                 .orElseThrow(() -> new NotFoundAlertException(
-                        "Family history not found with id " + familyHistoryUpdateDTO.id(),
+                        "Family history not found with id "
+                                + familyHistoryUpdateDTO.id(),
                         "familyHistory",
                         "notfound"
                 ));
 
-        entity.setPatient(refPatient(familyHistoryUpdateDTO.patientId()));
-        entity.setCondition(familyHistoryUpdateDTO.condition());
-        entity.setRelation(familyHistoryUpdateDTO.relation());
-        entity.setInheritedDiseases(familyHistoryUpdateDTO.inheritedDiseases());
+        boolean isFree = Boolean.TRUE.equals(
+                familyHistoryUpdateDTO.patientIsFree()
+        );
+
+        entity.setPatient(
+                refPatient(familyHistoryUpdateDTO.patientId())
+        );
+
+        entity.setCondition(
+                isFree ? null : familyHistoryUpdateDTO.condition()
+        );
+
+        entity.setRelation(
+                isFree ? null : familyHistoryUpdateDTO.relation()
+        );
+
+        entity.setInheritedDiseases(
+                isFree
+                        ? null
+                        : familyHistoryUpdateDTO.inheritedDiseases()
+        );
+
+        entity.setPatientIsFree(isFree);
+
+        entity.setFreeText(
+                isFree
+                        ? familyHistoryUpdateDTO.freeText().trim()
+                        : null
+        );
 
         try {
             return familyHistoryRepository.saveAndFlush(entity);
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraints(ex);
+
             throw new BadRequestAlertException(
                     "Database constraint violated while updating family history.",
                     "familyHistory",
@@ -208,6 +265,43 @@ public class FamilyHistoryService {
         );
     }
 
+    private void validate(
+            Boolean patientIsFree,
+            String freeText,
+            String condition,
+            Relations relation
+    ) {
+        boolean isFree = Boolean.TRUE.equals(patientIsFree);
+
+        if (isFree) {
+            if (freeText == null || freeText.trim().isEmpty()) {
+                throw new BadRequestAlertException(
+                        "Free text is required.",
+                        "familyHistory",
+                        "freeText.required"
+                );
+            }
+
+            return;
+        }
+
+        if (condition == null || condition.trim().isEmpty()) {
+            throw new BadRequestAlertException(
+                    "Condition is required.",
+                    "familyHistory",
+                    "condition.required"
+            );
+        }
+
+        if (relation == null) {
+            throw new BadRequestAlertException(
+                    "Relation is required.",
+                    "familyHistory",
+                    "relation.required"
+            );
+        }
+    }
+
     private void handleConstraints(RuntimeException exception) {
         Throwable root = getRootCause(exception);
         String message = (root != null ? root.getMessage() : exception.getMessage());
@@ -240,4 +334,5 @@ public class FamilyHistoryService {
                 "db.constraint"
         );
     }
+
 }

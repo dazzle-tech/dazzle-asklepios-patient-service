@@ -46,6 +46,7 @@ public class PainAssessmentService {
     private final PatientEncounterRepository patientEncounterRepository;
     private final NotificationHelper notificationHelper;
     private final DepartmentHelper departmentHelper;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public PainAssessment create(PainAssessmentCreateDTO dto) {
         LOG.info("[CREATE] PainAssessment payload={}", dto);
@@ -77,8 +78,8 @@ public class PainAssessmentService {
                     .isActive(true)
                     .build();
 
+            reopenSessionAuditContext.applyOpenSession(encounter.getId());
             PainAssessment saved = painAssessmentRepository.saveAndFlush(entity);
-
 
             notificationForSeverePain(saved, patient, encounter);
 
@@ -93,6 +94,7 @@ public class PainAssessmentService {
         LOG.info("[UPDATE] PainAssessment id={} payload={}", targetId, dto);
 
         return painAssessmentRepository.findById(targetId).map(entity -> {
+            Long ownedEncounterId = entity.getEncounterId();
 
             Patient patient = patientRepository.findById(dto.patientId())
                     .orElseThrow(() -> new NotFoundAlertException(
@@ -116,6 +118,7 @@ public class PainAssessmentService {
             entity.setIsActive(dto.isActive());
 
             try {
+                reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
                 PainAssessment saved = painAssessmentRepository.saveAndFlush(entity);
 
                 notificationForSeverePain(saved, patient, encounter);
@@ -151,7 +154,9 @@ public class PainAssessmentService {
                         dayEnd
                 )
                 .ifPresentOrElse(painAssessment -> {
+                    Long ownedEncounterId = painAssessment.getEncounterId();
                     painAssessment.setIsActive(false);
+                    reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
                     painAssessmentRepository.flush();
                     LOG.debug(
                             "[RESET ACTIVE] Reset done. painAssessmentId={} encounterId={}",

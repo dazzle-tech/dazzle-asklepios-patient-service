@@ -282,6 +282,21 @@ public class WaseelCoverageExtractionService {
                 continue;
             }
 
+            if (isPolicyCopayType(type)) {
+                CategoryRuleBuilder builder =
+                        builders.computeIfAbsent(
+                                "cost-beneficiary::policy-copay",
+                                ignored ->
+                                        new CategoryRuleBuilder(
+                                                "Cost Beneficiary",
+                                                "Policy copay",
+                                                "copaypct"
+                                        )
+                        );
+                applyPolicyCopay(builder, type, costBeneficiary);
+                continue;
+            }
+
             String ruleKey = "cost-beneficiary::" + type.toLowerCase(Locale.ROOT);
             CategoryRuleBuilder builder =
                     builders.computeIfAbsent(
@@ -298,6 +313,72 @@ public class WaseelCoverageExtractionService {
                 builder.patientMaximumCopayment =
                         BigDecimal.valueOf(costBeneficiary.costBeneficiaryMoney());
             }
+        }
+    }
+
+    /**
+     * NPHIES cost-to-beneficiary copaypct and maxcopay are one policy-level
+     * patient share (percent + cap), not a service category.
+     */
+    private void applyPolicyCopay(
+            CategoryRuleBuilder builder,
+            String type,
+            EligibilityCostBeneficiaryDTO costBeneficiary
+    ) {
+        if (isCopayPercentType(type)) {
+            BigDecimal percent = parseAmount(costBeneficiary.costBeneficiaryQut());
+            if (percent == null && costBeneficiary.costBeneficiaryMoney() != null) {
+                percent = BigDecimal.valueOf(costBeneficiary.costBeneficiaryMoney());
+            }
+            if (percent != null && percent.signum() > 0) {
+                builder.patientCopaymentPercentage = percent;
+            }
+        }
+
+        if (isCopayMaximumType(type)
+                && costBeneficiary.costBeneficiaryMoney() != null) {
+            builder.patientMaximumCopayment =
+                    BigDecimal.valueOf(costBeneficiary.costBeneficiaryMoney());
+        }
+    }
+
+    private boolean isPolicyCopayType(String type) {
+        return isCopayPercentType(type) || isCopayMaximumType(type);
+    }
+
+    private boolean isCopayPercentType(String type) {
+        String compact = compactType(type);
+        return compact.equals("copaypct")
+                || compact.equals("copaypercent")
+                || compact.equals("copaymentpercent");
+    }
+
+    private boolean isCopayMaximumType(String type) {
+        String compact = compactType(type);
+        return compact.equals("maxcopay")
+                || compact.equals("maximumcopay")
+                || compact.equals("copaymax")
+                || compact.equals("maximumcopayment");
+    }
+
+    private String compactType(String type) {
+        return type.trim()
+                .toLowerCase(Locale.ROOT)
+                .replace("-", "")
+                .replace("_", "")
+                .replace(" ", "");
+    }
+
+    private BigDecimal parseAmount(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        String normalized = value.trim().replace("%", "").replace(",", "");
+        try {
+            return new BigDecimal(normalized);
+        } catch (NumberFormatException exception) {
+            return null;
         }
     }
 
@@ -712,6 +793,8 @@ public class WaseelCoverageExtractionService {
         return switch (beneficiaryType.trim().toLowerCase()) {
             case "gpvisit" -> "GP Visit Copay";
             case "spvisit" -> "Specialist Visit";
+            case "copaypct" -> "Copayment percent";
+            case "maxcopay" -> "Maximum copay";
             default -> beneficiaryType;
         };
     }

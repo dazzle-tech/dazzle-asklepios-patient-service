@@ -38,16 +38,19 @@ public class EncounterAssessmentService {
     private final PatientEncounterRepository patientEncounterRepository;
     private static final String ENTITY_NAME = "EncounterAssessment";
     private final EncounterAssessmentLogRepository encounterAssessmentLogRepository;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public EncounterAssessmentService(
             EncounterAssessmentRepository encounterAssessmentRepository,
             PatientRepository patientRepository,
             PatientEncounterRepository patientEncounterRepository,
-            EncounterAssessmentLogRepository encounterAssessmentLogRepository) {
+            EncounterAssessmentLogRepository encounterAssessmentLogRepository,
+            ReopenSessionAuditContext reopenSessionAuditContext) {
         this.encounterAssessmentRepository = encounterAssessmentRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
         this.encounterAssessmentLogRepository = encounterAssessmentLogRepository;
+        this.reopenSessionAuditContext = reopenSessionAuditContext;
     }
 
     public EncounterAssessment create(EncounterAssessmentCreateDTO createRequest) {
@@ -58,12 +61,15 @@ public class EncounterAssessmentService {
 
         EncounterAssessment entity = EncounterAssessment.builder()
                 .patient(patient)
-                .encounterId(createRequest.encounterId())
+                .encounterId(patientEncounter.getId())
                 .assessment(createRequest.assessment())
                 .build();
 
+        reopenSessionAuditContext.applyOpenSession(patientEncounter.getId());
+
         try {
-            return encounterAssessmentRepository.saveAndFlush(entity);
+            EncounterAssessment saved = encounterAssessmentRepository.saveAndFlush(entity);
+            return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);
@@ -85,6 +91,9 @@ public class EncounterAssessmentService {
                         "notfound"
                 ));
 
+        Long ownedEncounterId = existing.getEncounterId();
+        reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
+
         Patient patient = loadPatient(updateRequest.patientId());
         PatientEncounter patientEncounter = loadEncounter(updateRequest.encounterId());
 
@@ -94,7 +103,8 @@ public class EncounterAssessmentService {
         existing.setLastModifiedDate(Instant.now());
 
         try {
-            return encounterAssessmentRepository.saveAndFlush(existing);
+            EncounterAssessment saved = encounterAssessmentRepository.saveAndFlush(existing);
+            return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);

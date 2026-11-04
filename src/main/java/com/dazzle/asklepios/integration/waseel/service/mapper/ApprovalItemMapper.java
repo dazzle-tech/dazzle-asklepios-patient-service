@@ -145,15 +145,25 @@ public class ApprovalItemMapper {
             );
         }
 
-        if (safePatientShare.signum() == 0 && safePayerShare.signum() == 0 && safeNet.signum() > 0) {
-            safePayerShare = safeNet;
-        } else if (safePatientShare.add(safePayerShare).compareTo(safeNet) != 0 && safeNet.signum() > 0) {
-            safePayerShare = safeNet.subtract(safePatientShare).setScale(2, RoundingMode.HALF_UP);
-        }
-
         BigDecimal waseelUnitPrice = gross.signum() > 0 && qty != null && qty > 0
                 ? gross.divide(quantityValue, 2, RoundingMode.HALF_UP)
                 : safeUnitPrice;
+
+        // Waseel validates net = (quantity x unitPrice) x factor + tax on the sent values,
+        // so once unit price and factor are fixed the sent net must follow the same formula.
+        BigDecimal waseelNet = safeNet.signum() > 0
+                ? quantityValue
+                        .multiply(waseelUnitPrice)
+                        .multiply(factor)
+                        .add(safeTax)
+                        .setScale(2, RoundingMode.HALF_UP)
+                : safeNet;
+
+        if (safePatientShare.signum() == 0 && safePayerShare.signum() == 0 && waseelNet.signum() > 0) {
+            safePayerShare = waseelNet;
+        } else if (safePatientShare.add(safePayerShare).compareTo(waseelNet) != 0 && waseelNet.signum() > 0) {
+            safePayerShare = waseelNet.subtract(safePatientShare).setScale(2, RoundingMode.HALF_UP);
+        }
 
         return new WaseelApprovalItem(
                 item.sequence(),
@@ -173,7 +183,7 @@ public class ApprovalItemMapper {
                 factor,
                 item.taxPercent(),
                 item.patientSharePercent(),
-                safeNet,
+                waseelNet,
                 safeTax,
                 safePatientShare,
                 safePayerShare,

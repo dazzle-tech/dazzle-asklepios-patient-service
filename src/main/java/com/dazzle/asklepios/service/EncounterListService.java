@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.client.setup.dto.PractitionerDTO;
 import com.dazzle.asklepios.client.setup.dto.ServiceSetupDTO;
+import com.dazzle.asklepios.domain.FinancialDocumentItem;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
@@ -60,6 +61,7 @@ public class EncounterListService {
     private final DepartmentHelper departmentHelper;
     private final PractitionerHelper practitionerHelper;
     private final ServiceHelper serviceHelper;
+    private final EncounterInvoicePaymentReader encounterInvoicePaymentReader;
 
     public EncounterListService(
             EncounterListRepository encounterListRepository,
@@ -73,7 +75,8 @@ public class EncounterListService {
             PatientObservationsComplaintsRepository patientObservationsComplaintsRepository,
             DepartmentHelper departmentHelper,
             PractitionerHelper practitionerHelper,
-            ServiceHelper serviceHelper
+            ServiceHelper serviceHelper,
+            EncounterInvoicePaymentReader encounterInvoicePaymentReader
     ) {
         this.encounterListRepository = encounterListRepository;
         this.patientInsuranceRepository = patientInsuranceRepository;
@@ -89,6 +92,7 @@ public class EncounterListService {
         this.departmentHelper = departmentHelper;
         this.practitionerHelper = practitionerHelper;
         this.serviceHelper = serviceHelper;
+        this.encounterInvoicePaymentReader = encounterInvoicePaymentReader;
     }
 
     public Page<EncounterListVM> search(
@@ -167,6 +171,32 @@ public class EncounterListService {
             specification = specification.and(
                     EncounterListSpecification.mrnContains(
                             filter.mrn()
+                    )
+            );
+        }
+
+        if (filter != null && filter.primaryMobileNumber() != null
+                && !filter.primaryMobileNumber().isBlank()) {
+            specification = specification.and(
+                    EncounterListSpecification.primaryMobileNumberEquals(
+                            filter.primaryMobileNumber()
+                    )
+            );
+        }
+
+        if (filter != null && filter.documentNumber() != null
+                && !filter.documentNumber().isBlank()) {
+            specification = specification.and(
+                    EncounterListSpecification.documentNumberEquals(
+                            filter.documentNumber()
+                    )
+            );
+        }
+
+        if (filter != null && filter.dateOfBirth() != null) {
+            specification = specification.and(
+                    EncounterListSpecification.dateOfBirthEquals(
+                            filter.dateOfBirth()
                     )
             );
         }
@@ -289,37 +319,24 @@ public class EncounterListService {
             }
         }
 
-        Map<Long, List<PatientServiceAndProduct>> serviceMap = new HashMap<>();
-
-        for (PatientEncounter encounter : encounters) {
-
-            if (encounter.getId() == null) {
-                continue;
-            }
-
-            try {
-                List<PatientServiceAndProduct> products =
-                        patientServiceAndProductRepository
-                                .findByEncounterId(encounter.getId());
-
-                serviceMap.put(
-                        encounter.getId(),
-                        products != null ? products : List.of()
-                );
-
-            } catch (Exception ignored) {
-                serviceMap.put(
-                        encounter.getId(),
-                        List.of()
-                );
-            }
-        }
-
-
         List<Long> encounterIds = encounters.stream()
                 .map(PatientEncounter::getId)
                 .filter(id -> id != null)
                 .toList();
+
+        Map<Long, List<PatientServiceAndProduct>> serviceMap =
+                encounterIds.isEmpty()
+                        ? Map.of()
+                        : patientServiceAndProductRepository
+                        .findByEncounterIdIn(encounterIds)
+                        .stream()
+                        .filter(item -> item.getEncounterId() != null)
+                        .collect(Collectors.groupingBy(
+                                PatientServiceAndProduct::getEncounterId
+                        ));
+
+        Map<Long, List<FinancialDocumentItem>> invoiceItemsByEncounter =
+                encounterInvoicePaymentReader.patientInvoiceItems(encounterIds);
 
         Set<Long> observedEncounterIds = new HashSet<>();
 
@@ -475,6 +492,7 @@ public class EncounterListService {
                         encounter,
                         insuranceMap,
                         serviceMap,
+                        invoiceItemsByEncounter,
                         practitionerNames,
                         serviceNames,
                         departmentNames,
@@ -487,6 +505,7 @@ public class EncounterListService {
             PatientEncounter encounter,
             Map<Long, PatientInsurance> insuranceMap,
             Map<Long, List<PatientServiceAndProduct>> serviceMap,
+            Map<Long, List<FinancialDocumentItem>> invoiceItemsByEncounter,
             Map<Long, String> practitionerNames,
             Map<Long, String> serviceNames,
             Map<Long, String> departmentNames,
@@ -555,20 +574,44 @@ public class EncounterListService {
                                 BigDecimal::add
                         );
 
-        String paymentStatus =
-                resolvePaymentStatus(products);
+        List<PatientServiceAndProduct> executed =
+                products.stream()
+                        .filter(item ->
+                                !ExecutedServiceAmounts.isCancelled(
+                                        item.getPaymentStatus()
+                                )
+                        )
+                        .toList();
 
-        String paymentType =
-                encounter.getCoverageType() != null
-                        ? encounter.getCoverageType().name()
-                        : defaultService != null
-                        ? defaultService.getPaymentType()
-                        : null;
+        BigDecimal calculatedTotal = executedTotal(executed);
+        BigDecimal patientTotal = patientTotal(executed);
+        List<FinancialDocumentItem> invoiceItems =
+                invoiceItemsByEncounter.getOrDefault(
+                        encounter.getId(),
+                        List.of()
+                );
+        BigDecimal patientPaidTotal = invoiceItems.isEmpty()
+                ? sumPatientPaid(executed)
+                : sumInvoicePaid(invoiceItems);
+
+        String paymentStatus = invoiceItems.isEmpty()
+                ? resolvePaymentStatus(products)
+                : resolveInvoicePaymentStatus(invoiceItems);
 
         PatientInsurance insurance =
                 patientId != null
                         ? insuranceMap.get(patientId)
                         : null;
+
+        String paymentType = selfPayOrInsurance(
+                encounter.getCoverageType(),
+                defaultService != null
+                        ? defaultService.getPaymentType()
+                        : null,
+                insurance != null
+                        ? insurance.getCoverageType()
+                        : null
+        );
 
         String insuranceName =
                 insurance != null
@@ -580,6 +623,11 @@ public class EncounterListService {
                         ? encounter.getCoverageType().name()
                         : insurance != null
                         ? insurance.getCoverageType()
+                        : null;
+
+        BigDecimal insuranceTotal =
+                isInsuranceCoverage(coverageType)
+                        ? sumInsuranceShare(executed)
                         : null;
 
         String defaultServiceName =
@@ -663,6 +711,14 @@ public class EncounterListService {
                 defaultServiceName,
 
                 amount,
+
+                calculatedTotal,
+
+                patientTotal,
+
+                insuranceTotal,
+
+                patientPaidTotal,
 
                 paymentStatus,
 
@@ -750,6 +806,16 @@ public class EncounterListService {
 
                 BigDecimal.ZERO,
 
+                BigDecimal.ZERO,
+
+                BigDecimal.ZERO,
+
+                encounter.getCoverageType() == BillingCoverageType.INSURANCE
+                        ? BigDecimal.ZERO
+                        : null,
+
+                BigDecimal.ZERO,
+
                 null,
 
                 encounter.getCoverageType() != null
@@ -774,6 +840,162 @@ public class EncounterListService {
 
                 false
         );
+    }
+
+    private String selfPayOrInsurance(
+            BillingCoverageType encounterCoverage,
+            String servicePaymentType,
+            String insuranceCoverageType
+    ) {
+        if (encounterCoverage == BillingCoverageType.INSURANCE) {
+            return BillingCoverageType.INSURANCE.name();
+        }
+
+        if (encounterCoverage == BillingCoverageType.SELF_PAY) {
+            return BillingCoverageType.SELF_PAY.name();
+        }
+
+        if (isInsurancePayment(servicePaymentType)) {
+            return BillingCoverageType.INSURANCE.name();
+        }
+
+        if (isSelfPayPayment(servicePaymentType)) {
+            return BillingCoverageType.SELF_PAY.name();
+        }
+
+        if (insuranceCoverageType != null
+                && !insuranceCoverageType.isBlank()
+                && !isSelfPayPayment(insuranceCoverageType)) {
+            return BillingCoverageType.INSURANCE.name();
+        }
+
+        return null;
+    }
+
+    private boolean isInsurancePayment(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+
+        String normalized = value.trim().toUpperCase();
+        return normalized.equals(BillingCoverageType.INSURANCE.name())
+                || normalized.equals("INSURANCE_PLAN");
+    }
+
+    private boolean isSelfPayPayment(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+
+        String normalized = value.trim().toUpperCase();
+        return normalized.equals(BillingCoverageType.SELF_PAY.name())
+                || normalized.equals("CASH");
+    }
+
+    private boolean isInsuranceCoverage(String coverageType) {
+        return coverageType != null
+                && BillingCoverageType.INSURANCE.name()
+                .equalsIgnoreCase(coverageType.trim());
+    }
+
+    private BigDecimal executedTotal(
+            List<PatientServiceAndProduct> items
+    ) {
+        return items.stream()
+                .map(this::executedNet)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal patientTotal(
+            List<PatientServiceAndProduct> items
+    ) {
+        return items.stream()
+                .map(item ->
+                        ExecutedServiceAmounts.patientShare(
+                                item.getPatientShareAmount(),
+                                item.getInsuranceShareAmount(),
+                                executedNet(item)
+                        )
+                )
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal sumPatientPaid(
+            List<PatientServiceAndProduct> items
+    ) {
+        return items.stream()
+                .map(item ->
+                        ExecutedServiceAmounts.zeroIfNull(
+                                item.getPaidAmount()
+                        )
+                )
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal sumInsuranceShare(
+            List<PatientServiceAndProduct> items
+    ) {
+        return items.stream()
+                .map(item ->
+                        ExecutedServiceAmounts.insuranceShare(
+                                item.getInsuranceShareAmount()
+                        )
+                )
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal executedNet(
+            PatientServiceAndProduct item
+    ) {
+        BigDecimal quantity =
+                item.getQuantity() == null
+                        ? BigDecimal.ONE
+                        : BigDecimal.valueOf(item.getQuantity());
+
+        return ExecutedServiceAmounts.net(
+                item.getNetAmount(),
+                item.getUnitPrice(),
+                quantity
+        );
+    }
+
+    private BigDecimal sumInvoicePaid(
+            List<FinancialDocumentItem> items
+    ) {
+        return items.stream()
+                .map(item ->
+                        ExecutedServiceAmounts.zeroIfNull(
+                                item.getPaidAmount()
+                        )
+                )
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private String resolveInvoicePaymentStatus(
+            List<FinancialDocumentItem> items
+    ) {
+        BigDecimal paid = sumInvoicePaid(items);
+        BigDecimal remaining = items.stream()
+                .map(item ->
+                        ExecutedServiceAmounts.zeroIfNull(
+                                item.getRemainingAmount()
+                        )
+                )
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        if (remaining.signum() > 0 && paid.signum() > 0) {
+            return PaymentStatus.PARTIALLY_PAID.name();
+        }
+
+        if (remaining.signum() > 0) {
+            return "REMAINING_TO_PAY";
+        }
+
+        if (paid.signum() > 0) {
+            return PaymentStatus.PAID.name();
+        }
+
+        return null;
     }
 
     private String resolvePaymentStatus(

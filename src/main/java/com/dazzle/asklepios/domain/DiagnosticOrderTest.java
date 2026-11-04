@@ -151,4 +151,7 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
     @Transient
     @EqualsAndHashCode.Exclude
     private Boolean preAuthorizationBlocked;
+
+    @Column(name = "print_number", length = 100)
+    private String printNumber;
 }

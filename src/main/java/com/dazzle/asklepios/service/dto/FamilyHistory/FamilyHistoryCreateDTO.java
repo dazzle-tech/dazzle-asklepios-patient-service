@@ -2,7 +2,6 @@ package com.dazzle.asklepios.service.dto.FamilyHistory;
 
 import com.dazzle.asklepios.domain.enumeration.Relations;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 import java.io.Serializable;
@@ -13,13 +12,16 @@ public record FamilyHistoryCreateDTO(
         @NotNull
         Long patientId,
 
-        @NotBlank
         String condition,
 
-        @NotNull
         Relations relation,
 
-        Boolean inheritedDiseases
+        Boolean inheritedDiseases,
+
+        @NotNull
+        Boolean patientIsFree,
+
+        String freeText
 
 ) implements Serializable {
 }

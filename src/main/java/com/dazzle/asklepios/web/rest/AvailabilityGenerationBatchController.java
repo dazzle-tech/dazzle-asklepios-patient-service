@@ -1,12 +1,14 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.AvailabilityGenerationBatch;
-import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.service.AppointmentService;
 import com.dazzle.asklepios.service.AvailabilityGenerationBatchService;
 import com.dazzle.asklepios.service.dto.availabilityGenerationBatch.AvailabilityGenerationBatchApplyDTO;
+import com.dazzle.asklepios.service.dto.availabilityGenerationBatch.CancelUpcomingAvailableSlotsDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.vm.availabilityGenerationBatch.ApplyAvailabilityTemplateResponseVM;
+import com.dazzle.asklepios.web.rest.vm.availabilityGenerationBatch.CancelUpcomingAvailableSlotsResponseVM;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +23,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -37,6 +40,7 @@ public class AvailabilityGenerationBatchController {
     private static final Logger LOG = LoggerFactory.getLogger(AvailabilityGenerationBatchController.class);
 
     private final AvailabilityGenerationBatchService availabilityGenerationBatchService;
+    private final AppointmentService appointmentService;
 
     /**
      * Apply template and generate free appointments.
@@ -49,6 +53,21 @@ public class AvailabilityGenerationBatchController {
         validateRequest(request);
 
         ApplyAvailabilityTemplateResponseVM response = availabilityGenerationBatchService.applyTemplate(request);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Cancel upcoming free slots for one applied template batch.
+     * Today's appointments stay available. The reason is the one entered on the apply-template screen.
+     */
+    @PutMapping("/availability-generation-batches/{batchId}/cancel-upcoming-available-slots")
+    public ResponseEntity<CancelUpcomingAvailableSlotsResponseVM> cancelUpcomingAvailableSlots(
+            @PathVariable Long batchId,
+            @Valid @RequestBody CancelUpcomingAvailableSlotsDTO request
+    ) {
+        LOG.debug("REST request to cancel upcoming available slots for batch {}: {}", batchId, request);
+        CancelUpcomingAvailableSlotsResponseVM response =
+                appointmentService.cancelUpcomingAvailableSlots(batchId, request);
         return ResponseEntity.ok(response);
     }
 

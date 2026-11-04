@@ -7,6 +7,7 @@ import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.ReferralRequest;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import com.dazzle.asklepios.domain.enumeration.ReferralStatus;
 import com.dazzle.asklepios.domain.enumeration.ReferralType;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
@@ -54,6 +55,8 @@ public class ReferralRequestService {
     ;
     private final AppointmentRepository appointmentRepository;
     private final NotificationHelper notificationHelper;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
+    private final PatientActivityService patientActivityService;
 
     public ReferralRequest createReferralRequest(ReferralRequestCreateDTO createDto) {
         LOG.info("[CREATE] ReferralRequest payload={}", createDto);
@@ -85,12 +88,24 @@ public class ReferralRequestService {
                 .build();
 
         try {
+            reopenSessionAuditContext.applyOpenSession(encounter.getId());
             ReferralRequest savedReferralRequest = referralRequestRepository.saveAndFlush(referralRequest);
 
             notifyDestinationDepartmentForNewReferralRequest(
                     savedReferralRequest,
                     patient,
                     encounter
+            );
+
+            Long appointmentId = encounter.getAppointment() == null ? null : encounter.getAppointment().getId();
+            patientActivityService.recordOccurred(
+                    patient.getId(),
+                    encounter.getId(),
+                    appointmentId,
+                    PatientActivityType.REFERRAL_COORDINATION,
+                    PatientActivityService.SOURCE_REFERRAL,
+                    savedReferralRequest.getId(),
+                    "Referral coordination"
             );
 
             LOG.info("[CREATE] Successfully created ReferralRequest id={}", savedReferralRequest.getId());
@@ -105,6 +120,8 @@ public class ReferralRequestService {
         LOG.info("[UPDATE] ReferralRequest id={} payload={}", targetReferralRequestId, updateDto);
 
         return referralRequestRepository.findById(targetReferralRequestId).map(existingReferralRequest -> {
+            Long ownedEncounterId = existingReferralRequest.getEncounter() == null
+                    ? null : existingReferralRequest.getEncounter().getId();
 
             Patient patient = patientRepository.findById(updateDto.patientId())
                     .orElseThrow(() -> new NotFoundAlertException(
@@ -131,6 +148,7 @@ public class ReferralRequestService {
             existingReferralRequest.setPriority(updateDto.priority());
 
             try {
+                reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
                 ReferralRequest updatedReferralRequest = referralRequestRepository.saveAndFlush(existingReferralRequest);
                 LOG.info("[UPDATE] Successfully updated ReferralRequest id={}", updatedReferralRequest.getId());
                 return updatedReferralRequest;
@@ -155,6 +173,7 @@ public class ReferralRequestService {
                     );
                 });
 
+        Long encounterId = referralRequest.getEncounter() == null ? null : referralRequest.getEncounter().getId();
         Appointment appointment = appointmentRepository.findById(appointmentId)
                 .orElseThrow(() -> {
                     LOG.warn("[ACCEPT] Appointment not found id={}", appointmentId);
@@ -171,6 +190,7 @@ public class ReferralRequestService {
         referralRequest.setAppointment(appointment);
 
         try {
+            reopenSessionAuditContext.applyOpenSession(encounterId);
             ReferralRequest savedReferralRequest = referralRequestRepository.saveAndFlush(referralRequest);
             LOG.info("[ACCEPT] ReferralRequest success id={} acceptedBy={}", referralRequestId, currentUsername);
             return savedReferralRequest;
@@ -200,12 +220,14 @@ public class ReferralRequestService {
                     );
                 });
 
+        Long encounterId = referralRequest.getEncounter() == null ? null : referralRequest.getEncounter().getId();
         referralRequest.setStatus(ReferralStatus.REJECTED);
         referralRequest.setRejectReason(rejectReason);
         referralRequest.setRejectedDate(Instant.now());
         referralRequest.setRejectedBy(currentUsername);
 
         try {
+            reopenSessionAuditContext.applyOpenSession(encounterId);
             ReferralRequest savedReferralRequest = referralRequestRepository.saveAndFlush(referralRequest);
             LOG.info("[REJECT] ReferralRequest success id={} rejectedBy={}", referralRequestId, currentUsername);
             return savedReferralRequest;

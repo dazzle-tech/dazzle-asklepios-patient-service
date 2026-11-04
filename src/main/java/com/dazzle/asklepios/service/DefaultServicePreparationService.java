@@ -7,6 +7,7 @@ import com.dazzle.asklepios.domain.BillingPricingSnapshot;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
+import com.dazzle.asklepios.domain.PatientProcedure;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
@@ -27,6 +28,7 @@ import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
 import com.dazzle.asklepios.service.dto.billing.InsurancePriceListCoverageCheckResult;
+import com.dazzle.asklepios.service.dto.billing.PrepareDefaultProcedureItem;
 import com.dazzle.asklepios.service.dto.billing.PrepareDefaultServiceItem;
 import com.dazzle.asklepios.service.dto.billing.PrepareDefaultServicesRequest;
 import com.dazzle.asklepios.service.dto.billing.PrepareDefaultServicesResult;
@@ -81,9 +83,12 @@ public class DefaultServicePreparationService {
     private final PatientItemPricingApplicationService patientItemPricingApplicationService;
     private final InsurancePriceListCoverageService insurancePriceListCoverageService;
     private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
+    private final InsuranceVisitEligibilityGuard insuranceVisitEligibilityGuard;
+    private final EncounterDefaultProcedureService encounterDefaultProcedureService;
 
     /**
-     * Creates/reuses selected default-service PSP records and sends each one
+     * Creates/reuses selected default-service PSP records, orders the selected
+     * default procedures on the encounter, and sends each billing item
      * through the Billing Engine. This operation does not create a payment,
      * allocation, consumption, checkout, or invoice closure.
      */
@@ -142,6 +147,13 @@ public class DefaultServicePreparationService {
             }
         }
 
+        if (coverageType == BillingCoverageType.INSURANCE) {
+            insuranceVisitEligibilityGuard.requireFreshInForce(
+                    insurance,
+                    request.patientId()
+            );
+        }
+
         encounterCoverageService.applyCoverage(
                 encounter,
                 coverageType,
@@ -175,6 +187,16 @@ public class DefaultServicePreparationService {
                                 ))
                                 .toList();
 
+        List<PrepareDefaultProcedureItem> orderedProcedures =
+                skipDefaultServices
+                        ? List.of()
+                        : request.defaultProcedures()
+                                .stream()
+                                .sorted(Comparator.comparing(
+                                        PrepareDefaultProcedureItem::sequence
+                                ))
+                                .toList();
+
         if (coverageType == BillingCoverageType.INSURANCE) {
             List<InsurancePriceListCoverageCheckResult> coverageChecks =
                     new ArrayList<>();
@@ -187,6 +209,15 @@ public class DefaultServicePreparationService {
                                 null,
                                 null,
                                 null,
+                                request.currency()
+                        )
+                );
+            }
+            for (PrepareDefaultProcedureItem requestedProcedure : orderedProcedures) {
+                coverageChecks.add(
+                        encounterDefaultProcedureService.checkCoverage(
+                                encounterId,
+                                requestedProcedure.procedureId(),
                                 request.currency()
                         )
                 );
@@ -216,107 +247,59 @@ public class DefaultServicePreparationService {
                             service
                     );
 
-            Optional<BillingChargeLine> existingChargeLine =
-                    findActiveChargeLine(item.getId());
-
-            BillingOperationResult billingResult;
-
-            if (existingChargeLine.isPresent()) {
-                BillingChargeLine chargeLine =
-                        existingChargeLine.get();
-
-                if (shouldRepriceExistingChargeLine(chargeLine)) {
-                    LOG.info(
-                            "[PREPARE_DEFAULT_SERVICES] Repricing existing setup-fallback "
-                                    + "charge line pspId={} chargeLineId={} encounterId={}",
-                            item.getId(),
-                            chargeLine.getId(),
-                            encounterId
-                    );
-
-                    billingResult =
-                            billingEngineService.reprice(
-                                    item.getId(),
-                                    request.facilityId(),
-                                    request.requestId().trim()
-                                            + ":REPRICE:"
-                                            + requestedItem.sequence()
-                                            + ":"
-                                            + requestedItem.serviceId()
-                            );
-                } else {
-                    LOG.info(
-                            "[PREPARE_DEFAULT_SERVICES] Skipping duplicate billing "
-                                    + "pspId={} chargeLineId={} encounterId={}",
-                            item.getId(),
-                            chargeLine.getId(),
-                            encounterId
-                    );
-
-                    billingResult =
-                            toExistingBillingResult(
-                                    item,
-                                    chargeLine
-                            );
-                }
-            } else if (item.getPreAuthorizationStatus()
-                    == PreAuthorizationStatus.PENDING_APPROVAL) {
-                hasPendingPreAuth = true;
-                LOG.info(
-                        "[PREPARE_DEFAULT_SERVICES] Deferring billing — pre-auth required. "
-                                + "pspId={} encounterId={} serviceId={}",
-                        item.getId(),
-                        encounterId,
-                        requestedItem.serviceId()
-                );
-                billingResult =
-                        new BillingOperationResult(
-                                item.getId(),
-                                null,
-                                null,
-                                null,
-                                BigDecimal.ZERO,
-                                BigDecimal.ZERO,
-                                BigDecimal.ZERO,
-                                BigDecimal.ZERO,
-                                BigDecimal.ZERO,
-                                BigDecimal.ZERO,
-                                BigDecimal.ZERO,
-                                BigDecimal.ZERO,
-                                true,
-                                "Billing deferred — waiting for pre-authorization."
-                        );
-            } else {
-                String itemRequestId =
-                        request.requestId().trim()
-                                + ":DEFAULT_SERVICE:"
-                                + requestedItem.sequence()
-                                + ":"
-                                + requestedItem.serviceId();
-
-                billingResult =
-                        billingEngineService.processWithEventFallback(
-                                item.getId(),
-                                encounterId,
-                                request.facilityId(),
-                                itemRequestId
-                        );
-                boolean heldByMessage = billingResult != null
-                        && billingResult.message() != null
-                        && billingResult.message().toLowerCase().contains("pre-authorization");
-                if (heldByMessage
-                        || item.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL
-                        || item.getPaymentStatus() == PaymentStatus.SKIPPED_PENDING_PRE_AUTH) {
-                    hasPendingPreAuth = true;
-                }
-            }
+            String itemKey = requestedItem.sequence() + ":" + requestedItem.serviceId();
+            PreparedBilling billing = billPreparedItem(
+                    item,
+                    encounterId,
+                    request,
+                    request.requestId().trim() + ":DEFAULT_SERVICE:" + itemKey,
+                    request.requestId().trim() + ":REPRICE:" + itemKey
+            );
+            hasPendingPreAuth |= billing.pendingPreAuthorization();
 
             results.add(
                     new PrepareDefaultServicesResult.PreparedDefaultServiceResult(
                             item.getId(),
                             requestedItem.serviceId(),
                             requestedItem.sequence(),
-                            billingResult
+                            billing.result()
+                    )
+            );
+        }
+
+        List<PrepareDefaultServicesResult.PreparedDefaultProcedureResult> procedureResults =
+                new ArrayList<>();
+        List<PatientProcedure> ordersPendingPreAuth = new ArrayList<>();
+
+        for (PrepareDefaultProcedureItem requestedProcedure : orderedProcedures) {
+            EncounterDefaultProcedureService.DefaultProcedureOrder order =
+                    encounterDefaultProcedureService.findOrCreate(
+                            encounter,
+                            request.currency(),
+                            requestedProcedure,
+                            insurance
+                    );
+
+            String itemKey = requestedProcedure.sequence() + ":" + requestedProcedure.procedureId();
+            PreparedBilling billing = billPreparedItem(
+                    order.billingItem(),
+                    encounterId,
+                    request,
+                    request.requestId().trim() + ":DEFAULT_PROCEDURE:" + itemKey,
+                    request.requestId().trim() + ":REPRICE_PROCEDURE:" + itemKey
+            );
+            if (billing.pendingPreAuthorization()) {
+                hasPendingPreAuth = true;
+                ordersPendingPreAuth.add(order.procedure());
+            }
+
+            procedureResults.add(
+                    new PrepareDefaultServicesResult.PreparedDefaultProcedureResult(
+                            order.billingItem().getId(),
+                            order.procedure().getId(),
+                            requestedProcedure.procedureId(),
+                            requestedProcedure.sequence(),
+                            billing.result()
                     )
             );
         }
@@ -339,6 +322,9 @@ public class DefaultServicePreparationService {
                         : "preAuthorization.failed";
                 throw new BadRequestAlertException(title, ENTITY_NAME, errorKey);
             }
+            ordersPendingPreAuth.forEach(
+                    encounterDefaultProcedureService::markWaitingPreAuthorization
+            );
         }
 
         if (coverageType == BillingCoverageType.INSURANCE) {
@@ -356,25 +342,28 @@ public class DefaultServicePreparationService {
             );
         }
 
-        boolean processed =
-                orderedItems.isEmpty()
-                        || results.stream()
-                                .allMatch(result ->
-                                        result.billingResult() != null
-                                                && result.billingResult().processed()
-                                );
+        boolean nothingToBill =
+                orderedItems.isEmpty() && orderedProcedures.isEmpty();
 
-        if (Boolean.TRUE.equals(request.payZeroNow())) {
+        boolean processed =
+                results.stream()
+                        .allMatch(result -> isProcessed(result.billingResult()))
+                        && procedureResults.stream()
+                        .allMatch(result -> isProcessed(result.billingResult()));
+
+        if (nothingToBill) {
+            encounterTreatmentAdvanceService
+                    .advanceFromPendingPaymentWhenNothingToBill(
+                            encounterId
+                    );
+        } else if (Boolean.TRUE.equals(request.payZeroNow())) {
             encounterTreatmentAdvanceService
                     .advanceFromPendingPaymentAfterRegistrationAcknowledged(
                             encounterId
                     );
-        } else if (orderedItems.isEmpty() || processed) {
-            /*
-             * Nothing left for the patient to pay — no services, or a
-             * fully covered insurance visit — opens the encounter.
-             * A remaining patient share keeps it in pending payment.
-             */
+        } else if (processed) {
+            // Nothing left for the patient to pay: a fully covered insurance visit opens the encounter.
+            // A remaining patient share keeps it in pending payment.
             encounterTreatmentAdvanceService
                     .advanceFromPendingPaymentWhenNothingToBill(
                             encounterId
@@ -387,11 +376,12 @@ public class DefaultServicePreparationService {
         }
 
         LOG.info(
-                "[PREPARE_DEFAULT_SERVICES] encounterId={} patientId={} coverageType={} itemCount={} processed={} pendingPreAuth={}",
+                "[PREPARE_DEFAULT_SERVICES] encounterId={} patientId={} coverageType={} itemCount={} procedureCount={} processed={} pendingPreAuth={}",
                 encounterId,
                 request.patientId(),
                 coverageType,
                 results.size(),
+                procedureResults.size(),
                 processed,
                 hasPendingPreAuth
         );
@@ -401,7 +391,7 @@ public class DefaultServicePreparationService {
                         ? "This service needs pre-authorization. It was sent to the pre-authorization page and shows as pending pre-authorization on the ledger account."
                         : skipDefaultServices
                         ? "Follow-up review within 14 days. Default services were not billed."
-                        : orderedItems.isEmpty()
+                        : nothingToBill
                                 ? "Encounter billing completed. No default services to bill."
                                 : processed
                                         ? "Default services prepared successfully."
@@ -414,9 +404,124 @@ public class DefaultServicePreparationService {
                 coverageType,
                 insurance == null ? null : insurance.getId(),
                 List.copyOf(results),
+                List.copyOf(procedureResults),
                 processed,
                 message
         );
+    }
+
+    private record PreparedBilling(
+            BillingOperationResult result,
+            boolean pendingPreAuthorization
+    ) {
+    }
+
+    /**
+     * Sends a prepared default item (service or procedure) through the
+     * Billing Engine: reuses or reprices an existing charge line, defers
+     * billing while pre-authorization is pending, otherwise bills it.
+     */
+    private PreparedBilling billPreparedItem(
+            PatientServiceAndProduct item,
+            Long encounterId,
+            PrepareDefaultServicesRequest request,
+            String billingRequestId,
+            String repriceRequestId
+    ) {
+        Optional<BillingChargeLine> existingChargeLine =
+                findActiveChargeLine(item.getId());
+
+        if (existingChargeLine.isPresent()) {
+            BillingChargeLine chargeLine =
+                    existingChargeLine.get();
+
+            if (shouldRepriceExistingChargeLine(chargeLine)) {
+                LOG.info(
+                        "[PREPARE_DEFAULT_SERVICES] Repricing existing setup-fallback "
+                                + "charge line pspId={} chargeLineId={} encounterId={}",
+                        item.getId(),
+                        chargeLine.getId(),
+                        encounterId
+                );
+
+                return new PreparedBilling(
+                        billingEngineService.reprice(
+                                item.getId(),
+                                request.facilityId(),
+                                repriceRequestId
+                        ),
+                        false
+                );
+            }
+
+            LOG.info(
+                    "[PREPARE_DEFAULT_SERVICES] Skipping duplicate billing "
+                            + "pspId={} chargeLineId={} encounterId={}",
+                    item.getId(),
+                    chargeLine.getId(),
+                    encounterId
+            );
+
+            return new PreparedBilling(
+                    toExistingBillingResult(
+                            item,
+                            chargeLine
+                    ),
+                    false
+            );
+        }
+
+        if (item.getPreAuthorizationStatus()
+                == PreAuthorizationStatus.PENDING_APPROVAL) {
+            LOG.info(
+                    "[PREPARE_DEFAULT_SERVICES] Deferring billing — pre-auth required. "
+                            + "pspId={} encounterId={} billingItemType={}",
+                    item.getId(),
+                    encounterId,
+                    item.getBillingItemType()
+            );
+            return new PreparedBilling(
+                    new BillingOperationResult(
+                            item.getId(),
+                            null,
+                            null,
+                            null,
+                            BigDecimal.ZERO,
+                            BigDecimal.ZERO,
+                            BigDecimal.ZERO,
+                            BigDecimal.ZERO,
+                            BigDecimal.ZERO,
+                            BigDecimal.ZERO,
+                            BigDecimal.ZERO,
+                            BigDecimal.ZERO,
+                            true,
+                            "Billing deferred — waiting for pre-authorization."
+                    ),
+                    true
+            );
+        }
+
+        BillingOperationResult billingResult =
+                billingEngineService.processWithEventFallback(
+                        item.getId(),
+                        encounterId,
+                        request.facilityId(),
+                        billingRequestId
+                );
+        boolean heldByMessage = billingResult != null
+                && billingResult.message() != null
+                && billingResult.message().toLowerCase().contains("pre-authorization");
+
+        return new PreparedBilling(
+                billingResult,
+                heldByMessage
+                        || item.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL
+                        || item.getPaymentStatus() == PaymentStatus.SKIPPED_PENDING_PRE_AUTH
+        );
+    }
+
+    private boolean isProcessed(BillingOperationResult billingResult) {
+        return billingResult != null && billingResult.processed();
     }
 
     private Optional<BillingChargeLine> findActiveChargeLine(
@@ -851,6 +956,8 @@ public class DefaultServicePreparationService {
             );
         }
 
+        validateDefaultProcedures(request.defaultProcedures());
+
         if (request.items().isEmpty()) {
             return;
         }
@@ -880,6 +987,39 @@ public class DefaultServicePreparationService {
                         "Default-service sequence values must be unique.",
                         ENTITY_NAME,
                         "sequence.duplicate"
+                );
+            }
+        }
+    }
+
+    private void validateDefaultProcedures(
+            List<PrepareDefaultProcedureItem> procedures
+    ) {
+        Set<Long> procedureIds = new HashSet<>();
+        Set<Integer> sequences = new HashSet<>();
+
+        for (PrepareDefaultProcedureItem procedure : procedures) {
+            if (procedure == null) {
+                throw new BadRequestAlertException(
+                        "Default-procedure item is required.",
+                        ENTITY_NAME,
+                        "procedure.required"
+                );
+            }
+
+            if (!procedureIds.add(procedure.procedureId())) {
+                throw new BadRequestAlertException(
+                        "The same default procedure cannot be selected more than once.",
+                        ENTITY_NAME,
+                        "procedure.duplicate"
+                );
+            }
+
+            if (!sequences.add(procedure.sequence())) {
+                throw new BadRequestAlertException(
+                        "Default-procedure sequence values must be unique.",
+                        ENTITY_NAME,
+                        "procedure.sequence.duplicate"
                 );
             }
         }

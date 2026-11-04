@@ -47,13 +47,15 @@ public class PatientWarningsService {
     private final PatientEncounterRepository patientEncounterRepository;
     private final DepartmentHelper departmentHelper;
     private final NotificationHelper notificationHelper;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
-    public PatientWarningsService(PatientWarningsRepository patientWarningsRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository, DepartmentHelper departmentHelper, NotificationHelper notificationHelper) {
+    public PatientWarningsService(PatientWarningsRepository patientWarningsRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository, DepartmentHelper departmentHelper, NotificationHelper notificationHelper, ReopenSessionAuditContext reopenSessionAuditContext) {
         this.patientWarningsRepository = patientWarningsRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
         this.departmentHelper = departmentHelper;
         this.notificationHelper = notificationHelper;
+        this.reopenSessionAuditContext = reopenSessionAuditContext;
     }
 
     public PatientWarnings create(PatientWarningCreateDTO patientWarningCreateDTO) {
@@ -141,6 +143,7 @@ public class PatientWarningsService {
                 .build();
 
         try {
+            reopenSessionAuditContext.applyOpenSession(encounter.getId());
             PatientWarnings saved = patientWarningsRepository.save(entity);
 
             notificationForSevereCriticalWarning(saved, patient, encounter);
@@ -189,10 +192,12 @@ public class PatientWarningsService {
                         "Patient Warning not found"
                 ));
 
+        Long encounterId = entity.getEncounterId();
         entity.setStatus(PatientWarningStatus.CANCELLED);
         entity.setCancelledBy(login);
         entity.setCancelledDate(Instant.now());
         entity.setCancellationReason(reason);
+        reopenSessionAuditContext.applyOpenSession(encounterId);
 
         LOG.debug("Patient Warning cancelled: id={}, cancelledBy={}", id, login);
         return entity;
@@ -209,12 +214,14 @@ public class PatientWarningsService {
                         "Patient Warning not found"
                 ));
 
+        Long encounterId = entity.getEncounterId();
         String login = SecurityUtils.getCurrentUserLogin()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated."));
 
         entity.setStatus(PatientWarningStatus.RESOLVED);
         entity.setResolvedBy(login);
         entity.setResolvedDate(Instant.now());
+        reopenSessionAuditContext.applyOpenSession(encounterId);
 
         LOG.debug("Patient Warning resolved: id={}, resolvedBy={}", id, login);
         return entity;
@@ -239,7 +246,9 @@ public class PatientWarningsService {
             );
         }
 
+        Long encounterId = entity.getEncounterId();
         entity.setStatus(PatientWarningStatus.ACTIVE);
+        reopenSessionAuditContext.applyOpenSession(encounterId);
 
         LOG.debug("Patient Warning undo-resolved: id={}", id);
         return entity;
@@ -256,6 +265,8 @@ public class PatientWarningsService {
                         "patientWarnings",
                         "Patient Warning not found with id " + patientWarningUpdateDTO.id()
                 ));
+
+        Long encounterId = patientWarningObj.getEncounterId();
 
         // Only active warnings can be updated
         if (!(patientWarningObj.getStatus() == PatientWarningStatus.ACTIVE)) {
@@ -337,6 +348,7 @@ public class PatientWarningsService {
         patientWarningObj.setActionTaken(patientWarningUpdateDTO.actionTaken());
 
         try {
+            reopenSessionAuditContext.applyOpenSession(encounterId);
             PatientWarnings updated = patientWarningsRepository.saveAndFlush(patientWarningObj);
             Patient patient = patientRepository.findById(updated.getPatientId())
                     .orElseThrow(() ->

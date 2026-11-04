@@ -19,4 +19,7 @@ public interface CatalogClient {
     @GetMapping("api/setup/catalog/{id}")
     CatalogDTO getCatalog(@PathVariable Long id);
 
+    @GetMapping("/api/setup/catalog/internalJob/{id}")
+    CatalogDTO getCatalogInternal(@PathVariable Long id);
+
 }

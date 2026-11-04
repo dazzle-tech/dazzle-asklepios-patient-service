@@ -9,6 +9,14 @@ public record PointOfSaleWebhookLogDTO(
 
         Long transactionId,
 
+        String sourceType,
+
+        Long patientId,
+
+        Long encounterId,
+
+        String encounterNumber,
+
         String orderId,
 
         String externalTransactionId,
@@ -30,6 +38,8 @@ public record PointOfSaleWebhookLogDTO(
         String processingStatus,
 
         Boolean processed,
+
+        Boolean alreadyPaid,
 
         Instant createdDate
 

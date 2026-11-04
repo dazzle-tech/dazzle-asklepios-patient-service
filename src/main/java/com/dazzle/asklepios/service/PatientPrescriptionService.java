@@ -12,6 +12,7 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientPrescription;
 import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionStatus;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionUrgencyLevel;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
@@ -64,6 +65,8 @@ public class PatientPrescriptionService {
     private final BrandMedicationClient brandMedicationClient;
     private final NotificationHelper notificationHelper;
     private final PatientServiceAndProductService patientServiceAndProductService;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
+    private final PatientActivityService patientActivityService;
 
     private String currentUsername() {
         String username = SecurityUtils.getCurrentUserLogin().orElse(null);
@@ -104,7 +107,9 @@ public class PatientPrescriptionService {
                 .toDepartmentId(prescriptionCreateDto.toDepartmentId)
                 .build();
 
-        return toDto(prescriptionRepository.save(entity));
+        reopenSessionAuditContext.applyOpenSession(encounter.getId());
+        PatientPrescription saved = prescriptionRepository.save(entity);
+        return toDto(saved);
     }
 
     public PatientPrescription update(Long id, PatientPrescriptionUpdateDTO patientPrescriptionUpdateDTO) {
@@ -113,6 +118,7 @@ public class PatientPrescriptionService {
         PatientPrescription entity = prescriptionRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
 
+        Long encounterId = entity.getEncounterId();
         if (patientPrescriptionUpdateDTO.prescriptionDate != null)
             entity.setPrescriptionDate(patientPrescriptionUpdateDTO.prescriptionDate);
         if (patientPrescriptionUpdateDTO.urgencyLevel != null)
@@ -126,7 +132,9 @@ public class PatientPrescriptionService {
             entity.setToDepartmentId(patientPrescriptionUpdateDTO.toDepartmentId);
         }
 
-        return toDto(prescriptionRepository.save(entity));
+        reopenSessionAuditContext.applyOpenSession(encounterId);
+        PatientPrescription saved = prescriptionRepository.save(entity);
+        return toDto(saved);
     }
 
     /**
@@ -145,10 +153,11 @@ public class PatientPrescriptionService {
         return patientPrescriptionRepository
                 .findTopByEncounterIdAndStatusOrderByCreatedDateDesc(patientPrescriptionCreateDto.getEncounterId(), PrescriptionStatus.DRAFT)
                 .orElseGet(() -> {
+                    PatientEncounter encounter = getEncounter(patientPrescriptionCreateDto.getEncounterId());
                     Patient patient = getPatient(patientPrescriptionCreateDto.getPatientId());
                     PatientPrescription entity = PatientPrescription.builder()
                             .patient(patient)
-                            .encounterId(patientPrescriptionCreateDto.getEncounterId())
+                            .encounterId(encounter.getId())
                             .prescriptionDate(
                                     patientPrescriptionCreateDto.getPrescriptionDate() != null
                                             ? patientPrescriptionCreateDto.getPrescriptionDate()
@@ -158,7 +167,9 @@ public class PatientPrescriptionService {
                             .fromFacilityId(patientPrescriptionCreateDto.getFromFacilityId())
                             .fromDepartmentId(patientPrescriptionCreateDto.getFromDepartmentId())
                             .build();
-                    return patientPrescriptionRepository.save(entity);
+                    reopenSessionAuditContext.applyOpenSession(encounter.getId());
+                    PatientPrescription saved = patientPrescriptionRepository.save(entity);
+                    return saved;
                 });
 
     }
@@ -227,6 +238,18 @@ public class PatientPrescriptionService {
         PatientPrescription entity = prescriptionRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
 
+        // A prescription is submitted (and sent to external pharmacies) only once.
+        if (PrescriptionStatus.SUBMITTED.equals(entity.getStatus())) {
+            LOG.warn("submit rejected: prescription already submitted, id={}", id);
+            throw new BadRequestAlertException(
+                    "Prescription is already submitted",
+                    "prescription",
+                    "alreadySubmitted"
+            );
+        }
+
+        Long encounterId = entity.getEncounterId();
+        reopenSessionAuditContext.applyOpenSession(encounterId);
         String username = currentUsername();
         Instant now = Instant.now();
 
@@ -248,11 +271,27 @@ public class PatientPrescriptionService {
 
         PatientPrescription saved = prescriptionRepository.save(entity);
 
+        notificationForPrescriptionSubmitted(saved);
         notificationForHighAlertMedication(saved);
 
         patientServiceAndProductService.syncPrescriptionMedicationsForPreAuthorization(
                 saved,
                 acceptUncoveredAsCash
+        );
+
+        Long patientId = saved.getPatient() == null ? null : saved.getPatient().getId();
+        Long appointmentId = patientEncounterRepository.findById(saved.getEncounterId())
+                .map(PatientEncounter::getAppointment)
+                .map(appointment -> appointment.getId())
+                .orElse(null);
+        patientActivityService.recordOccurred(
+                patientId,
+                saved.getEncounterId(),
+                appointmentId,
+                PatientActivityType.MEDICATION_RELATED_FOLLOW_UP,
+                PatientActivityService.SOURCE_PRESCRIPTION,
+                saved.getId(),
+                "Medication follow-up"
         );
 
         return toDto(saved);
@@ -265,6 +304,8 @@ public class PatientPrescriptionService {
         PatientPrescription entity = prescriptionRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + id));
 
+        Long encounterId = entity.getEncounterId();
+        reopenSessionAuditContext.applyOpenSession(encounterId);
         entity.setStatus(PrescriptionStatus.CANCELLED);
 
         Instant now = Instant.now();
@@ -329,6 +370,61 @@ public class PatientPrescriptionService {
 
     private PatientEncounter getEncounter(Long id) {
         return patientEncounterRepository.findById(id).orElseThrow(() -> new BadRequestAlertException("notfound" + id, "PatientPrescription", "Patient Encounter not found: "));
+    }
+
+    private void notificationForPrescriptionSubmitted(PatientPrescription prescription) {
+        if (prescription == null) {
+            return;
+        }
+
+        Long departmentId = resolvePrescriptionDepartmentId(prescription);
+        DepartmentDTO department = departmentId != null ? departmentHelper.getDepartment(departmentId) : null;
+
+        if (departmentId == null) {
+            LOG.warn("Skip prescription submitted notification because department is missing. prescriptionId={}", prescription.getId());
+            return;
+        }
+
+        String login = SecurityUtils.getCurrentUserLogin().orElse(null);
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
+                notificationHelper.resolveRecipients(departmentId, login, prescription.getCreatedBy(), prescription.getPatient(), null, false);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("prescription_id", prescription.getId());
+        data.put("prescription_num", prescription.getPrescriptionNum() != null ? prescription.getPrescriptionNum() : "");
+        data.put("patient_id", prescription.getPatient() != null ? prescription.getPatient().getId() : "");
+        data.put("patient_name", notificationHelper.getPatientName(prescription.getPatient()));
+        data.put("encounter_id", resolvePrescriptionEncounterId(prescription));
+        data.put("department_id", departmentId);
+        data.put("department_name", department != null ? department.name() : "");
+        data.put("status", prescription.getStatus() != null ? prescription.getStatus().toString() : "");
+        data.put("urgency_level", prescription.getUrgencyLevel() != null ? prescription.getUrgencyLevel().toString() : "");
+        data.put("submitted_by", prescription.getSubmitedBy() != null ? prescription.getSubmitedBy() : "");
+        data.put("submitted_date", prescription.getSubmitedDate() != null ? prescription.getSubmitedDate().toString() : "");
+
+        try {
+            LOG.debug(
+                    "Creating prescription submitted notification. prescriptionId={}, departmentId={}, recipientsByRule={}",
+                    prescription.getId(),
+                    departmentId,
+                    recipientsByRule
+            );
+
+            notificationHelper.sendNotification(
+                    null,
+                    NotificationCode.PRESCRIPTION_SUBMITTED,
+                    recipientsByRule,
+                    data,
+                    "PRESCRIPTION",
+                    prescription.getId()
+            );
+        } catch (Exception e) {
+            LOG.warn(
+                    "Failed to create prescription submitted notification. prescriptionId={}, error={}",
+                    prescription.getId(),
+                    e.getMessage()
+            );
+        }
     }
 
     private void notificationForHighAlertMedication(PatientPrescription prescription) {

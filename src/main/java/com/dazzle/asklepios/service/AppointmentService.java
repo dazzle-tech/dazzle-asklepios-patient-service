@@ -16,6 +16,7 @@ import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import com.dazzle.asklepios.domain.enumeration.BookingMode;
 import com.dazzle.asklepios.domain.enumeration.DayOfWeek;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
@@ -46,6 +47,7 @@ import com.dazzle.asklepios.service.dto.appointment.AppointmentTransferMappingDT
 import com.dazzle.asklepios.service.dto.appointment.BulkAppointmentRescheduleDTO;
 import com.dazzle.asklepios.service.dto.appointment.BulkAppointmentTransferDTO;
 import com.dazzle.asklepios.service.dto.appointment.DiagnosticTestAppointmentRescheduleDTO;
+import com.dazzle.asklepios.service.dto.availabilityGenerationBatch.CancelUpcomingAvailableSlotsDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.diagnosticorders.DiagnosticOrderTestCreateDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
@@ -60,12 +62,14 @@ import com.dazzle.asklepios.service.helper.ServiceHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentDetailsVM;
+import com.dazzle.asklepios.web.rest.vm.appointment.PatientAppointmentOptionVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentLogResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentQuickAppointmentResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.AppointmentTransferVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.BulkAppointmentRescheduleResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.BulkAppointmentTransferResponseVM;
 import com.dazzle.asklepios.web.rest.vm.appointment.BulkReschedulePreviewVM;
+import com.dazzle.asklepios.web.rest.vm.availabilityGenerationBatch.CancelUpcomingAvailableSlotsResponseVM;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
@@ -137,6 +141,8 @@ public class AppointmentService {
     private final DiagnosticOrderRepository diagnosticOrderRepository;
     private final PractitionerHelper practitionerHelper;
     private final NotificationHelper notificationHelper;
+    private final EncounterReopenGuard encounterReopenGuard;
+    private final PatientActivityService patientActivityService;
 
     public List<AppointmentLogResponseVM> getAppointmentLogs(Long appointmentId) {
         LOG.debug("Request to get Appointment Log id={}", appointmentId);
@@ -333,6 +339,12 @@ public class AppointmentService {
                     NotificationCode.APPOINTMENT_BOOKED,
                     null
             );
+            recordAppointmentActivity(
+                    savedAppointment,
+                    null,
+                    PatientActivityType.APPOINTMENT_SCHEDULED,
+                    "Appointment scheduled"
+            );
         }
 
         return savedAppointment;
@@ -428,6 +440,22 @@ public class AppointmentService {
     }
 
     @Transactional(readOnly = true)
+    public Page<PatientAppointmentOptionVM> findByPatientId(Long patientId, Pageable pageable) {
+        LOG.debug("Service list appointments by patientId={}", patientId);
+
+        if (patientId == null || patientId <= 0) {
+            throw new BadRequestAlertException("Patient id is required.", ENTITY_NAME, "patient.id.invalid");
+        }
+        if (!patientRepository.existsById(patientId)) {
+            throw new BadRequestAlertException("Patient not found.", ENTITY_NAME, "patient.notFound");
+        }
+
+        return appointmentRepository
+                .findByPatient_IdOrderByStartDatetimeDesc(patientId, pageable)
+                .map(PatientAppointmentOptionVM::from);
+    }
+
+    @Transactional(readOnly = true)
     public Page<Appointment> filterAppointmentByPatientPortal(AppointmentSearchFilterMultiDepartmentDTO filter, Pageable pageable) {
 
         LOG.debug("Service filter Appointments by patient portal filter={} pageable={}", filter, pageable);
@@ -518,22 +546,30 @@ public class AppointmentService {
     }
 
     @Transactional(readOnly = true)
-    public List<Appointment> filterAppointmentWithoutPagination(AppointmentSearchFilterMultiDepartmentDTO filter) {
+    public List<Appointment> filterAppointmentWithoutPagination(
+            AppointmentSearchFilterMultiDepartmentDTO filter) {
 
         LOG.debug("Service filter Appointments filter={}", filter);
 
         if (filter.facility() == null) {
-            throw new BadRequestAlertException("facility", ENTITY_NAME, "Facility is required");
+            throw new BadRequestAlertException(
+                    "facility", ENTITY_NAME, "Facility is required");
         }
 
         List<Long> departmentIds = filter.departmentIds();
 
         if (departmentIds == null || departmentIds.isEmpty()) {
             String login = currentUsername();
-            departmentIds = departmentHelper.getBookableDepartment().stream().map(DepartmentDTO::id).toList();
 
-            if (departmentIds == null || departmentIds.isEmpty()) {
-                LOG.debug("[FILTER] No bookable departments found for logged-in user={}", login);
+            departmentIds = departmentHelper.getBookableDepartment()
+                    .stream()
+                    .map(DepartmentDTO::id)
+                    .toList();
+
+            if (departmentIds.isEmpty()) {
+                LOG.debug(
+                        "[FILTER] No bookable departments found for logged-in user={}",
+                        login);
                 return Collections.emptyList();
             }
         }
@@ -545,42 +581,78 @@ public class AppointmentService {
 
             query.distinct(true);
 
-            predicates.add(cb.equal(root.get("facilityId"), filter.facility()));
+            // Required facility
+            predicates.add(
+                    cb.equal(root.get("facilityId"), filter.facility()));
 
-            predicates.add(root.get("departmentId").in(finalDepartmentIds));
+            // Departments
+            predicates.add(
+                    root.get("departmentId").in(finalDepartmentIds));
 
+            // Resource type
             if (filter.resourceType() != null) {
-                predicates.add(cb.equal(root.get("resourceType"), filter.resourceType()));
+                predicates.add(
+                        cb.equal(root.get("resourceType"), filter.resourceType()));
             }
 
+            // Resource ID
             if (filter.resourceId() != null) {
-                predicates.add(cb.equal(root.get("resourceId"), filter.resourceId()));
+                predicates.add(
+                        cb.equal(root.get("resourceId"), filter.resourceId()));
             }
 
-            if (filter.status() != null) {
-                predicates.add(cb.equal(root.get("status"), filter.status()));
+            // Appointment statuses
+            if (filter.status() != null && !filter.status().isEmpty()) {
+                predicates.add(
+                        root.get("status").in(filter.status()));
             }
 
-            if (filter.bookingMode() != null && !filter.bookingMode().isEmpty()) {
-                predicates.add(root.get("bookingMode").in(filter.bookingMode()));
+            // Booking modes
+            if (filter.bookingMode() != null
+                    && !filter.bookingMode().isEmpty()) {
+                predicates.add(
+                        root.get("bookingMode").in(filter.bookingMode()));
             } else {
-                predicates.add(cb.notEqual(root.get("bookingMode"), BookingMode.BUFFER));
+                predicates.add(
+                        cb.notEqual(
+                                root.get("bookingMode"),
+                                BookingMode.BUFFER));
             }
 
+            // Patient
             if (filter.patientId() != null) {
-                predicates.add(cb.equal(root.join("patient", JoinType.LEFT).get("id"), filter.patientId()));
+                predicates.add(
+                        cb.equal(
+                                root.join("patient", JoinType.LEFT).get("id"),
+                                filter.patientId()));
+            }
+
+            // Start date: inclusive
+            if (filter.startDate() != null) {
+                predicates.add(
+                        cb.greaterThanOrEqualTo(
+                                root.get("startDatetime"),
+                                filter.startDate()));
+            }
+
+            // End date: inclusive
+            if (filter.endDate() != null) {
+                predicates.add(
+                        cb.lessThanOrEqualTo(
+                                root.get("startDatetime"),
+                                filter.endDate()));
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));
         };
 
-        List<Appointment> result = appointmentRepository.findAll(appointmentFilterSpec);
+        List<Appointment> result =
+                appointmentRepository.findAll(appointmentFilterSpec);
 
         LOG.debug("[FILTER] Appointments result size={}", result.size());
 
         return result;
     }
-
     @Transactional
     public Appointment cancel(AppointmentCancelDTO dto) {
         Appointment appointment = getAppointment(dto.id());
@@ -607,6 +679,8 @@ public class AppointmentService {
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
                 notificationHelper.resolveRecipients(appointment.getDepartmentId(), login, appointment.getCreatedBy(), appointment.getPatient(), practitioner, false);
 
+        Long patientId = appointment.getPatient() == null ? null : appointment.getPatient().getId();
+
         appointment.setStatus(AppointmentStatus.CANCELLED);
         appointment.setCancelReason(dto.cancelReason());
         appointment.setCancelledBy(currentUsername());
@@ -628,9 +702,17 @@ public class AppointmentService {
                 recipientsByRule
         );
 
+        recordAppointmentActivity(
+                patientId,
+                savedAppointment.getId(),
+                PatientActivityType.APPOINTMENT_CANCELLED,
+                "Appointment cancelled"
+        );
+
         return savedAppointment;
     }
 
+    @Transactional
     public Appointment noShow(AppointmentNoShowDTO dto) {
         Appointment appointment = getAppointment(dto.id());
 
@@ -638,7 +720,14 @@ public class AppointmentService {
 
         appointment.setStatus(AppointmentStatus.NO_SHOW);
         appointment.setNoShowReason(dto.noShowReason());
-        return appointmentRepository.save(appointment);
+        Appointment savedAppointment = appointmentRepository.save(appointment);
+        recordAppointmentActivity(
+                savedAppointment,
+                null,
+                PatientActivityType.NO_SHOW_FOLLOW_UP,
+                "No-show follow-up"
+        );
+        return savedAppointment;
     }
 
     @Transactional
@@ -655,6 +744,12 @@ public class AppointmentService {
         Appointment savedAppointment = appointmentRepository.save(appointment);
 
         notifyAppointmentEvent(savedAppointment, NotificationCode.APPOINTMENT_CONFIRMED, null);
+        recordAppointmentActivity(
+                savedAppointment,
+                null,
+                PatientActivityType.APPOINTMENT_CONFIRMED,
+                "Appointment confirmed"
+        );
 
         return savedAppointment;
     }
@@ -705,9 +800,17 @@ public class AppointmentService {
             createAndSubmitCatalogOrderFlow(savedAppointment, encounter);
         }
 
+        recordAppointmentActivity(
+                savedAppointment,
+                encounter.getId(),
+                PatientActivityType.PATIENT_CHECK_IN_FOLLOW_UP,
+                "Patient checked in"
+        );
+
         return savedAppointment;
     }
 
+    @Transactional
     public AppointmentQuickAppointmentResponseVM createQuickAppointment(AppointmentQuickAppointmentDTO appointmentDTO) {
         LOG.info("[CREATE QUICK APPOINTMENT] facilityId={}, departmentId={}, resourceType={}, resourceId={}, patientId={}",
                 appointmentDTO.facilityId(),
@@ -771,9 +874,26 @@ public class AppointmentService {
         }
         appointment.setCapacityIndex(1);
         Appointment quickAppointment = appointmentRepository.save(appointment);
-        PatientEncounter encounter = createEncounter(quickAppointment, department);
+        PatientEncounter encounter = createEncounter(
+                quickAppointment,
+                department,
+                appointmentDTO.promotionName(),
+                appointmentDTO.promotionCode()
+        );
 
         notifyAppointmentEvent(quickAppointment, NotificationCode.QUICK_APPOINTMENT_CREATED, Map.of("quick_appointment", true));
+        recordAppointmentActivity(
+                quickAppointment,
+                encounter.getId(),
+                PatientActivityType.APPOINTMENT_SCHEDULED,
+                "Appointment scheduled"
+        );
+        recordAppointmentActivity(
+                quickAppointment,
+                encounter.getId(),
+                PatientActivityType.PATIENT_CHECK_IN_FOLLOW_UP,
+                "Patient checked in"
+        );
 
         return new AppointmentQuickAppointmentResponseVM(quickAppointment, encounter);
     }
@@ -842,6 +962,8 @@ public class AppointmentService {
                         "DiagnosticOrder",
                         "notfound"
                 ));
+
+        encounterReopenGuard.rejectIfOpenReopenSession(order.getEncounterId());
 
         if (order.getEncounter() == null) {
             throw new BadRequestAlertException(
@@ -982,7 +1104,67 @@ public class AppointmentService {
 
         appointmentRepository.saveAll(appointmentsToCancel);
 
+        for (Appointment appointment : appointmentsToCancel) {
+            if (appointment.getPatient() == null) {
+                continue;
+            }
+            recordAppointmentActivity(
+                    appointment,
+                    null,
+                    PatientActivityType.APPOINTMENT_CANCELLED,
+                    "Appointment cancelled"
+            );
+        }
+
         LOG.info("[BULK_RESCHEDULE_CANCEL] cancelledCount={}", appointmentsToCancel.size());
+    }
+
+    /**
+     * Cancels upcoming free slots generated by an applied template batch.
+     * Appointments that start today or earlier, and any booked appointment, are left unchanged.
+     * The cancellation reason is the one entered on the apply-template screen.
+     */
+    @Transactional
+    public CancelUpcomingAvailableSlotsResponseVM cancelUpcomingAvailableSlots(
+            Long availabilityGenerationBatchId,
+            CancelUpcomingAvailableSlotsDTO dto
+    ) {
+        LOG.debug(
+                "[CANCEL_UPCOMING_AVAILABLE_SLOTS] batchId={} cancelReason={}",
+                availabilityGenerationBatchId,
+                dto.cancelReason()
+        );
+
+        AvailabilityGenerationBatch batch = getBatch(availabilityGenerationBatchId);
+        Instant tomorrowStart = tomorrowStartInstant(resolveZone(batch.getTemplate().getFacilityId()));
+        String cancelReason = dto.cancelReason().trim();
+        String username = currentUsername();
+
+        List<Appointment> availableSlots =
+                appointmentRepository
+                        .findByAvailabilityGenerationBatch_IdAndStatusAndStartDatetimeGreaterThanEqualAndBookingModeInAndPatientIsNullOrderByStartDatetimeAsc(
+                                batch.getId(),
+                                AppointmentStatus.NEW,
+                                tomorrowStart,
+                                List.of(BookingMode.SLOT, BookingMode.BUFFER)
+                        );
+
+        for (Appointment appointment : availableSlots) {
+            appointment.setStatus(AppointmentStatus.CANCELLED);
+            appointment.setCancelReason(cancelReason);
+            appointment.setCancelledBy(username);
+        }
+
+        appointmentRepository.saveAll(availableSlots);
+
+        LOG.info(
+                "[CANCEL_UPCOMING_AVAILABLE_SLOTS] batchId={} cancelledCount={} excludedThrough={}",
+                batch.getId(),
+                availableSlots.size(),
+                tomorrowStart
+        );
+
+        return new CancelUpcomingAvailableSlotsResponseVM(batch.getId(), availableSlots.size(), cancelReason);
     }
 
     @Transactional
@@ -1144,7 +1326,12 @@ public class AppointmentService {
                 NotificationCode.APPOINTMENT_BOOKED,
                 null
         );
-
+        recordAppointmentActivity(
+                savedAppointment,
+                null,
+                PatientActivityType.APPOINTMENT_SCHEDULED,
+                "Appointment scheduled"
+        );
 
         return savedAppointment;
     }
@@ -1559,6 +1746,12 @@ public class AppointmentService {
          */
         appointmentRepository.save(oldAppointment);
         appointmentRepository.save(newAppointment);
+        recordAppointmentActivity(
+                newAppointment,
+                null,
+                PatientActivityType.APPOINTMENT_RESCHEDULED,
+                "Appointment rescheduled"
+        );
 
         /*
          * ============================================================
@@ -1900,6 +2093,46 @@ public class AppointmentService {
         }
     }
 
+    private void recordAppointmentActivity(
+            Appointment appointment,
+            Long encounterId,
+            PatientActivityType activityType,
+            String note
+    ) {
+        if (appointment == null || appointment.getId() == null) {
+            return;
+        }
+        Long patientId = appointment.getPatient() == null ? null : appointment.getPatient().getId();
+        recordAppointmentActivity(patientId, encounterId, appointment.getId(), activityType, note);
+    }
+
+    private void recordAppointmentActivity(
+            Long patientId,
+            Long appointmentId,
+            PatientActivityType activityType,
+            String note
+    ) {
+        recordAppointmentActivity(patientId, null, appointmentId, activityType, note);
+    }
+
+    private void recordAppointmentActivity(
+            Long patientId,
+            Long encounterId,
+            Long appointmentId,
+            PatientActivityType activityType,
+            String note
+    ) {
+        patientActivityService.recordOccurred(
+                patientId,
+                encounterId,
+                appointmentId,
+                activityType,
+                PatientActivityService.SOURCE_APPOINTMENT,
+                appointmentId,
+                note
+        );
+    }
+
     private Appointment executeSingleReschedule(Appointment oldAppointment, Appointment newAppointment, String rescheduleReason) {
         if (oldAppointment.getId().equals(newAppointment.getId())) {
             throw new BadRequestAlertException(
@@ -1960,6 +2193,12 @@ public class AppointmentService {
                         "new_appointment_end_date", savedNewAppointment.getEndDatetime() != null ? formatter.format(savedNewAppointment.getEndDatetime()) : "",
                         "reschedule_reason", rescheduleReason != null ? rescheduleReason : ""
                 )
+        );
+        recordAppointmentActivity(
+                savedNewAppointment,
+                null,
+                PatientActivityType.APPOINTMENT_RESCHEDULED,
+                "Appointment rescheduled"
         );
         return savedNewAppointment;
     }
@@ -2102,6 +2341,15 @@ public class AppointmentService {
     }
 
     private PatientEncounter createEncounter(Appointment savedAppointment, DepartmentDTO department) {
+        return createEncounter(savedAppointment, department, null, null);
+    }
+
+    private PatientEncounter createEncounter(
+            Appointment savedAppointment,
+            DepartmentDTO department,
+            String promotionName,
+            String promotionCode
+    ) {
 
         PatientEncounterCreateDTO encounterCreateDTO =
                 new PatientEncounterCreateDTO(
@@ -2130,6 +2378,10 @@ public class AppointmentService {
                         savedAppointment.getOriginType(),
 
                         savedAppointment.getOriginName(),
+
+                        promotionName,
+
+                        promotionCode,
 
                         savedAppointment.getNote(),
 

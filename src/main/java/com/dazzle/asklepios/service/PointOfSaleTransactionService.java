@@ -4,15 +4,29 @@ import com.dazzle.asklepios.client.NamiCloud.NamiCloudClient;
 import com.dazzle.asklepios.client.NamiCloud.dto.NamiPurchaseResponse;
 import com.dazzle.asklepios.client.NamiCloud.dto.NamiTransactionResponse;
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PointOfSaleCheckIn;
 import com.dazzle.asklepios.domain.PointOfSaleConfiguration;
 import com.dazzle.asklepios.domain.PointOfSaleTransaction;
+import com.dazzle.asklepios.domain.enumeration.Currency;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentTransactionStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentTransactionType;
+import com.dazzle.asklepios.domain.enumeration.billing.PayerType;
+import com.dazzle.asklepios.domain.enumeration.billing.PaymentCategory;
+import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleEntryMode;
+import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleSourceType;
 import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleTransactionStatus;
 import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleTransactionType;
+import com.dazzle.asklepios.repository.BillingPaymentTransactionRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PointOfSaleCheckInRepository;
 import com.dazzle.asklepios.repository.PointOfSaleTransactionRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.billing.BillingPaymentResult;
+import com.dazzle.asklepios.service.dto.billing.CreateAdvancePaymentRequest;
+import com.dazzle.asklepios.service.dto.pointOfSale.CreateManualPointOfSaleTransactionDTO;
 import com.dazzle.asklepios.service.dto.pointOfSale.CreatePointOfSaleTransactionDTO;
 import com.dazzle.asklepios.service.dto.pointOfSale.PointOfSaleTransactionDTO;
 import com.dazzle.asklepios.service.dto.pointOfSale.PointOfSaleWebhookDTO;
@@ -28,6 +42,7 @@ import org.springframework.web.client.HttpClientErrorException;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 @Transactional
@@ -39,8 +54,11 @@ public class PointOfSaleTransactionService {
     private final PointOfSaleTransactionRepository pointOfSaleTransactionRepository;
     private final PointOfSaleCheckInRepository pointOfSaleCheckInRepository;
     private final PatientRepository patientRepository;
+    private final PatientEncounterRepository patientEncounterRepository;
     private final PointOfSaleWebhookLogService pointOfSaleWebhookLogService;
     private final NamiCloudClient namiCloudClient;
+    private final BillingPaymentService billingPaymentService;
+    private final BillingPaymentTransactionRepository billingPaymentTransactionRepository;
 
     public PointOfSaleTransactionDTO purchase(
             CreatePointOfSaleTransactionDTO request
@@ -229,13 +247,22 @@ public class PointOfSaleTransactionService {
                 transaction.getExternalTransactionId()
         );
 
+        return toDto(transaction);
+    }
+
+    private PointOfSaleTransactionDTO toDto(
+            PointOfSaleTransaction transaction
+    ) {
+
         return new PointOfSaleTransactionDTO(
                 transaction.getId(),
                 transaction.getPatient().getId(),
                 transaction.getPatientPayment() != null
                         ? transaction.getPatientPayment().getId()
                         : null,
-                transaction.getConfiguration().getId(),
+                transaction.getConfiguration() != null
+                        ? transaction.getConfiguration().getId()
+                        : null,
                 transaction.getSourceType(),
                 transaction.getSourceReferenceId(),
                 transaction.getOrderId(),
@@ -253,6 +280,8 @@ public class PointOfSaleTransactionService {
                 transaction.getBatchNo(),
                 transaction.getPaymentMethod(),
                 transaction.getSchemeLabel(),
+                transaction.getPanNumber(),
+                transaction.getEntryMode(),
                 transaction.getTransactionDate(),
                 transaction.getWebhookReceived(),
                 transaction.getStanNo(),
@@ -266,7 +295,8 @@ public class PointOfSaleTransactionService {
 
     @Transactional
     public void processWebhook(
-            PointOfSaleWebhookDTO webhook
+            PointOfSaleWebhookDTO webhook,
+            String token
     ) {
 
         LOG.info(
@@ -288,6 +318,31 @@ public class PointOfSaleTransactionService {
                                         "notFound"
                                 )
                         );
+
+        String expectedToken =
+                transaction.getConfiguration() != null
+                        ? transaction.getConfiguration().getWebhookToken()
+                        : null;
+
+        if (
+                expectedToken == null ||
+                        expectedToken.isBlank() ||
+                        !expectedToken.equals(token)
+        ) {
+
+            LOG.warn(
+                    "Webhook Rejected - Invalid Token. InternalId={}, ExternalTransactionId={}",
+                    transaction.getId(),
+                    transaction.getExternalTransactionId()
+            );
+
+            throw new BadRequestAlertException(
+                    "Invalid webhook token",
+                    "pointOfSaleTransaction",
+                    "invalidWebhookToken"
+            );
+        }
+
         pointOfSaleWebhookLogService.create(
                 transaction,
                 webhook
@@ -349,6 +404,10 @@ public class PointOfSaleTransactionService {
                 webhook.schemeLabel()
         );
 
+        transaction.setPanNumber(
+                webhook.panNumber()
+        );
+
         transaction.setProductInfo(
                 webhook.productInfo()
         );
@@ -377,6 +436,10 @@ public class PointOfSaleTransactionService {
 
         transaction.setWebhookReceived(
                 Boolean.TRUE
+        );
+
+        transaction.setRawResponse(
+                webhook.toString()
         );
 
         if (isApproved(webhook.responseCode())) {
@@ -511,39 +574,7 @@ public class PointOfSaleTransactionService {
                             transaction
                     );
 
-            return new PointOfSaleTransactionDTO(
-                    transaction.getId(),
-                    transaction.getPatient().getId(),
-                    transaction.getPatientPayment() != null
-                            ? transaction.getPatientPayment().getId()
-                            : null,
-                    transaction.getConfiguration().getId(),
-                    transaction.getSourceType(),
-                    transaction.getSourceReferenceId(),
-                    transaction.getOrderId(),
-                    transaction.getExternalTransactionId(),
-                    transaction.getTransactionType(),
-                    transaction.getTransactionStatus(),
-                    transaction.getAmount(),
-                    transaction.getCurrencyCode(),
-                    transaction.getResponseCode(),
-                    transaction.getResponseMessage(),
-                    transaction.getRrn(),
-                    transaction.getAuthCode(),
-                    transaction.getTerminalId(),
-                    transaction.getMerchantId(),
-                    transaction.getBatchNo(),
-                    transaction.getPaymentMethod(),
-                    transaction.getSchemeLabel(),
-                    transaction.getTransactionDate(),
-                    transaction.getWebhookReceived(),
-                    transaction.getStanNo(),
-                    transaction.getProductInfo(),
-                    transaction.getMerchantName(),
-                    transaction.getMerchantAddress(),
-                    transaction.getEcrTransactionReferenceNumber(),
-                    transaction.getApplicationVersion()
-            );
+            return toDto(transaction);
         }
 
         LOG.info(
@@ -589,6 +620,10 @@ public class PointOfSaleTransactionService {
                 response.schemeLabel()
         );
 
+        transaction.setPanNumber(
+                response.panNumber()
+        );
+
         transaction.setStanNo(
                 response.stanNo()
         );
@@ -613,6 +648,10 @@ public class PointOfSaleTransactionService {
 
         transaction.setApplicationVersion(
                 response.applicationVersion()
+        );
+
+        transaction.setRawResponse(
+                response.toString()
         );
 
         if (isApproved(response.responseCode())) {
@@ -643,45 +682,168 @@ public class PointOfSaleTransactionService {
                 transaction.getRrn()
         );
 
-        return new PointOfSaleTransactionDTO(
-                transaction.getId(),
-                transaction.getPatient().getId(),
-                transaction.getPatientPayment() != null
-                        ? transaction.getPatientPayment().getId()
-                        : null,
-                transaction.getConfiguration().getId(),
-                transaction.getSourceType(),
-                transaction.getSourceReferenceId(),
-                transaction.getOrderId(),
-                transaction.getExternalTransactionId(),
-                transaction.getTransactionType(),
-                transaction.getTransactionStatus(),
-                transaction.getAmount(),
-                transaction.getCurrencyCode(),
-                transaction.getResponseCode(),
-                transaction.getResponseMessage(),
-                transaction.getRrn(),
-                transaction.getAuthCode(),
-                transaction.getTerminalId(),
-                transaction.getMerchantId(),
-                transaction.getBatchNo(),
-                transaction.getPaymentMethod(),
-                transaction.getSchemeLabel(),
-                transaction.getTransactionDate(),
-                transaction.getWebhookReceived(),
-                transaction.getStanNo(),
-                transaction.getProductInfo(),
-                transaction.getMerchantName(),
-                transaction.getMerchantAddress(),
-                transaction.getEcrTransactionReferenceNumber(),
-                transaction.getApplicationVersion()
-        );
+        return toDto(transaction);
     }
 
     private boolean isApproved(
             String responseCode
     ) {
         return "000".equals(responseCode);
+    }
+
+    /*
+     * Manual completion step, triggered by the payment staff from the
+     * webhook logs page once they confirm (by reviewing existing
+     * billing_payment records for the encounter) that this approved
+     * POS transaction has not already been settled another way.
+     */
+    public BillingPaymentResult completePayment(
+            Long pointOfSaleTransactionId
+    ) {
+
+        PointOfSaleTransaction transaction =
+                pointOfSaleTransactionRepository
+                        .findById(pointOfSaleTransactionId)
+                        .orElseThrow(() ->
+                                new BadRequestAlertException(
+                                        "Transaction not found",
+                                        "pointOfSaleTransaction",
+                                        "notFound"
+                                )
+                        );
+
+        if (
+                transaction.getTransactionStatus() !=
+                        PointOfSaleTransactionStatus.APPROVED
+        ) {
+
+            throw new BadRequestAlertException(
+                    "Only approved transactions can be completed",
+                    "pointOfSaleTransaction",
+                    "notApproved"
+            );
+        }
+
+        boolean alreadyPaid =
+                transaction.getExternalTransactionId() != null &&
+                        !billingPaymentTransactionRepository
+                                .findAllByProcessorReferenceInAndStatus(
+                                        List.of(
+                                                transaction.getExternalTransactionId()
+                                        ),
+                                        BillingPaymentTransactionStatus.SUCCESS
+                                )
+                                .isEmpty();
+
+        if (alreadyPaid) {
+
+            LOG.info(
+                    "POS transaction already has a successful payment, refusing to complete again. InternalId={}, ExternalTransactionId={}",
+                    transaction.getId(),
+                    transaction.getExternalTransactionId()
+            );
+
+            throw new BadRequestAlertException(
+                    "This transaction already has a completed payment",
+                    "pointOfSaleTransaction",
+                    "alreadyPaid"
+            );
+        }
+
+        Long encounterId =
+                transaction.getSourceType() ==
+                        PointOfSaleSourceType.ENCOUNTER
+                        ? transaction.getSourceReferenceId()
+                        : null;
+
+        Long facilityId = null;
+
+        if (encounterId != null) {
+
+            PatientEncounter encounter =
+                    patientEncounterRepository
+                            .findById(encounterId)
+                            .orElseThrow(() ->
+                                    new BadRequestAlertException(
+                                            "Encounter not found",
+                                            "pointOfSaleTransaction",
+                                            "encounterNotFound"
+                                    )
+                            );
+
+            facilityId = encounter.getFacilityId();
+        }
+
+        /*
+         * Wallet top-ups have no encounter and therefore no facility to
+         * derive an official sequential receipt number from, so a
+         * receipt number is assigned explicitly instead.
+         */
+        String receiptNumber =
+                encounterId == null
+                        ? "POS-" + transaction.getOrderId()
+                        : null;
+
+        CreateAdvancePaymentRequest request =
+                new CreateAdvancePaymentRequest(
+                        transaction.getPatient().getId(),
+                        encounterId,
+                        facilityId,
+                        PaymentCategory.CARD,
+                        PayerType.PATIENT,
+                        null,
+                        transaction.getAmount(),
+                        Currency.valueOf(
+                                transaction.getCurrencyCode()
+                        ),
+                        0L,
+                        "CREDIT_CARD",
+                        BillingPaymentStatus.COMPLETED,
+                        BillingPaymentTransactionType.PAYMENT,
+                        BillingPaymentTransactionStatus.SUCCESS,
+                        receiptNumber,
+                        transaction.getExternalTransactionId(),
+                        transaction.getAuthCode(),
+                        transaction.getExternalTransactionId(),
+                        extractCardLastFour(
+                                transaction.getPanNumber()
+                        ),
+                        null,
+                        null,
+                        "POS terminal payment completed from webhook log",
+                        List.of(),
+                        "POS-TXN-" + transaction.getId()
+                );
+
+        LOG.info(
+                "Completing POS Payment. InternalId={}, EncounterId={}, Amount={}",
+                transaction.getId(),
+                encounterId,
+                transaction.getAmount()
+        );
+
+        return billingPaymentService.createAdvancePayment(
+                request
+        );
+    }
+
+    private String extractCardLastFour(
+            String panNumber
+    ) {
+
+        if (panNumber == null) {
+            return null;
+        }
+
+        String digits =
+                panNumber.replaceAll(
+                        "\\D",
+                        ""
+                );
+
+        return digits.length() >= 4
+                ? digits.substring(digits.length() - 4)
+                : null;
     }
 
     private PointOfSaleConfiguration getCurrentUserConfiguration() {
@@ -710,5 +872,111 @@ public class PointOfSaleTransactionService {
                         );
 
         return checkIn.getConfiguration();
+    }
+
+    /*
+     * The card was charged on a separate, unintegrated terminal by staff.
+     * No Nami purchase/webhook ever happens for this transaction, so it is
+     * recorded as already APPROVED from the manually entered PAN and
+     * processor transaction id, for the same audit trail the automated
+     * terminal flow produces.
+     */
+    public PointOfSaleTransactionDTO recordManualEntry(
+            CreateManualPointOfSaleTransactionDTO request
+    ) {
+
+        LOG.info(
+                "Manual POS entry started. PatientId={}, Amount={}, SourceType={}, SourceReferenceId={}",
+                request.patientId(),
+                request.amount(),
+                request.sourceType(),
+                request.sourceReferenceId()
+        );
+
+        Patient patient =
+                patientRepository.findById(
+                                request.patientId()
+                        )
+                        .orElseThrow(() ->
+                                new BadRequestAlertException(
+                                        "Patient not found",
+                                        "patient",
+                                        "notFound"
+                                )
+                        );
+
+        PointOfSaleTransaction transaction =
+                new PointOfSaleTransaction();
+
+        transaction.setOrderId(
+                generateOrderId()
+        );
+
+        transaction.setPatient(patient);
+
+        transaction.setConfiguration(
+                getCurrentUserConfiguration()
+        );
+
+        transaction.setSourceType(
+                request.sourceType()
+        );
+
+        transaction.setSourceReferenceId(
+                request.sourceReferenceId()
+        );
+
+        transaction.setAmount(
+                request.amount()
+        );
+
+        transaction.setCurrencyCode(
+                "SAR"
+        );
+
+        transaction.setTransactionType(
+                PointOfSaleTransactionType.PURCHASE
+        );
+
+        transaction.setTransactionStatus(
+                PointOfSaleTransactionStatus.APPROVED
+        );
+
+        transaction.setEntryMode(
+                PointOfSaleEntryMode.MANUAL
+        );
+
+        transaction.setPanNumber(
+                request.panNumber()
+        );
+
+        transaction.setRrn(
+                request.transactionId()
+        );
+
+        transaction.setResponseCode(
+                "000"
+        );
+
+        transaction.setResponseMessage(
+                "Manually entered by staff"
+        );
+
+        transaction.setWebhookReceived(
+                Boolean.FALSE
+        );
+
+        transaction =
+                pointOfSaleTransactionRepository.save(
+                        transaction
+                );
+
+        LOG.info(
+                "Manual POS entry saved. InternalId={}, ExternalTransactionId={}",
+                transaction.getId(),
+                transaction.getExternalTransactionId()
+        );
+
+        return toDto(transaction);
     }
 }

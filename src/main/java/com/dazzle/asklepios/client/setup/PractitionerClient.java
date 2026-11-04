@@ -22,6 +22,9 @@ public interface PractitionerClient {
     @GetMapping("/api/setup/practitioner/{id}")
     PractitionerDTO getPractitioner(@PathVariable("id") Long id);
 
+    @GetMapping("/api/setup/practitioner/internalJob/{id}")
+    PractitionerDTO getPractitionerInternal(@PathVariable("id") Long id);
+
     @GetMapping("/api/setup/practitioners/by-login/{login}")
     PractitionerDTO getPractitionerByLogin(@PathVariable("login") String login);
 

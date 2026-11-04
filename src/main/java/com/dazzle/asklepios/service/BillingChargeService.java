@@ -282,6 +282,7 @@ public class BillingChargeService {
                         )
                         .serviceId(item.getServiceId())
                         .procedureId(item.getProcedureId())
+                        .vaccineBrandId(item.getVaccineBrandId())
 
                         .itemCode(resolveItemCode(context))
                         .itemDescription(
@@ -463,6 +464,25 @@ public class BillingChargeService {
                         patientServiceProductId,
                         EXCLUDED_LINE_STATUSES
                 );
+    }
+
+    /**
+     * Records which workflow action created the charge line.
+     * Amounts on the line are left unchanged.
+     */
+    public void recordChargeLineWorkflow(Long chargeLineId, String workflowNote) {
+        if (chargeLineId == null || workflowNote == null || workflowNote.isBlank()) {
+            return;
+        }
+
+        billingChargeLineRepository.findById(chargeLineId).ifPresent(line -> {
+            if (line.getNotes() != null && !line.getNotes().isBlank()) {
+                return;
+            }
+
+            line.setNotes(workflowNote.trim());
+            billingChargeLineRepository.save(line);
+        });
     }
 
     /**
@@ -820,6 +840,7 @@ public class BillingChargeService {
                         .diagnosticTestId(item.getDiagnosticTestId())
                         .serviceId(item.getServiceId())
                         .procedureId(item.getProcedureId())
+                        .vaccineBrandId(item.getVaccineBrandId())
                         .itemCode(resolveDebitNoteItemCode(item))
                         .itemDescription(resolveDebitNoteItemDescription(item))
                         .serviceSource(item.getServiceSource())
@@ -2071,6 +2092,9 @@ public class BillingChargeService {
         if (item.getBrandMedicationId() != null) {
             return "MED-" + item.getBrandMedicationId();
         }
+        if (item.getVaccineBrandId() != null) {
+            return "VACCINE-" + item.getVaccineBrandId();
+        }
         return item.getBillingItemType() == null
                 ? "ITEM-" + item.getId()
                 : item.getBillingItemType().name();
@@ -2683,6 +2707,10 @@ public class BillingChargeService {
 
         if (item.getBrandMedicationId() != null) {
             return item.getBrandMedicationId();
+        }
+
+        if (item.getVaccineBrandId() != null) {
+            return item.getVaccineBrandId();
         }
 
         if (item.getSourceId() != null) {

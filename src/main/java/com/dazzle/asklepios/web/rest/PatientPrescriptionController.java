@@ -3,6 +3,7 @@ package com.dazzle.asklepios.web.rest;
 import com.dazzle.asklepios.domain.PatientPrescription;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionStatus;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionUrgencyLevel;
+import com.dazzle.asklepios.integration.nahdi.service.NahdiIntegrationService;
 import com.dazzle.asklepios.service.PatientPrescriptionService;
 import com.dazzle.asklepios.service.dto.patientPrescription.PatientPrescriptionCreateDto;
 import com.dazzle.asklepios.service.dto.patientPrescription.PatientPrescriptionUpdateDTO;
@@ -34,6 +35,7 @@ public class PatientPrescriptionController {
     private static final Logger LOG =
             LoggerFactory.getLogger(PatientPrescriptionController.class);
     private final PatientPrescriptionService patientPrescriptionService;
+    private final NahdiIntegrationService nahdiIntegrationService;
 
 
     @PostMapping("/patient-prescriptions/create-or-get")
@@ -94,9 +96,12 @@ public class PatientPrescriptionController {
     ) {
         LOG.debug("submit prescription for id ={}",id);
 
-        return ResponseEntity.ok(
-                patientPrescriptionService.submit(id, acceptUncoveredAsCash)
-        );
+        PatientPrescription submitted = patientPrescriptionService.submit(id, acceptUncoveredAsCash);
+
+        // Runs only after the submit transaction has committed successfully.
+        nahdiIntegrationService.sendPrescription(submitted.getId());
+
+        return ResponseEntity.ok(submitted);
     }
 
     @PostMapping("/patient-prescriptions/{id}/cancel")

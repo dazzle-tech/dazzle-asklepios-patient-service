@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.client.setup;
 
 
+import com.dazzle.asklepios.client.setup.dto.SetupNameDTO;
 import com.dazzle.asklepios.config.SetupServiceFeignConfig;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -13,5 +14,8 @@ public interface AllergenClient {
 
     @GetMapping("/api/setup/allergen/{id}")
     ResponseEntity<Void> existsAllergen(@PathVariable("id") @NotNull Long id );
+
+    @GetMapping("/api/setup/allergen/{id}")
+    SetupNameDTO getAllergen(@PathVariable("id") @NotNull Long id);
 
 }

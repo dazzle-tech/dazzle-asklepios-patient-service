@@ -3,6 +3,7 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientObservationsComplaints;
+import com.dazzle.asklepios.domain.enumeration.Gender;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientObservationsComplaintsRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -35,6 +36,7 @@ public class PatientObservationsComplaintsService {
     private final PatientObservationsComplaintsRepository patientObservationsComplaintsRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public PatientObservationsComplaints create(PatientObservationsComplaintsCreateDTO dto) {
         LOG.info("[CREATE] PatientObservationsComplaints payload={}", dto);
@@ -68,10 +70,13 @@ public class PatientObservationsComplaintsService {
                 .cognitiveCheck(dto.cognitiveCheck())
                 .patientConditions(dto.patientConditions())
                 .bloodGroup(dto.bloodGroup())
+                .isPregnant(femaleOnly(patient, dto.isPregnant()))
+                .isLactating(femaleOnly(patient, dto.isLactating()))
                 .isActive(dto.isActive())
                 .build();
 
         try {
+            reopenSessionAuditContext.applyOpenSession(encounter.getId());
             PatientObservationsComplaints saved =
                     patientObservationsComplaintsRepository.saveAndFlush(entity);
 
@@ -102,6 +107,7 @@ public class PatientObservationsComplaintsService {
         );
 
         return patientObservationsComplaintsRepository.findById(targetId).map(entity -> {
+            Long ownedEncounterId = entity.getEncounterId();
 
             Patient patient = patientRepository.findById(dto.patientId())
                     .orElseThrow(() -> new NotFoundAlertException(
@@ -126,9 +132,12 @@ public class PatientObservationsComplaintsService {
             entity.setCognitiveCheck(dto.cognitiveCheck());
             entity.setPatientConditions(dto.patientConditions());
             entity.setBloodGroup(dto.bloodGroup());
+            entity.setIsPregnant(femaleOnly(patient, dto.isPregnant()));
+            entity.setIsLactating(femaleOnly(patient, dto.isLactating()));
             entity.setIsActive(dto.isActive());
 
             try {
+                reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
                 PatientObservationsComplaints updated =
                         patientObservationsComplaintsRepository.saveAndFlush(entity);
 
@@ -186,5 +195,12 @@ public class PatientObservationsComplaintsService {
                 "patientObservationsComplaints",
                 "db.constraint"
         );
+    }
+
+    /**
+     * Pregnancy and lactation apply to female patients only.
+     */
+    private static Boolean femaleOnly(Patient patient, Boolean value) {
+        return patient != null && Gender.FEMALE.equals(patient.getSexAtBirth()) ? value : null;
     }
 }

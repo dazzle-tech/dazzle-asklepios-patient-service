@@ -35,6 +35,8 @@ import com.dazzle.asklepios.service.helper.BrandMedicationHelper;
 import com.dazzle.asklepios.service.helper.DiagnosticTestHelper;
 import com.dazzle.asklepios.service.helper.ProcedureHelper;
 import com.dazzle.asklepios.service.helper.ServiceHelper;
+import com.dazzle.asklepios.service.helper.UomPriceFactorHelper;
+import com.dazzle.asklepios.service.helper.VaccineBrandHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
@@ -52,6 +54,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
@@ -79,6 +82,9 @@ public class PatientServiceAndProductService {
     private final PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository;
     private final PatientItemPricingApplicationService patientItemPricingApplicationService;
     private final InsurancePriceListCoverageService insurancePriceListCoverageService;
+    private final EncounterReopenGuard encounterReopenGuard;
+    private final UomPriceFactorHelper uomPriceFactorHelper;
+    private final VaccineBrandHelper vaccineBrandHelper;
 
     public PatientServiceAndProductService(
             PatientServiceAndProductRepository patientServiceAndProductRepository,
@@ -97,7 +103,10 @@ public class PatientServiceAndProductService {
             @Lazy BillingChargeService billingChargeService,
             PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository,
             PatientItemPricingApplicationService patientItemPricingApplicationService,
-            InsurancePriceListCoverageService insurancePriceListCoverageService
+            InsurancePriceListCoverageService insurancePriceListCoverageService,
+            EncounterReopenGuard encounterReopenGuard,
+            UomPriceFactorHelper uomPriceFactorHelper,
+            VaccineBrandHelper vaccineBrandHelper
     ) {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.patientRepository = patientRepository;
@@ -116,9 +125,98 @@ public class PatientServiceAndProductService {
         this.patientPrescriptionMedicationRepository = patientPrescriptionMedicationRepository;
         this.patientItemPricingApplicationService = patientItemPricingApplicationService;
         this.insurancePriceListCoverageService = insurancePriceListCoverageService;
+        this.encounterReopenGuard = encounterReopenGuard;
+        this.uomPriceFactorHelper = uomPriceFactorHelper;
+        this.vaccineBrandHelper = vaccineBrandHelper;
     }
 
     public PatientServiceAndProduct create(PatientServiceProductCreateDTO dto) {
+        Long uomGroupUnitId = medicationUomGroupUnitId(dto.billingItemType(), dto.uomGroupUnitId());
+
+        return createItem(
+                dto,
+                uomGroupUnitId,
+                uomPriceFactorHelper.resolveBrandFactor(dto.brandMedicationId(), uomGroupUnitId)
+        );
+    }
+
+    /**
+     * Charges a UCC medication order administration: the brand the nurse gave,
+     * in the UOM unit she picked. {@code uomPriceFactor} converts the brand price
+     * (per price base unit) to that unit. Every administered dose is its own line,
+     * and an uncovered medication is billed as cash since it was already given.
+     */
+    public PatientServiceAndProduct createUrgentCareMedicationAdministration(
+            Long patientId,
+            Long encounterId,
+            Long orderId,
+            Long brandMedicationId,
+            Long quantity,
+            Long uomGroupUnitId,
+            BigDecimal uomPriceFactor,
+            Currency currency
+    ) {
+        PatientServiceProductCreateDTO dto = new PatientServiceProductCreateDTO(
+                patientId,
+                encounterId,
+                BillingItemTypes.MEDICATION,
+                brandMedicationId,
+                null,
+                null,
+                null,
+                quantity,
+                BigDecimal.ZERO,
+                currency,
+                ServiceSource.URGENT_CARE_MEDICATION_ORDER,
+                orderId,
+                null,
+                Boolean.TRUE,
+                uomGroupUnitId,
+                null
+        );
+
+        return createItem(dto, uomGroupUnitId, uomPriceFactor);
+    }
+
+    /**
+     * Charges an administered vaccination: the vaccine brand that was given,
+     * priced from the brand's setup price. Every vaccination is its own line.
+     * Phase 1: vaccines are not checked against insurance, so the line is billed as cash.
+     */
+    public PatientServiceAndProduct createVaccination(
+            Long patientId,
+            Long encounterId,
+            Long encounterVaccinationId,
+            Long vaccineBrandId,
+            Currency currency
+    ) {
+        PatientServiceProductCreateDTO dto = new PatientServiceProductCreateDTO(
+                patientId,
+                encounterId,
+                BillingItemTypes.VACCINE,
+                null,
+                null,
+                null,
+                null,
+                1L,
+                BigDecimal.ZERO,
+                currency,
+                ServiceSource.VACCINATION,
+                encounterVaccinationId,
+                null,
+                Boolean.TRUE,
+                null,
+                vaccineBrandId
+        );
+
+        return createItem(dto, null, null);
+    }
+
+    private PatientServiceAndProduct createItem(
+            PatientServiceProductCreateDTO dto,
+            Long uomGroupUnitId,
+            BigDecimal uomPriceFactor
+    ) {
         LOG.debug("Request to create Patient billing item : {}", dto);
 
         Patient patient = patientRepository.findById(dto.patientId())
@@ -145,7 +243,9 @@ public class PatientServiceAndProductService {
         PatientServiceAndProduct entity = buildEntityFromCreateDto(
                 dto,
                 patient.getId(),
-                encounter
+                encounter,
+                uomGroupUnitId,
+                uomPriceFactor
         );
 
         try {
@@ -195,6 +295,8 @@ public class PatientServiceAndProductService {
                         "Record not found with id " + dto.id()
                 ));
 
+        encounterReopenGuard.rejectIfOpenReopenSession(entity.getEncounterId());
+
         PatientEncounter encounter = patientEncounterRepository.findById(entity.getEncounterId())
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Encounter not found with id " + entity.getEncounterId(),
@@ -226,48 +328,63 @@ public class PatientServiceAndProductService {
             entity.setProcedureId(dto.procedureId());
         }
 
+        if (dto.vaccineBrandId() != null) {
+            vaccineBrandHelper.validateVaccineBrandExists(dto.vaccineBrandId());
+            entity.setVaccineBrandId(dto.vaccineBrandId());
+        }
+
+        // The unit is part of the item: changing it (or the brand) re-prices the line
+        Long uomGroupUnitId = medicationUomGroupUnitId(dto.billingItemType(), dto.uomGroupUnitId());
+        entity.setUomGroupUnitId(uomGroupUnitId);
+        entity.setUomPriceFactor(
+                uomPriceFactorHelper.resolveBrandFactor(entity.getBrandMedicationId(), uomGroupUnitId)
+        );
+
         entity.setQuantity(dto.quantity());
         entity.setCurrency(dto.currency());
         entity.setDiscountAmount(defaultZero(dto.discountAmount()));
         entity.setExemptionAmount(defaultZero(dto.exemptionAmount()));
         entity.setTaxAmount(defaultZero(dto.taxAmount()));
 
-        InsurancePriceListCoverageCheckResult coverageCheck =
-                insurancePriceListCoverageService.check(
-                        entity.getEncounterId(),
-                        dto.billingItemType(),
-                        dto.serviceId(),
-                        dto.procedureId(),
-                        dto.diagnosticTestId(),
-                        dto.brandMedicationId(),
-                        entity.getCurrency()
-                );
-        insurancePriceListCoverageService.requireCoveredOrAcknowledged(coverageCheck, null);
-
-        if (coverageCheck.requiresCashConfirmation()) {
-            insurancePriceListCoverageService.applyUncoveredCash(entity, coverageCheck);
-        } else {
-            preAuthorizationResolutionService.apply(
-                    entity,
-                    preAuthorizationResolutionService.resolve(
+        // Phase 1: vaccines are not on insurance price lists or pre-authorization yet, they are billed as cash
+        if (dto.billingItemType() != BillingItemTypes.VACCINE) {
+            InsurancePriceListCoverageCheckResult coverageCheck =
+                    insurancePriceListCoverageService.check(
                             entity.getEncounterId(),
                             dto.billingItemType(),
-                            dto.procedureId(),
                             dto.serviceId(),
+                            dto.procedureId(),
                             dto.diagnosticTestId(),
                             dto.brandMedicationId(),
-                            false,
                             entity.getCurrency()
-                    )
-            );
+                    );
+            insurancePriceListCoverageService.requireCoveredOrAcknowledged(coverageCheck, null);
 
-            if (encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(entity.getEncounterId())) {
-                entity.setPatientInsuranceId(
-                        encounterInsuranceEligibilityService.resolveEncounterPatientInsuranceId(
-                                entity.getEncounterId()
+            if (coverageCheck.requiresCashConfirmation()) {
+                insurancePriceListCoverageService.applyUncoveredCash(entity, coverageCheck);
+            } else {
+                preAuthorizationResolutionService.apply(
+                        entity,
+                        preAuthorizationResolutionService.resolve(
+                                entity.getEncounterId(),
+                                dto.billingItemType(),
+                                dto.procedureId(),
+                                dto.serviceId(),
+                                dto.diagnosticTestId(),
+                                dto.brandMedicationId(),
+                                false,
+                                entity.getCurrency()
                         )
                 );
-                entity.setCoverageStatus(CoverageStatus.COVERED);
+
+                if (encounterInsuranceEligibilityService.shouldEvaluatePreAuthorization(entity.getEncounterId())) {
+                    entity.setPatientInsuranceId(
+                            encounterInsuranceEligibilityService.resolveEncounterPatientInsuranceId(
+                                    entity.getEncounterId()
+                            )
+                    );
+                    entity.setCoverageStatus(CoverageStatus.COVERED);
+                }
             }
         }
 
@@ -306,11 +423,19 @@ public class PatientServiceAndProductService {
             );
         }
 
+        for (PatientServiceProductCreateDTO dto : dtos) {
+            encounterReopenGuard.rejectIfOpenReopenSession(dto.encounterId());
+        }
+
         try {
             List<InsurancePriceListCoverageCheckResult> coverageChecks =
                     new ArrayList<>();
             Boolean acceptedCash = null;
             for (PatientServiceProductCreateDTO dto : dtos) {
+                // Phase 1: vaccines are billed as cash, they are not checked against insurance
+                if (dto.billingItemType() == BillingItemTypes.VACCINE) {
+                    continue;
+                }
                 coverageChecks.add(
                         insurancePriceListCoverageService.check(
                                 dto.encounterId(),
@@ -350,10 +475,15 @@ public class PatientServiceAndProductService {
                         validateReferences(dto);
                         validateNoDuplicateEncounterItem(dto, encounter.getId());
 
+                        Long uomGroupUnitId =
+                                medicationUomGroupUnitId(dto.billingItemType(), dto.uomGroupUnitId());
+
                         return buildEntityFromCreateDto(
                                 dto,
                                 patient.getId(),
-                                encounter
+                                encounter,
+                                uomGroupUnitId,
+                                uomPriceFactorHelper.resolveBrandFactor(dto.brandMedicationId(), uomGroupUnitId)
                         );
                     })
                     .toList();
@@ -528,6 +658,13 @@ public class PatientServiceAndProductService {
 
     @Transactional
     public void remove(Long id) {
+        PatientServiceAndProduct entity = patientServiceAndProductRepository.findById(id)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "Patient service/product not found with id " + id,
+                        "patientServicesAndProducts",
+                        "idNotFound"
+                ));
+        encounterReopenGuard.rejectIfOpenReopenSession(entity.getEncounterId());
         cancel(id, "Service/product item cancelled");
     }
 
@@ -605,7 +742,9 @@ public class PatientServiceAndProductService {
     private PatientServiceAndProduct buildEntityFromCreateDto(
             PatientServiceProductCreateDTO dto,
             Long patientId,
-            PatientEncounter encounter
+            PatientEncounter encounter,
+            Long uomGroupUnitId,
+            BigDecimal uomPriceFactor
     ) {
         long quantity = dto.quantity() == null ? 1L : dto.quantity();
 
@@ -617,7 +756,10 @@ public class PatientServiceAndProductService {
                 .diagnosticTestId(dto.diagnosticTestId())
                 .serviceId(dto.serviceId())
                 .procedureId(dto.procedureId())
+                .vaccineBrandId(dto.vaccineBrandId())
                 .quantity(quantity)
+                .uomGroupUnitId(uomGroupUnitId)
+                .uomPriceFactor(uomPriceFactor)
                 .unitPrice(BigDecimal.ZERO)
                 .discountAmount(BigDecimal.ZERO)
                 .exemptionAmount(BigDecimal.ZERO)
@@ -642,6 +784,13 @@ public class PatientServiceAndProductService {
                 .billingInvoiceItemId(null)
                 .isDefaultService(Boolean.FALSE)
                 .isExempted(Boolean.FALSE);
+
+        // Phase 1: vaccines are not on insurance price lists or pre-authorization yet, they are billed as cash
+        if (dto.billingItemType() == BillingItemTypes.VACCINE) {
+            PatientServiceAndProduct entity = builder.build();
+            applyResolvedPricing(entity, encounter, quantity);
+            return entity;
+        }
 
         InsurancePriceListCoverageCheckResult coverageCheck =
                 insurancePriceListCoverageService.check(
@@ -797,6 +946,11 @@ public class PatientServiceAndProductService {
         patientItemPricingApplicationService.applyToItem(item, encounter.getFacilityId());
     }
 
+    /** A UOM unit only applies to medication lines */
+    private static Long medicationUomGroupUnitId(BillingItemTypes billingItemType, Long uomGroupUnitId) {
+        return billingItemType == BillingItemTypes.MEDICATION ? uomGroupUnitId : null;
+    }
+
     private void validateReferences(PatientServiceProductCreateDTO dto) {
         if (dto.diagnosticTestId() != null) {
             diagnosticTestHelper.getDiagnosticTest(dto.diagnosticTestId());
@@ -813,6 +967,17 @@ public class PatientServiceAndProductService {
         if (dto.brandMedicationId() != null) {
             brandMedicationHelper.validateBrandMedicationExists(dto.brandMedicationId());
         }
+
+        if (dto.billingItemType() == BillingItemTypes.VACCINE) {
+            if (dto.vaccineBrandId() == null) {
+                throw new BadRequestAlertException(
+                        "Vaccine brand is required when billing item type is VACCINE",
+                        "patient_services_and_products",
+                        "vaccineBrand.required"
+                );
+            }
+            vaccineBrandHelper.validateVaccineBrandExists(dto.vaccineBrandId());
+        }
     }
 
     private void validateNoDuplicateEncounterItem(
@@ -823,8 +988,10 @@ public class PatientServiceAndProductService {
             return;
         }
 
+        // Each administered UCC dose is charged on its own line
         if (dto.billingItemType() == BillingItemTypes.MEDICATION
                 && dto.brandMedicationId() != null
+                && dto.serviceSource() != ServiceSource.URGENT_CARE_MEDICATION_ORDER
                 && patientServiceAndProductRepository
                         .existsByEncounterIdAndBillingItemTypeAndBrandMedicationId(
                                 encounterId,
@@ -1030,11 +1197,20 @@ public class PatientServiceAndProductService {
             );
         }
 
-        BillingOperationResult result = billingEngineService.onItemOrdered(
-                item.getId(),
-                facilityId,
-                "PSP-CREATE:" + item.getId()
-        );
+        // A UCC medication is charged when administered, whatever trigger its billing rule has
+        BillingOperationResult result =
+                item.getServiceSource() == ServiceSource.URGENT_CARE_MEDICATION_ORDER
+                        ? billingEngineService.processWithEventFallback(
+                                item.getId(),
+                                item.getEncounterId(),
+                                facilityId,
+                                "PSP-CREATE:" + item.getId()
+                        )
+                        : billingEngineService.onItemOrdered(
+                                item.getId(),
+                                facilityId,
+                                "PSP-CREATE:" + item.getId()
+                        );
 
         LOG.info(
                 "[PSP_CREATE] Billed item. pspId={} type={} processed={} message={}",
@@ -1064,15 +1240,7 @@ public class PatientServiceAndProductService {
             return;
         }
 
-        PaymentStatus paymentStatus = item.getPaymentStatus();
-        if (paymentStatus == PaymentStatus.RESERVED
-                || paymentStatus == PaymentStatus.PARTIALLY_RESERVED
-                || paymentStatus == PaymentStatus.PAID
-                || paymentStatus == PaymentStatus.PARTIALLY_PAID
-                || paymentStatus == PaymentStatus.DEBIT
-                || paymentStatus == PaymentStatus.PARTIALLY_DEBIT
-                || paymentStatus == PaymentStatus.EXEMPTED
-                || paymentStatus == PaymentStatus.CANCELLED) {
+        if (item.getPaymentStatus() == PaymentStatus.CANCELLED || isPaymentStatusSettled(item)) {
             throw new BadRequestAlertException(
                     "This billing item is locked because payment calculation is already reserved or settled.",
                     "patientServicesAndProducts",
@@ -1080,20 +1248,74 @@ public class PatientServiceAndProductService {
             );
         }
 
-        billingChargeService
-                .findActiveChargeLine(item.getId(), item.getEncounterId())
-                .ifPresent(chargeLine -> {
-                    BigDecimal reserved = defaultZero(chargeLine.getReservedAmount());
-                    BigDecimal allocated = defaultZero(chargeLine.getAllocatedAmount());
+        if (hasFundsReservedOrAllocated(item)) {
+            throw new BadRequestAlertException(
+                    "This billing item is locked because funds are reserved or allocated.",
+                    "patientServicesAndProducts",
+                    "item.locked"
+            );
+        }
+    }
 
-                    if (reserved.signum() > 0 || allocated.signum() > 0) {
+    /**
+     * Cancels the charge of a cancelled vaccination. A vaccination whose charge is already
+     * paid (or reserved / settled) cannot be cancelled; no charge means nothing to cancel.
+     */
+    public void cancelVaccinationCharge(Long encounterVaccinationId, String reason) {
+        findActiveVaccinationCharge(encounterVaccinationId)
+                .ifPresent(item -> {
+                    if (isPaymentStarted(item)) {
                         throw new BadRequestAlertException(
-                                "This billing item is locked because funds are reserved or allocated.",
-                                "patientServicesAndProducts",
-                                "item.locked"
+                                "This vaccination is already paid and cannot be cancelled.",
+                                "encounterVaccination",
+                                "vaccination.paid"
                         );
                     }
+
+                    cancel(item.getId(), reason);
                 });
+    }
+
+    /** True when the vaccination charge is paid (or reserved / settled) */
+    @Transactional(readOnly = true)
+    public boolean isVaccinationChargePaid(Long encounterVaccinationId) {
+        return findActiveVaccinationCharge(encounterVaccinationId)
+                .map(this::isPaymentStarted)
+                .orElse(false);
+    }
+
+    private Optional<PatientServiceAndProduct> findActiveVaccinationCharge(Long encounterVaccinationId) {
+        return patientServiceAndProductRepository
+                .findByServiceSourceAndSourceIdAndBillingItemType(
+                        ServiceSource.VACCINATION,
+                        encounterVaccinationId,
+                        BillingItemTypes.VACCINE
+                )
+                .filter(item -> item.getPaymentStatus() != PaymentStatus.CANCELLED);
+    }
+
+    private boolean isPaymentStarted(PatientServiceAndProduct item) {
+        return isPaymentStatusSettled(item) || hasFundsReservedOrAllocated(item);
+    }
+
+    /** Money movement started: reserved, paid, posted to debit or exempted */
+    private static boolean isPaymentStatusSettled(PatientServiceAndProduct item) {
+        PaymentStatus paymentStatus = item.getPaymentStatus();
+        return paymentStatus == PaymentStatus.RESERVED
+                || paymentStatus == PaymentStatus.PARTIALLY_RESERVED
+                || paymentStatus == PaymentStatus.PAID
+                || paymentStatus == PaymentStatus.PARTIALLY_PAID
+                || paymentStatus == PaymentStatus.DEBIT
+                || paymentStatus == PaymentStatus.PARTIALLY_DEBIT
+                || paymentStatus == PaymentStatus.EXEMPTED;
+    }
+
+    private boolean hasFundsReservedOrAllocated(PatientServiceAndProduct item) {
+        return billingChargeService
+                .findActiveChargeLine(item.getId(), item.getEncounterId())
+                .map(chargeLine -> defaultZero(chargeLine.getReservedAmount()).signum() > 0
+                        || defaultZero(chargeLine.getAllocatedAmount()).signum() > 0)
+                .orElse(false);
     }
 
     private BillingEventType resolveBillingEvent(

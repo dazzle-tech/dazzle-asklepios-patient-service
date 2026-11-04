@@ -32,7 +32,8 @@ public record DiagnosticOrderTestReportResponseVM(
         Instant lastModifiedDate,
         String lastModifiedBy,
         String accessionNumber,
-        boolean hasNote
+        boolean hasNote,
+        String testName
 ) implements Serializable {
 
     public static DiagnosticOrderTestReportResponseVM ofEntity(DiagnosticOrderTestReport diagnosticOrderTestReport) {
@@ -60,11 +61,16 @@ public record DiagnosticOrderTestReportResponseVM(
                 diagnosticOrderTestReport.getLastModifiedDate(),
                 diagnosticOrderTestReport.getLastModifiedBy(),
                 diagnosticOrderTestReport.getAccessionNumber(),
-                false
+                false,
+                null
         );
     }
 
-    public static DiagnosticOrderTestReportResponseVM ofEntityWithNote(DiagnosticOrderTestReport diagnosticOrderTestReport, boolean hasNote) {
+    public static DiagnosticOrderTestReportResponseVM ofEntityWithNote(
+            DiagnosticOrderTestReport diagnosticOrderTestReport,
+            boolean hasNote,
+            String testName
+    ) {
         return new DiagnosticOrderTestReportResponseVM(
                 diagnosticOrderTestReport.getId(),
                 diagnosticOrderTestReport.getOrderTestId(),
@@ -89,8 +95,8 @@ public record DiagnosticOrderTestReportResponseVM(
                 diagnosticOrderTestReport.getLastModifiedDate(),
                 diagnosticOrderTestReport.getLastModifiedBy(),
                 diagnosticOrderTestReport.getAccessionNumber(),
-                hasNote
-
+                hasNote,
+                testName
         );
     }
 }

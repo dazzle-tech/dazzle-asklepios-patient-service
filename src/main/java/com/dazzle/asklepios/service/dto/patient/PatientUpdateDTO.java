@@ -90,7 +90,8 @@ public record PatientUpdateDTO(
         String documentId,
         SecurityLevel securityAccessLevel,
         BloodGroup bloodGroup,
-        String patientConditions
+        String patientConditions,
+        Boolean isCitizen
 
 ) implements Serializable {
 

@@ -8,6 +8,8 @@ public record PointOfSaleWebhookLogFilterDTO(
 
         String orderId,
 
+        String encounterNumber,
+
         String responseCode,
 
         String processingStatus,

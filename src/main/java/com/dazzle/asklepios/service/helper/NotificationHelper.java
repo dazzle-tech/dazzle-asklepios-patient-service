@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service.helper;
 
 import com.dazzle.asklepios.client.notification.NotificationClient;
 import com.dazzle.asklepios.client.notification.dto.NotificationCreateDTO;
+import com.dazzle.asklepios.client.notification.dto.NotificationCreatedResponse;
 import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
 import com.dazzle.asklepios.client.setup.OrganizationClient;
 import com.dazzle.asklepios.client.setup.SystemConfigurationClient;
@@ -12,19 +13,23 @@ import com.dazzle.asklepios.client.setup.dto.OrganizationDefinitionDTO;
 import com.dazzle.asklepios.client.setup.dto.PractitionerDTO;
 import com.dazzle.asklepios.client.setup.dto.UserDTO;
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import com.dazzle.asklepios.domain.enumeration.SystemConfigKey;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.PatientActivityService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @Component
@@ -33,6 +38,7 @@ import java.util.Map;
 public class NotificationHelper {
 
     private final NotificationClient notificationClient;
+    private final PatientActivityService patientActivityService;
     private final UserDepartmentHelper userDepartmentHelper;
     private final UserClient userClient;
     private final DepartmentHelper departmentHelper;
@@ -99,6 +105,7 @@ public class NotificationHelper {
                         relatedEntityId
                 );
 
+                List<NotificationCreatedResponse> created;
                 try {
                     log.debug(
                             "[NOTIFICATION] Creating notification. language={}, code={}, recipients={}",
@@ -107,11 +114,24 @@ public class NotificationHelper {
                             languageEntry.getValue()
                     );
 
-                    notificationClient.createNotification(dto);
-
+                    ResponseEntity<List<NotificationCreatedResponse>> response =
+                            notificationClient.createNotification(dto);
+                    created = response == null ? null : response.getBody();
                 } catch (Exception e) {
                     log.warn(
                             "[NOTIFICATION] Failed notification. language={}, code={}, error={}",
+                            language,
+                            code,
+                            e.getMessage()
+                    );
+                    continue;
+                }
+
+                try {
+                    recordPatientNotificationActivities(created, code, relatedEntityType, relatedEntityId);
+                } catch (Exception e) {
+                    log.warn(
+                            "[NOTIFICATION] Failed to record patient activity. language={}, code={}, error={}",
                             language,
                             code,
                             e.getMessage()
@@ -132,32 +152,96 @@ public class NotificationHelper {
         }
     }
 
+    private void recordPatientNotificationActivities(
+            List<NotificationCreatedResponse> created,
+            NotificationCode code,
+            String relatedEntityType,
+            Long relatedEntityId
+    ) {
+        if (created == null || created.isEmpty()) {
+            return;
+        }
+
+        Long encounterId = "PATIENT_ENCOUNTER".equals(relatedEntityType) ? relatedEntityId : null;
+        Long appointmentId = "APPOINTMENT".equals(relatedEntityType) ? relatedEntityId : null;
+
+        for (NotificationCreatedResponse notification : created) {
+            if (notification == null
+                    || notification.getId() == null
+                    || notification.getRecipientId() == null
+                    || !"PATIENT".equalsIgnoreCase(notification.getRecipientType())) {
+                continue;
+            }
+
+            String channel = notification.getChannel() == null
+                    ? ""
+                    : notification.getChannel().trim().toUpperCase(Locale.ROOT);
+            PatientActivityType activityType = "EMAIL".equals(channel)
+                    ? PatientActivityType.EMAIL
+                    : PatientActivityType.SMS_OR_MESSAGING;
+
+            patientActivityService.recordOccurred(
+                    notification.getRecipientId(),
+                    encounterId,
+                    appointmentId,
+                    activityType,
+                    PatientActivityService.SOURCE_NOTIFICATION,
+                    notification.getId(),
+                    notificationNote(channel, code)
+            );
+        }
+    }
+
+    private String notificationNote(String channel, NotificationCode code) {
+        String channelLabel = switch (channel) {
+            case "EMAIL" -> "Email";
+            case "SMS" -> "SMS";
+            case "WHATSAPP" -> "WhatsApp";
+            case "PUSH" -> "Push";
+            case "IN_APP" -> "In-app";
+            default -> "Notification";
+        };
+        String event = code == null ? "notification" : code.name().toLowerCase(Locale.ROOT).replace('_', ' ');
+        return channelLabel + " notification sent to the patient: " + event + ".";
+    }
+
     public Map<String, List<NotificationResolvedRecipientDTO>> resolveRecipients(Long departmentId, String login, String createdByLogin, Patient patient, PractitionerDTO practitionerDTO, Boolean isScheduleNotification) {
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
-        List<OrganizationDefinitionDTO> organizationDefinitionList = organizationClient.getOrganization();
+        List<OrganizationDefinitionDTO> organizationDefinitionList = Boolean.TRUE.equals(isScheduleNotification)
+                ? organizationClient.getOrganizationInternal()
+                : organizationClient.getOrganization();
         OrganizationDefinitionDTO organizationDefinitionDTO = organizationDefinitionList.stream().findFirst().orElse(null);
 
         // Department users
         if (departmentId != null) {
-            List<NotificationResolvedRecipientDTO> departmentUsers =
-                    !isScheduleNotification ? buildDepartmentUserRecipients(departmentId, organizationDefinitionDTO) : buildDepartmentUserRecipientsForScheduledNotification(departmentId, organizationDefinitionDTO);
+            if (Boolean.TRUE.equals(isScheduleNotification)) {
+                List<NotificationResolvedRecipientDTO> departmentUsers =
+                        buildDepartmentUserRecipientsForScheduledNotification(departmentId, organizationDefinitionDTO);
 
-            if (!departmentUsers.isEmpty()) {
-                recipientsByRule.put("DEPARTMENT_USERS", departmentUsers);
-            }
+                if (!departmentUsers.isEmpty()) {
+                    recipientsByRule.put("DEPARTMENT_USERS", departmentUsers);
+                }
+            } else {
+                List<NotificationResolvedRecipientDTO> departmentUsers =
+                        buildDepartmentUserRecipients(departmentId, organizationDefinitionDTO);
 
-            List<NotificationResolvedRecipientDTO> physicianDepartmentUsers =
-                    buildPhysicianDepartmentUserRecipients(departmentId, organizationDefinitionDTO);
+                if (!departmentUsers.isEmpty()) {
+                    recipientsByRule.put("DEPARTMENT_USERS", departmentUsers);
+                }
 
-            if (!departmentUsers.isEmpty()) {
-                recipientsByRule.put("PHYSICIAN_DEPARTMENT_USERS", physicianDepartmentUsers);
-            }
+                List<NotificationResolvedRecipientDTO> physicianDepartmentUsers =
+                        buildPhysicianDepartmentUserRecipients(departmentId, organizationDefinitionDTO);
 
-            List<NotificationResolvedRecipientDTO> nurseDepartmentUsers =
-                    buildNurseDepartmentUserRecipients(departmentId, organizationDefinitionDTO);
+                if (!departmentUsers.isEmpty()) {
+                    recipientsByRule.put("PHYSICIAN_DEPARTMENT_USERS", physicianDepartmentUsers);
+                }
 
-            if (!departmentUsers.isEmpty()) {
-                recipientsByRule.put("NURSE_DEPARTMENT_USERS", nurseDepartmentUsers);
+                List<NotificationResolvedRecipientDTO> nurseDepartmentUsers =
+                        buildNurseDepartmentUserRecipients(departmentId, organizationDefinitionDTO);
+
+                if (!departmentUsers.isEmpty()) {
+                    recipientsByRule.put("NURSE_DEPARTMENT_USERS", nurseDepartmentUsers);
+                }
             }
         }
 
@@ -178,8 +262,8 @@ public class NotificationHelper {
             }
         }
 
-        // Created by user
-        if (createdByLogin != null && !createdByLogin.isBlank()) {
+        // Created by user. Scheduled jobs have no user token, so this authenticated lookup is skipped.
+        if (!Boolean.TRUE.equals(isScheduleNotification) && createdByLogin != null && !createdByLogin.isBlank()) {
             NotificationResolvedRecipientDTO createdByUser =
                     buildCreatedByUserRecipient(createdByLogin, organizationDefinitionDTO);
 

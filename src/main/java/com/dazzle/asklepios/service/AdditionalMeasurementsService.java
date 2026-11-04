@@ -37,6 +37,7 @@ public class AdditionalMeasurementsService {
     private final AdditionalMeasurementsRepository additionalMeasurementsRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
 
     public AdditionalMeasurements createInfant(AdditionalMeasurementsInfantCreateDTO dto) {
@@ -61,7 +62,9 @@ public class AdditionalMeasurementsService {
                     .isActive(true)
                     .build();
 
-            return additionalMeasurementsRepository.saveAndFlush(entity);
+            reopenSessionAuditContext.applyOpenSession(encounter.getId());
+            AdditionalMeasurements saved = additionalMeasurementsRepository.saveAndFlush(entity);
+            return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);
@@ -73,8 +76,9 @@ public class AdditionalMeasurementsService {
         LOG.info("[UPDATE_INFANT] AdditionalMeasurements id={} payload={}", targetId, dto);
 
         return additionalMeasurementsRepository.findById(targetId).map(entity -> {
+            Long ownedEncounterId = entity.getEncounterId();
             Patient patient = loadPatient(dto.patientId());
-            PatientEncounter encounter = loadEncounter(dto.encounterId());
+            loadEncounter(dto.encounterId());
             entity.setPatient(patient);
             entity.setEncounterId(dto.encounterId());
             entity.setAgeGroup(dto.ageGroup());
@@ -88,7 +92,9 @@ public class AdditionalMeasurementsService {
             entity.setIsActive(dto.isActive());
 
             try {
-                return additionalMeasurementsRepository.saveAndFlush(entity);
+                reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
+                AdditionalMeasurements saved = additionalMeasurementsRepository.saveAndFlush(entity);
+                return saved;
             } catch (DataIntegrityViolationException | JpaSystemException ex) {
                 throw handleConstraintViolation(ex);
             }
@@ -116,7 +122,9 @@ public class AdditionalMeasurementsService {
                     .isActive(true)
                     .build();
 
-            return additionalMeasurementsRepository.saveAndFlush(entity);
+            reopenSessionAuditContext.applyOpenSession(encounter.getId());
+            AdditionalMeasurements saved = additionalMeasurementsRepository.saveAndFlush(entity);
+            return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);
@@ -128,8 +136,9 @@ public class AdditionalMeasurementsService {
         LOG.info("[UPDATE_GERIATRIC] AdditionalMeasurements id={} payload={}", targetId, dto);
 
         return additionalMeasurementsRepository.findById(targetId).map(entity -> {
+            Long ownedEncounterId = entity.getEncounterId();
             Patient patient = loadPatient(dto.patientId());
-            PatientEncounter encounter = loadEncounter(dto.encounterId());
+            loadEncounter(dto.encounterId());
 
             entity.setPatient(patient);
             entity.setEncounterId(dto.encounterId());
@@ -142,7 +151,9 @@ public class AdditionalMeasurementsService {
             entity.setIsActive(dto.isActive());
 
             try {
-                return additionalMeasurementsRepository.saveAndFlush(entity);
+                reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
+                AdditionalMeasurements saved = additionalMeasurementsRepository.saveAndFlush(entity);
+                return saved;
             } catch (DataIntegrityViolationException | JpaSystemException ex) {
                 throw handleConstraintViolation(ex);
             }
@@ -195,7 +206,9 @@ public class AdditionalMeasurementsService {
                 .findFirstByEncounterIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateDesc(
                         encounterId, dayStart, dayEnd)
                 .ifPresentOrElse(existing -> {
+                    Long ownedEncounterId = existing.getEncounterId();
                     existing.setIsActive(false);
+                    reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
                     additionalMeasurementsRepository.saveAndFlush(existing);
                     LOG.debug("[RESET_ACTIVE] Done. deactivatedId={} encounterId={}",
                             existing.getId(), encounterId);

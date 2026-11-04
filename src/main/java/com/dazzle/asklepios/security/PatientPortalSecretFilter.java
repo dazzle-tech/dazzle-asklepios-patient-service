@@ -17,8 +17,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
- * Authorizes the patient-portal OTP endpoints with a shared secret.
- * These routes run before a patient JWT exists, so they are not checked against the bearer token.
+ * Authorizes secret-key endpoints with {@code PATIENT_PORTAL_SECRET}.
+ * These routes are not checked against a bearer token.
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -30,19 +30,20 @@ public class PatientPortalSecretFilter extends OncePerRequestFilter {
 
     private static final String REQUEST_OTP_PATH = "/api/patient/patient-portal/request-otp";
     private static final String VERIFY_OTP_PATH = "/api/patient/patient-portal/verify-login-otp";
+    private static final String CREATE_PATIENT_PATH = "/api/patient/external";
 
     private final String portalSecret;
 
     public PatientPortalSecretFilter(@Value("${patient.portal.secret:}") String portalSecret) {
         this.portalSecret = portalSecret == null ? "" : portalSecret;
         if (this.portalSecret.isBlank()) {
-            LOG.warn("patient.portal.secret is not set; patient portal OTP endpoints will reject every request");
+            LOG.warn("patient.portal.secret is not set; secret-key endpoints will reject every request");
         }
     }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !isPortalOtpRequest(request);
+        return !isSecretProtectedRequest(request);
     }
 
     @Override
@@ -74,7 +75,7 @@ public class PatientPortalSecretFilter extends OncePerRequestFilter {
         }
     }
 
-    private static boolean isPortalOtpRequest(HttpServletRequest request) {
+    private static boolean isSecretProtectedRequest(HttpServletRequest request) {
         if (!HttpMethod.POST.matches(request.getMethod())) {
             return false;
         }
@@ -83,6 +84,6 @@ public class PatientPortalSecretFilter extends OncePerRequestFilter {
         if (contextPath != null && !contextPath.isEmpty() && path.startsWith(contextPath)) {
             path = path.substring(contextPath.length());
         }
-        return REQUEST_OTP_PATH.equals(path) || VERIFY_OTP_PATH.equals(path);
+        return REQUEST_OTP_PATH.equals(path) || VERIFY_OTP_PATH.equals(path) || CREATE_PATIENT_PATH.equals(path);
     }
 }

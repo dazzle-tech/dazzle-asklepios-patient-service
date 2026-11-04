@@ -1,11 +1,13 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.dto.BillingPricingResolveRequest;
+import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingTrigger;
@@ -13,6 +15,7 @@ import com.dazzle.asklepios.domain.enumeration.billing.DiscountApplicableOn;
 import com.dazzle.asklepios.domain.enumeration.billing.TaxApplicableOn;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.dto.billing.BillingCancellationRequest;
@@ -36,6 +39,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -60,6 +65,8 @@ public class BillingEngineService {
     private final PatientInsuranceRepository patientInsuranceRepository;
 
     private final PatientEncounterRepository patientEncounterRepository;
+
+    private final PatientRepository patientRepository;
 
     private final SetupBillingRuleService
             setupBillingRuleService;
@@ -93,11 +100,15 @@ public class BillingEngineService {
     private final BillingChargeService
             billingChargeService;
 
+    private final DiagnosticChargeTimingService
+            diagnosticChargeTimingService;
+
     private final EncounterPreAuthorizationSyncService
             encounterPreAuthorizationSyncService;
 
     private final com.dazzle.asklepios.client.setup.PriceListSetupClient
             priceListSetupClient;
+    private final PatientActivityService patientActivityService;
 
     /*
      * ============================================================
@@ -191,6 +202,18 @@ public class BillingEngineService {
                         eventType
                 );
 
+        if (!triggerMatches
+                && eventType == BillingEventType.ITEM_ORDERED
+                && DiagnosticChargeTimingService.isWorkflowTrigger(
+                        billingRule.billingTrigger()
+                )
+                && !diagnosticChargeTimingService.paymentApplies(
+                        item,
+                        billingRule
+                )) {
+            triggerMatches = true;
+        }
+
         if (!triggerMatches) {
             LOG.info(
                     "[PROCESS] Billing skipped because trigger "
@@ -238,6 +261,7 @@ public class BillingEngineService {
                         facilityId,
                         sourceId,
                         payerId,
+                        null,
                         null
                 );
 
@@ -255,6 +279,8 @@ public class BillingEngineService {
                         .resolveOrFallback(
                                 pricingRequest
                         );
+
+        resolvedPrice = applyUomPriceFactor(item, resolvedPrice);
 
         validateResolvedPricing(
                 item,
@@ -332,7 +358,7 @@ public class BillingEngineService {
             PatientServiceAndProduct item,
             Long facilityId
     ) {
-        return resolvePricing(item, facilityId, null);
+        return resolvePricing(item, facilityId, null, null);
     }
 
     /**
@@ -343,6 +369,15 @@ public class BillingEngineService {
             PatientServiceAndProduct item,
             Long facilityId,
             BillingCoverageType coverageOverride
+    ) {
+        return resolvePricing(item, facilityId, coverageOverride, null);
+    }
+
+    public ResolvedBillingPrice resolvePricing(
+            PatientServiceAndProduct item,
+            Long facilityId,
+            BillingCoverageType coverageOverride,
+            Boolean patientCitizen
     ) {
         validatePatientItem(item);
 
@@ -357,13 +392,16 @@ public class BillingEngineService {
                         facilityId,
                         sourceId,
                         payerId,
-                        coverageOverride
+                        coverageOverride,
+                        patientCitizen
                 );
 
         ResolvedBillingPrice resolvedPrice =
                 setupBillingPricingService.resolveOrFallback(
                         pricingRequest
                 );
+
+        resolvedPrice = applyUomPriceFactor(item, resolvedPrice);
 
         validateResolvedPricing(item, resolvedPrice);
 
@@ -398,11 +436,18 @@ public class BillingEngineService {
                         patientServiceProductId
                 );
 
+        if (diagnosticChargeTimingService.isChargeDeferred(item)) {
+            return BillingOperationResult.skipped(
+                    patientServiceProductId,
+                    "Billing rule defers this charge until its workflow trigger."
+            );
+        }
+
         BillingRuleResolveResponse billingRule =
                 resolveBillingRule(item);
 
         List<BillingEventType> eventCandidates =
-                buildChargeLineEventCandidates(billingRule);
+                buildChargeLineEventCandidates(item, billingRule);
 
         String baseRequestId =
                 requestId == null
@@ -519,6 +564,30 @@ public class BillingEngineService {
     }
 
     /**
+     * Creates the charge line with the catalog or default billing rule.
+     * Price calculation stays on the existing billing path. The rule only
+     * chooses which billing event runs.
+     */
+    public BillingOperationResult onSelectedBillingRule(
+            Long patientServiceProductId,
+            Long facilityId,
+            String requestId
+    ) {
+        PatientServiceAndProduct item =
+                findPatientServiceProduct(patientServiceProductId);
+
+        BillingRuleResolveResponse billingRule =
+                resolveBillingRule(item);
+
+        return process(
+                patientServiceProductId,
+                resolveEventType(billingRule.billingTrigger()),
+                facilityId,
+                requestId
+        );
+    }
+
+    /**
      * Called when medication is dispensed.
      */
     public BillingOperationResult onItemDispensed(
@@ -593,6 +662,14 @@ public class BillingEngineService {
                         patientServiceProductId
                 );
 
+        if (diagnosticChargeTimingService.isChargeDeferred(item)) {
+            throw new BadRequestAlertException(
+                    "This charge line is created when the billing rule trigger is reached.",
+                    ENTITY_NAME,
+                    "billingRule.chargeDeferred"
+            );
+        }
+
         BillingRuleResolveResponse billingRule =
                 resolveBillingRule(
                         item
@@ -600,6 +677,7 @@ public class BillingEngineService {
 
         List<BillingEventType> eventCandidates =
                 buildChargeLineEventCandidates(
+                        item,
                         billingRule
                 );
 
@@ -667,10 +745,33 @@ public class BillingEngineService {
     }
 
     private List<BillingEventType> buildChargeLineEventCandidates(
+            PatientServiceAndProduct item,
             BillingRuleResolveResponse billingRule
     ) {
         Set<BillingEventType> candidates =
                 new LinkedHashSet<>();
+
+        if (billingRule != null
+                && DiagnosticChargeTimingService.isWorkflowTrigger(
+                        billingRule.billingTrigger()
+                )) {
+            if (diagnosticChargeTimingService.paymentApplies(item, billingRule)
+                    && diagnosticChargeTimingService.triggerReached(
+                            item,
+                            billingRule.billingTrigger()
+                    )) {
+                candidates.add(
+                        resolveEventType(billingRule.billingTrigger())
+                );
+            } else if (!diagnosticChargeTimingService.paymentApplies(
+                    item,
+                    billingRule
+            )) {
+                candidates.add(BillingEventType.ITEM_ORDERED);
+            }
+
+            return new ArrayList<>(candidates);
+        }
 
         if (billingRule != null
                 && billingRule.billingTrigger() != null) {
@@ -719,6 +820,18 @@ public class BillingEngineService {
 
             case DEBIT_NOTE ->
                     BillingEventType.DEBIT_NOTE;
+
+            case SUBMIT_ORDER ->
+                    BillingEventType.SUBMIT_ORDER;
+
+            case COLLECT_SAMPLE ->
+                    BillingEventType.COLLECT_SAMPLE;
+
+            case ACCEPT_ORDER ->
+                    BillingEventType.ACCEPT_ORDER;
+
+            case APPROVED ->
+                    BillingEventType.APPROVED;
         };
     }
 
@@ -784,6 +897,7 @@ public class BillingEngineService {
                         facilityId,
                         sourceId,
                         payerId,
+                        null,
                         null
                 );
 
@@ -792,6 +906,8 @@ public class BillingEngineService {
                         .resolveOrFallback(
                                 pricingRequest
                         );
+
+        resolvedPrice = applyUomPriceFactor(item, resolvedPrice);
 
         validateResolvedPricing(
                 item,
@@ -1023,6 +1139,18 @@ public class BillingEngineService {
                 result.walletAvailableBalance()
         );
 
+        if (result.refundId() != null) {
+            patientActivityService.recordOccurred(
+                    request.patientId(),
+                    request.encounterId(),
+                    null,
+                    PatientActivityType.REFUND_OR_BILLING_INQUIRY,
+                    PatientActivityService.SOURCE_BILLING_REFUND,
+                    result.refundId(),
+                    "Refund issued"
+            );
+        }
+
         return result;
     }
 
@@ -1129,7 +1257,8 @@ public class BillingEngineService {
             Long facilityId,
             Long sourceId,
             Long payerId,
-            BillingCoverageType coverageOverride
+            BillingCoverageType coverageOverride,
+            Boolean patientCitizen
     ) {
         BillingCoverageType coverage = coverageOverride != null
                 ? coverageOverride
@@ -1160,8 +1289,21 @@ public class BillingEngineService {
                         item
                 ),
                 LocalDate.now(),
-                resolveEncounterType(item)
+                resolveEncounterType(item),
+                patientCitizen != null
+                        ? patientCitizen
+                        : findIsCitizen(item.getPatientId())
         );
+    }
+
+    private Boolean findIsCitizen(Long patientId) {
+        if (patientId == null) {
+            return null;
+        }
+
+        return patientRepository.findById(patientId)
+                .map(Patient::getIsCitizen)
+                .orElse(null);
     }
 
     private EncounterType resolveEncounterType(PatientServiceAndProduct item) {
@@ -1357,6 +1499,43 @@ public class BillingEngineService {
                     "billingRule.itemType.mismatch"
             );
         }
+    }
+
+    /**
+     * Prices resolve per price base UOM unit. A line charged in another unit
+     * (e.g. a UCC administration charged per BOX) keeps its factor, so every
+     * pricing and re-pricing of the line is in the charged unit.
+     */
+    private ResolvedBillingPrice applyUomPriceFactor(
+            PatientServiceAndProduct item,
+            ResolvedBillingPrice resolvedPrice
+    ) {
+        BigDecimal factor = item.getUomPriceFactor();
+
+        if (resolvedPrice == null
+                || factor == null
+                || factor.compareTo(BigDecimal.ONE) == 0) {
+            return resolvedPrice;
+        }
+
+        return new ResolvedBillingPrice(
+                scaleUnitPrice(resolvedPrice.unitPrice(), factor),
+                resolvedPrice.currency(),
+                resolvedPrice.priceSource(),
+                resolvedPrice.setupSourceId(),
+                resolvedPrice.priceListId(),
+                resolvedPrice.priceListItemId(),
+                resolvedPrice.pricingResponse(),
+                scaleUnitPrice(resolvedPrice.setupUnitPrice(), factor),
+                resolvedPrice.setupItemCode(),
+                resolvedPrice.setupItemName()
+        );
+    }
+
+    private BigDecimal scaleUnitPrice(BigDecimal unitPrice, BigDecimal factor) {
+        return unitPrice == null
+                ? null
+                : unitPrice.multiply(factor).setScale(4, RoundingMode.HALF_UP);
     }
 
     private void validateResolvedPricing(
@@ -1585,6 +1764,12 @@ public class BillingEngineService {
                             item.getDiagnosticTestId(),
                             "diagnostic test"
                     );
+
+            case VACCINE ->
+                    requireSourceId(
+                            item.getVaccineBrandId(),
+                            "vaccine brand"
+                    );
         };
     }
 
@@ -1607,13 +1792,9 @@ public class BillingEngineService {
      * ============================================================
      * TAX AND DISCOUNT APPLICABILITY
      *
-     * Charge-line pricing resolves setup rules with:
-     *   SERVICE  -> services, procedures, labs, etc.
-     *   PRODUCT  -> medications
-     *
-     * Invoice-time rules use Applicable On at invoice generation:
-     *   INVOICE_LINE -> per invoice line
-     *   INVOICE      -> whole invoice total
+     * Charge-line pricing resolves the tax for the item category.
+     * A Charge Line tax applies when no category tax matches.
+     * Invoice tax is applied later to the whole invoice.
      * ============================================================
      */
 
@@ -1621,16 +1802,14 @@ public class BillingEngineService {
             PatientServiceAndProduct item
     ) {
         return switch (item.getBillingItemType()) {
-
-            case SERVICE,
-                 PROCEDURE,
-                 LABORATORY,
-                 RADIOLOGY,
-                 PATHOLOGY ->
-                    TaxApplicableOn.SERVICE;
-
-            case MEDICATION ->
-                    TaxApplicableOn.PRODUCT;
+            case SERVICE -> TaxApplicableOn.SERVICE;
+            case PROCEDURE -> TaxApplicableOn.PROCEDURE;
+            case MEDICATION -> TaxApplicableOn.MEDICATION;
+            case LABORATORY -> TaxApplicableOn.LABORATORY;
+            case RADIOLOGY -> TaxApplicableOn.RADIOLOGY;
+            case PATHOLOGY -> TaxApplicableOn.PATHOLOGY;
+            // A vaccine is a medicinal product: it is taxed like a medication
+            case VACCINE -> TaxApplicableOn.MEDICATION;
         };
     }
 
@@ -1646,7 +1825,8 @@ public class BillingEngineService {
                  PATHOLOGY ->
                     DiscountApplicableOn.SERVICE;
 
-            case MEDICATION ->
+            case MEDICATION,
+                 VACCINE ->
                     DiscountApplicableOn.PRODUCT;
         };
     }

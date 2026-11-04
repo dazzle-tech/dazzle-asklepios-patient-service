@@ -12,5 +12,7 @@ public record BrandMedicationSetupDTO(
         BigDecimal price,
         String currency,
         Boolean isActive,
-        Long billingRuleId
+        Long billingRuleId,
+        Long uomGroupId,
+        Long priceBaseUomId
 ) {}

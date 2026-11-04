@@ -1,6 +1,8 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.ActiveIngredientClient;
+import com.dazzle.asklepios.client.setup.PharmaceuticalClient;
+import com.dazzle.asklepios.client.setup.dto.PharmaceuticalDTO;
 import com.dazzle.asklepios.domain.PatientPrescription;
 import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
@@ -14,6 +16,7 @@ import com.dazzle.asklepios.service.dto.patientPrescription.PrescriptionMedicati
 import com.dazzle.asklepios.service.helper.BrandMedicationHelper;
 import com.dazzle.asklepios.service.helper.ICDTreeHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import feign.FeignException;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -23,6 +26,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 
 @Service
@@ -34,9 +38,11 @@ public class PatientPrescriptionMedicationService {
     private final PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository;
     private final PatientPrescriptionRepository patientPrescriptionRepository;
     private final ActiveIngredientClient activeIngredientClient;
+    private final PharmaceuticalClient pharmaceuticalClient;
     private final BrandMedicationHelper brandMedicationHelper;
     private final ICDTreeHelper icdTreeHelper;
     private final PatientServiceAndProductService patientServiceAndProductService;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public PatientPrescriptionMedication create(PrescriptionMedicationCreateDTO prescriptionMedicationCreateDTO) {
         LOG.debug("create a PrescriptionMedicationCreateDTO={}", prescriptionMedicationCreateDTO);
@@ -44,16 +50,23 @@ public class PatientPrescriptionMedicationService {
         PatientPrescription header = patientPrescriptionRepository.findById(prescriptionMedicationCreateDTO.prescriptionHeaderId)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + prescriptionMedicationCreateDTO.prescriptionHeaderId));
 
-        validateChronicVsDuration(prescriptionMedicationCreateDTO.chronicMedication, prescriptionMedicationCreateDTO.duration);
+        //validateChronicVsDuration(prescriptionMedicationCreateDTO.chronicMedication, prescriptionMedicationCreateDTO.duration);
         validateMedicationSelection(
                 prescriptionMedicationCreateDTO.activeIngredientId,
                 prescriptionMedicationCreateDTO.medicationsId,
                 prescriptionMedicationCreateDTO.otherMedicationName
         );
+        validatePharmaceutical(
+                prescriptionMedicationCreateDTO.pharmaceuticalId,
+                prescriptionMedicationCreateDTO.activeIngredientId
+        );
         PatientPrescriptionMedication entity = PatientPrescriptionMedication.builder()
                 .prescriptionHeader(header)
                 .medicationsId(
                         prescriptionMedicationCreateDTO.medicationsId
+                )
+                .pharmaceuticalId(
+                        prescriptionMedicationCreateDTO.pharmaceuticalId
                 )
                 .otherMedicationName(
                         prescriptionMedicationCreateDTO.otherMedicationName != null
@@ -87,7 +100,9 @@ public class PatientPrescriptionMedicationService {
                 .status(PrescriptionStatus.DRAFT)
                 .build();
 
-        return patientPrescriptionMedicationRepository.saveAndFlush(entity);
+        reopenSessionAuditContext.applyOpenSession(header.getEncounterId());
+        PatientPrescriptionMedication saved = patientPrescriptionMedicationRepository.saveAndFlush(entity);
+        return saved;
     }
 
     public PatientPrescriptionMedication update(Long id, PrescriptionMedicationUpdateDTO prescriptionMedicationUpdateDTO) {
@@ -95,6 +110,7 @@ public class PatientPrescriptionMedicationService {
 
         PatientPrescriptionMedication entity = patientPrescriptionMedicationRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescriptionMedication not found: " + id));
+        Long encounterId = entity.getPrescriptionHeader() == null ? null : entity.getPrescriptionHeader().getEncounterId();
         if (prescriptionMedicationUpdateDTO.instructionsType != null)
             entity.setInstructionsType(prescriptionMedicationUpdateDTO.instructionsType);
 
@@ -113,8 +129,8 @@ public class PatientPrescriptionMedicationService {
 
         if (prescriptionMedicationUpdateDTO.chronicMedication != null || prescriptionMedicationUpdateDTO.duration != null) {
             Boolean chronic = prescriptionMedicationUpdateDTO.chronicMedication != null ? prescriptionMedicationUpdateDTO.chronicMedication : entity.getChronicMedication();
-            Long duration = prescriptionMedicationUpdateDTO.duration != null ? prescriptionMedicationUpdateDTO.duration : entity.getDuration();
-            validateChronicVsDuration(chronic, duration);
+            BigDecimal duration = prescriptionMedicationUpdateDTO.duration != null ? prescriptionMedicationUpdateDTO.duration : entity.getDuration();
+//             validateChronicVsDuration(chronic, duration);
 
             if (prescriptionMedicationUpdateDTO.chronicMedication != null)
                 entity.setChronicMedication(prescriptionMedicationUpdateDTO.chronicMedication);
@@ -171,6 +187,16 @@ public class PatientPrescriptionMedicationService {
             );
         }
 
+        if (prescriptionMedicationUpdateDTO.pharmaceuticalId != null) {
+            validatePharmaceutical(
+                    prescriptionMedicationUpdateDTO.pharmaceuticalId,
+                    entity.getActiveIngredientId()
+            );
+            entity.setPharmaceuticalId(
+                    prescriptionMedicationUpdateDTO.pharmaceuticalId
+            );
+        }
+
         if (prescriptionMedicationUpdateDTO.otherMedicationName != null) {
             String otherMedicationName =
                     prescriptionMedicationUpdateDTO.otherMedicationName.trim();
@@ -186,7 +212,9 @@ public class PatientPrescriptionMedicationService {
             entity.setOtherMedicationName(otherMedicationName);
         }
 
-        return patientPrescriptionMedicationRepository.saveAndFlush(entity);
+        reopenSessionAuditContext.applyOpenSession(encounterId);
+        PatientPrescriptionMedication saved = patientPrescriptionMedicationRepository.saveAndFlush(entity);
+        return saved;
     }
 
 
@@ -218,6 +246,7 @@ public class PatientPrescriptionMedicationService {
         PatientPrescriptionMedication entity = patientPrescriptionMedicationRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescriptionMedication not found: " + id));
 
+        Long encounterId = entity.getPrescriptionHeader() == null ? null : entity.getPrescriptionHeader().getEncounterId();
         patientServiceAndProductService.cancelBySource(
                 ServiceSource.PRESCRIPTION,
                 entity.getId(),
@@ -229,10 +258,12 @@ public class PatientPrescriptionMedicationService {
         entity.setCancellationReason(cancellationReason);
         entity.setCancelledBy(currentUsername());
         entity.setCancelledDate(Instant.now());
-        return patientPrescriptionMedicationRepository.saveAndFlush(entity);
+        reopenSessionAuditContext.applyOpenSession(encounterId);
+        PatientPrescriptionMedication saved = patientPrescriptionMedicationRepository.saveAndFlush(entity);
+        return saved;
     }
 
-    private void validateChronicVsDuration(Boolean chronic, Long duration) {
+    private void validateChronicVsDuration(Boolean chronic, BigDecimal duration) {
         if (Boolean.TRUE.equals(chronic) && duration != null) {
             throw new BadRequestAlertException(
                     "Cannot set chronic medication and duration together.",
@@ -270,6 +301,33 @@ public class PatientPrescriptionMedicationService {
         }
     }
 
+
+    private void validatePharmaceutical(Long pharmaceuticalId, Long activeIngredientId) {
+        if (pharmaceuticalId == null) {
+            return;
+        }
+
+        PharmaceuticalDTO pharmaceutical;
+        try {
+            pharmaceutical = pharmaceuticalClient.getPharmaceutical(pharmaceuticalId);
+        } catch (FeignException.NotFound e) {
+            throw new BadRequestAlertException(
+                    "Pharmaceutical not found: " + pharmaceuticalId,
+                    "patientPrescriptionMedication",
+                    "pharmaceuticalNotFound"
+            );
+        }
+
+        if (pharmaceutical.activeIngredientId() != null
+                && activeIngredientId != null
+                && !pharmaceutical.activeIngredientId().equals(activeIngredientId)) {
+            throw new BadRequestAlertException(
+                    "Pharmaceutical does not belong to the selected Active Ingredient.",
+                    "patientPrescriptionMedication",
+                    "pharmaceuticalMismatch"
+            );
+        }
+    }
 
     private <T> T required(T value, String field) {
         if (value == null)

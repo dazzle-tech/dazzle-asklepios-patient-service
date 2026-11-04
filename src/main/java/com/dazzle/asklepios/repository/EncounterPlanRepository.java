@@ -11,4 +11,6 @@ public interface EncounterPlanRepository extends JpaRepository<EncounterPlan, Lo
 
     Optional<EncounterPlan> findTopByEncounterIdOrderByCreatedDateDesc(Long encounterId);
     Page<EncounterPlan> findAllByPatientIdOrderByCreatedDateDesc(Long patientId , Pageable pageable);
+
+    boolean existsByIdAndEncounterId(Long id, Long encounterId);
 }

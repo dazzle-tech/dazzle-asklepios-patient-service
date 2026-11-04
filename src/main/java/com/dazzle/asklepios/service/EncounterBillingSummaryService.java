@@ -124,6 +124,8 @@ public class EncounterBillingSummaryService {
 
     private final ClinicalFulfillmentStatusResolver
             clinicalFulfillmentStatusResolver;
+    private final DiagnosticChargeTimingService
+            diagnosticChargeTimingService;
 
     /**
      * Returns an empty summary when the encounter does not yet have a
@@ -297,6 +299,13 @@ public class EncounterBillingSummaryService {
                     );
         }
 
+        BigDecimal encounterWalletAmount =
+                money(
+                        settlementTotals
+                                .walletOnlyAmount()
+                                .add(sumOpenReserved(lines))
+                );
+
         return new EncounterBillingSummary(
                 charge.getId(),
                 charge.getChargeNumber(),
@@ -332,7 +341,8 @@ public class EncounterBillingSummaryService {
                 invoiceBalance.outstandingAmount(),
                 items,
                 encounter.getCoverageType(),
-                encounter.getPatientInsuranceId()
+                encounter.getPatientInsuranceId(),
+                encounterWalletAmount
         );
     }
 
@@ -429,8 +439,29 @@ public class EncounterBillingSummaryService {
                 responsibilities.stream()
                         .map(this::buildResponsibilitySummary)
                         .toList(),
-                null
+                null,
+                pricingDisplay.taxRate(),
+                pricingDisplay.discountType(),
+                pricingDisplay.discountRate(),
+                pricingDisplay.discountSource(),
+                pricingDisplay.discountReason(),
+                resolvePartyTax(line, line.getPatientTaxAmount()),
+                resolvePartyTax(line, line.getInsuranceTaxAmount())
         );
+    }
+
+    /**
+     * Party tax is reported only when it was distributed on the line;
+     * lines billed before the Patient Copayment / Claim Share toggles
+     * existed return null.
+     */
+    private BigDecimal resolvePartyTax(
+            BillingChargeLine line,
+            BigDecimal partyTax
+    ) {
+        return line.getCalculatedTaxAmount() == null
+                ? null
+                : money(partyTax);
     }
 
     private BillingResponsibilitySummary buildResponsibilitySummary(
@@ -544,7 +575,8 @@ public class EncounterBillingSummaryService {
                         buildUnbilledItemSummary(
                                 encounter,
                                 item,
-                                displayNameCache
+                                displayNameCache,
+                                encounter.getPatient().getIsCitizen()
                         )
                 )
                 .filter(Objects::nonNull)
@@ -562,13 +594,14 @@ public class EncounterBillingSummaryService {
             return false;
         }
 
-        return true;
+        return !diagnosticChargeTimingService.isChargeDeferred(item);
     }
 
     private EncounterBillingItemSummary buildUnbilledItemSummary(
             PatientEncounter encounter,
             PatientServiceAndProduct item,
-            Map<String, String> displayNameCache
+            Map<String, String> displayNameCache,
+            Boolean patientCitizen
     ) {
         ResolvedBillingPrice resolvedPrice;
 
@@ -576,7 +609,9 @@ public class EncounterBillingSummaryService {
             resolvedPrice =
                     billingEngineService.resolvePricing(
                             item,
-                            encounter.getFacilityId()
+                            encounter.getFacilityId(),
+                            null,
+                            patientCitizen
                     );
         } catch (RuntimeException exception) {
             LOG.debug(
@@ -685,6 +720,21 @@ public class EncounterBillingSummaryService {
                 BillingChargeLineStatus.DRAFT,
                 item.getCreatedDate(),
                 List.of(),
+                pricingResponse == null
+                        ? null
+                        : pricingResponse.taxRate(),
+                pricingResponse == null || pricingResponse.discountType() == null
+                        ? null
+                        : pricingResponse.discountType().name(),
+                pricingResponse == null
+                        ? null
+                        : pricingResponse.discountRate(),
+                pricingResponse == null
+                        ? null
+                        : firstText(
+                        pricingResponse.priceListName(),
+                        pricingResponse.priceListCode()
+                ),
                 null
         );
     }
@@ -741,7 +791,8 @@ public class EncounterBillingSummaryService {
                         ? List.of()
                         : items,
                 encounter.getCoverageType(),
-                encounter.getPatientInsuranceId()
+                encounter.getPatientInsuranceId(),
+                zero()
         );
     }
 
@@ -841,7 +892,14 @@ public class EncounterBillingSummaryService {
                 item.status(),
                 item.chargedAt(),
                 item.responsibilities(),
-                item.clinicalStatus()
+                item.clinicalStatus(),
+                item.taxRate(),
+                item.discountType(),
+                item.discountRate(),
+                item.discountSource(),
+                item.discountReason(),
+                item.patientTaxAmount(),
+                item.insuranceTaxAmount()
         );
     }
 
@@ -861,6 +919,8 @@ public class EncounterBillingSummaryService {
                         );
 
         BigDecimal walletSettled =
+                zero();
+        BigDecimal walletOnly =
                 zero();
         BigDecimal debitSettled =
                 zero();
@@ -887,8 +947,17 @@ public class EncounterBillingSummaryService {
 
             switch (sourceType) {
                 case RESERVATION,
-                     WALLET_AVAILABLE,
-                     PAYMENT ->
+                     WALLET_AVAILABLE -> {
+                    walletSettled =
+                            walletSettled.add(
+                                    amount
+                            );
+                    walletOnly =
+                            walletOnly.add(
+                                    amount
+                            );
+                }
+                case PAYMENT ->
                         walletSettled =
                                 walletSettled.add(
                                         amount
@@ -906,13 +975,29 @@ public class EncounterBillingSummaryService {
 
         return new SettlementTotals(
                 money(walletSettled),
-                money(debitSettled)
+                money(debitSettled),
+                money(walletOnly)
         );
+    }
+
+    private BigDecimal sumOpenReserved(
+            List<BillingChargeLine> lines
+    ) {
+        return lines.stream()
+                .filter(line ->
+                        line.getStatus()
+                                != BillingChargeLineStatus.CANCELLED
+                )
+                .map(line ->
+                        money(line.getReservedAmount())
+                )
+                .reduce(zero(), BigDecimal::add);
     }
 
     private record SettlementTotals(
             BigDecimal walletSettledAmount,
-            BigDecimal debitSettledAmount
+            BigDecimal debitSettledAmount,
+            BigDecimal walletOnlyAmount
     ) {
     }
 
@@ -1011,6 +1096,20 @@ public class EncounterBillingSummaryService {
         );
     }
 
+    private String firstText(String... values) {
+        if (values == null) {
+            return null;
+        }
+
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+
+        return null;
+    }
+
     private PricingDisplayFields resolvePricingDisplayFields(
             Long chargeLineId
     ) {
@@ -1107,12 +1206,27 @@ public class EncounterBillingSummaryService {
                             setupUnitPrice,
                             resolvedUnitPrice,
                             priceSource,
-                            priceListItemCode
+                            priceListItemCode,
+                            snapshot.getTaxRate(),
+                            snapshot.getDiscountType() == null
+                                    ? null
+                                    : snapshot.getDiscountType().name(),
+                            snapshot.getDiscountRate(),
+                            firstText(
+                                    snapshot.getPriceListName(),
+                                    snapshot.getPriceListCode()
+                            ),
+                            firstText(snapshot.getDiscountReason())
                     );
                 })
                 .orElseGet(
                         () ->
                                 new PricingDisplayFields(
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
                                         null,
                                         null,
                                         null,
@@ -1171,7 +1285,9 @@ public class EncounterBillingSummaryService {
                 ResolvedBillingPrice resolvedPrice =
                         billingEngineService.resolvePricing(
                                 item,
-                                line.getEncounter().getFacilityId()
+                                line.getEncounter().getFacilityId(),
+                                null,
+                                line.getEncounter().getPatient().getIsCitizen()
                         );
 
                 if (
@@ -1258,7 +1374,12 @@ public class EncounterBillingSummaryService {
             BigDecimal setupUnitPrice,
             BigDecimal resolvedUnitPrice,
             String priceSource,
-            String priceListItemCode
+            String priceListItemCode,
+            BigDecimal taxRate,
+            String discountType,
+            BigDecimal discountRate,
+            String discountSource,
+            String discountReason
     ) {
     }
 

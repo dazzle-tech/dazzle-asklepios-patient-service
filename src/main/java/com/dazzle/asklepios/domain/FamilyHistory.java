@@ -13,9 +13,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import jakarta.persistence.Temporal;
-import jakarta.persistence.TemporalType;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -27,7 +24,6 @@ import lombok.Setter;
 import java.io.Serial;
 import java.io.Serializable;
 import java.time.Instant;
-import java.util.Date;
 
 @Entity
 @Getter
@@ -52,22 +48,27 @@ public class FamilyHistory extends AbstractAuditingEntity<Long>
     @JoinColumn(name = "patient_id", nullable = false)
     private Patient patient;
 
-    @NotBlank
-    @Column(name = "condition", nullable = false)
+    @Column(name = "condition")
     private String condition;
 
-    @NotNull
     @Enumerated(EnumType.STRING)
-    @Column(name = "relation", nullable = false, length = 100)
+    @Column(name = "relation", length = 100)
     private Relations relation;
 
     @Column(name = "inherited_diseases")
     private Boolean inheritedDiseases;
 
+    @Column(name = "patient_is_free", nullable = false)
+    @Builder.Default
+    private Boolean patientIsFree = Boolean.FALSE;
+
+    @Column(name = "free_text", columnDefinition = "text")
+    private String freeText;
+
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
-
+    @Builder.Default
     private PatientHistoryStatus status = PatientHistoryStatus.ACTIVE;
 
     @Column(name = "cancelled_by", length = 50)

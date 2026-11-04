@@ -2,6 +2,7 @@ package com.dazzle.asklepios.web.rest.vm.uccmedicationorders;
 
 import com.dazzle.asklepios.domain.UrgentCareMedicationOrder;
 import com.dazzle.asklepios.domain.enumeration.FrequencyList;
+import com.dazzle.asklepios.domain.enumeration.MedFrequency;
 import com.dazzle.asklepios.domain.enumeration.MedicationInstructionType;
 import com.dazzle.asklepios.domain.enumeration.MedicationOrderStatus;
 import com.dazzle.asklepios.domain.enumeration.Unit;
@@ -37,7 +38,8 @@ public record PatientUccMedicationOrderResponseVM(
         String createdBy,
         Instant createdDate,
         String lastModifiedBy,
-        Instant lastModifiedDate
+        Instant lastModifiedDate,
+        MedFrequency frequency
 ) {
     public static PatientUccMedicationOrderResponseVM ofEntity(UrgentCareMedicationOrder entity) {
         return new PatientUccMedicationOrderResponseVM(
@@ -67,7 +69,8 @@ public record PatientUccMedicationOrderResponseVM(
                 entity.getCreatedBy(),
                 entity.getCreatedDate(),
                 entity.getLastModifiedBy(),
-                entity.getLastModifiedDate()
+                entity.getLastModifiedDate(),
+                entity.getFrequency()
         );
     }
 }

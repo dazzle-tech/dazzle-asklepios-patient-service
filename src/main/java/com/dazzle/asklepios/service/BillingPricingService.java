@@ -1,12 +1,14 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.TaxCalculationType;
 import com.dazzle.asklepios.domain.enumeration.billing.CalculationOrder;
 import com.dazzle.asklepios.domain.enumeration.billing.DiscountType;
 import com.dazzle.asklepios.domain.enumeration.billing.RoundingModeType;
 import com.dazzle.asklepios.domain.enumeration.billing.TaxType;
 import com.dazzle.asklepios.service.dto.billing.BillingPricingInput;
 import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
+import com.dazzle.asklepios.service.dto.billing.PartyTaxDistribution;
 import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +31,8 @@ public class BillingPricingService {
 
     private static final String ENTITY_NAME =
             "billingPricing";
+
+    private static final int MONEY_SCALE = 4;
 
     public void calculate(
             BillingProcessingContext context
@@ -101,6 +105,9 @@ public class BillingPricingService {
         BigDecimal taxableAmount;
         BigDecimal taxAmount;
         BigDecimal netAmount;
+        boolean taxIncludedInPrice =
+                input.taxCalculationType()
+                        == TaxCalculationType.INCLUSIVE;
 
         if (input.calculationOrder()
                 == CalculationOrder.TAX_THEN_DISCOUNT) {
@@ -110,6 +117,7 @@ public class BillingPricingService {
                             grossAmount,
                             input.taxType(),
                             input.taxRate(),
+                            input.taxCalculationType(),
                             scale,
                             roundingMode
                     );
@@ -125,13 +133,17 @@ public class BillingPricingService {
             )
                     : taxBeforeDiscount;
 
-            netAmount =
-                    grossAmount
-                            .add(taxAmount)
-                            .subtract(discountAmount)
-                            .subtract(exemptionAmount)
-                            .max(BigDecimal.ZERO)
-                            .setScale(scale, roundingMode);
+            netAmount = grossAmount
+                    .subtract(discountAmount)
+                    .subtract(exemptionAmount);
+
+            if (!taxIncludedInPrice) {
+                netAmount = netAmount.add(taxAmount);
+            }
+
+            netAmount = netAmount
+                    .max(BigDecimal.ZERO)
+                    .setScale(scale, roundingMode);
 
         } else {
 
@@ -143,15 +155,18 @@ public class BillingPricingService {
                             taxableAmount,
                             input.taxType(),
                             input.taxRate(),
+                            input.taxCalculationType(),
                             scale,
                             roundingMode
                     );
 
-            netAmount =
-                    taxableAmount
-                            .add(taxAmount)
-                            .max(BigDecimal.ZERO)
-                            .setScale(scale, roundingMode);
+            netAmount = taxIncludedInPrice
+                    ? taxableAmount
+                    : taxableAmount.add(taxAmount);
+
+            netAmount = netAmount
+                    .max(BigDecimal.ZERO)
+                    .setScale(scale, roundingMode);
         }
 
         PriceCalculationResult result =
@@ -179,6 +194,86 @@ public class BillingPricingService {
                 taxAmount,
                 netAmount
         );
+    }
+
+    /**
+     * Splits the tax calculated on one item between the patient share and the
+     * insurance share, then removes the portion of a party whose toggle is off.
+     *
+     * The shares are the responsibility amounts produced by the existing
+     * contract / coverage rules on the tax-inclusive net amount. Each party's
+     * tax portion is proportional to its own share, so:
+     *
+     * - Patient Copayment controls only the patient's tax portion.
+     * - Claim Share controls only the insurance's tax portion.
+     * - A party with a zero share carries zero tax.
+     * - A removed portion is never moved to the other party.
+     *
+     * For self-pay the caller passes a zero insurance share, so the whole tax
+     * belongs to the patient and only Patient Copayment applies.
+     */
+    public PartyTaxDistribution distributeTax(
+            BigDecimal calculatedTax,
+            BigDecimal patientShare,
+            BigDecimal insuranceShare,
+            Boolean taxOnPatientCopayment,
+            Boolean taxOnClaimShare
+    ) {
+        BigDecimal tax = money(calculatedTax);
+        BigDecimal patient = money(patientShare);
+        BigDecimal insurance = money(insuranceShare);
+
+        BigDecimal patientTaxPortion;
+
+        if (tax.signum() == 0 || patient.signum() == 0) {
+            patientTaxPortion = money(BigDecimal.ZERO);
+        } else if (insurance.signum() == 0) {
+            patientTaxPortion = tax;
+        } else {
+            patientTaxPortion =
+                    tax.multiply(patient)
+                            .divide(
+                                    patient.add(insurance),
+                                    MONEY_SCALE,
+                                    RoundingMode.HALF_UP
+                            );
+        }
+
+        BigDecimal insuranceTaxPortion =
+                insurance.signum() == 0
+                        ? money(BigDecimal.ZERO)
+                        : tax.subtract(patientTaxPortion);
+
+        BigDecimal patientTax =
+                isApplied(taxOnPatientCopayment)
+                        ? patientTaxPortion
+                        : money(BigDecimal.ZERO);
+
+        BigDecimal insuranceTax =
+                isApplied(taxOnClaimShare)
+                        ? insuranceTaxPortion
+                        : money(BigDecimal.ZERO);
+
+        return new PartyTaxDistribution(
+                tax,
+                patientTax,
+                insuranceTax,
+                patient.subtract(patientTaxPortion).add(patientTax),
+                insurance.subtract(insuranceTaxPortion).add(insuranceTax)
+        );
+    }
+
+    /**
+     * Taxes saved before the toggles existed carry no value; they applied tax
+     * to every share, so a missing toggle means "applied".
+     */
+    private boolean isApplied(Boolean toggle) {
+        return !Boolean.FALSE.equals(toggle);
+    }
+
+    private BigDecimal money(BigDecimal value) {
+        return defaultZero(value)
+                .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
     }
 
     private BigDecimal calculateDiscount(
@@ -269,6 +364,7 @@ public class BillingPricingService {
             BigDecimal taxableAmount,
             TaxType taxType,
             BigDecimal taxRate,
+            TaxCalculationType calculationType,
             int scale,
             RoundingMode roundingMode
     ) {
@@ -285,18 +381,33 @@ public class BillingPricingService {
 
         return switch (taxType) {
 
-            case PERCENTAGE ->
-                    taxableAmount
-                            .multiply(rate)
-                            .divide(
-                                    BigDecimal.valueOf(100),
-                                    scale,
-                                    roundingMode
-                            )
-                            .setScale(scale, roundingMode);
+            case PERCENTAGE -> {
+                BigDecimal divisor =
+                        calculationType == TaxCalculationType.INCLUSIVE
+                                ? BigDecimal.valueOf(100).add(rate)
+                                : BigDecimal.valueOf(100);
 
-            case FIXED_AMOUNT ->
-                    rate.setScale(scale, roundingMode);
+                yield taxableAmount
+                        .multiply(rate)
+                        .divide(
+                                divisor,
+                                scale,
+                                roundingMode
+                        )
+                        .setScale(scale, roundingMode);
+            }
+
+            case FIXED_AMOUNT -> {
+                BigDecimal fixedAmount =
+                        rate.setScale(scale, roundingMode);
+
+                if (calculationType == TaxCalculationType.INCLUSIVE
+                        && fixedAmount.compareTo(taxableAmount) > 0) {
+                    yield taxableAmount.setScale(scale, roundingMode);
+                }
+
+                yield fixedAmount;
+            }
             default -> throw new IllegalStateException("Unexpected value: " + taxType);
         };
     }

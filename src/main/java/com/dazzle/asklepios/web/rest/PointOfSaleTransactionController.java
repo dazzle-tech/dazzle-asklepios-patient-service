@@ -1,6 +1,8 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.service.PointOfSaleTransactionService;
+import com.dazzle.asklepios.service.dto.billing.BillingPaymentResult;
+import com.dazzle.asklepios.service.dto.pointOfSale.CreateManualPointOfSaleTransactionDTO;
 import com.dazzle.asklepios.service.dto.pointOfSale.CreatePointOfSaleTransactionDTO;
 import com.dazzle.asklepios.service.dto.pointOfSale.PointOfSaleTransactionDTO;
 import com.dazzle.asklepios.service.dto.pointOfSale.PointOfSaleWebhookDTO;
@@ -13,6 +15,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -50,9 +53,35 @@ public class PointOfSaleTransactionController {
         return ResponseEntity.ok(result);
     }
 
+    @PostMapping("/point-of-sale-transactions/manual")
+    public ResponseEntity<PointOfSaleTransactionDTO> recordManualEntry(
+            @Valid @RequestBody CreateManualPointOfSaleTransactionDTO request
+    ) {
+
+        LOG.info(
+                "Manual entry API called. PatientId={}, Amount={}, SourceType={}, SourceReferenceId={}",
+                request.patientId(),
+                request.amount(),
+                request.sourceType(),
+                request.sourceReferenceId()
+        );
+
+        PointOfSaleTransactionDTO result =
+                pointOfSaleTransactionService.recordManualEntry(request);
+
+        LOG.info(
+                "Manual entry API completed. TransactionId={}, OrderId={}",
+                result.id(),
+                result.orderId()
+        );
+
+        return ResponseEntity.ok(result);
+    }
+
     @PostMapping("/point-of-sale-transactions/webhook")
     public ResponseEntity<Void> webhook(
-            @RequestBody PointOfSaleWebhookDTO webhook
+            @RequestBody PointOfSaleWebhookDTO webhook,
+            @RequestParam(required = false) String token
     ) {
 
         LOG.info(
@@ -63,7 +92,8 @@ public class PointOfSaleTransactionController {
         );
 
         pointOfSaleTransactionService.processWebhook(
-                webhook
+                webhook,
+                token
         );
 
         LOG.info(
@@ -96,6 +126,34 @@ public class PointOfSaleTransactionController {
                 result.id(),
                 result.transactionStatus(),
                 result.responseCode()
+        );
+
+        return ResponseEntity.ok(
+                result
+        );
+    }
+
+    @PostMapping(
+            "/point-of-sale-transactions/transactions/{id}/complete-payment"
+    )
+    public ResponseEntity<BillingPaymentResult>
+    completePayment(
+            @PathVariable Long id
+    ) {
+
+        LOG.info(
+                "Complete payment requested. InternalTransactionId={}",
+                id
+        );
+
+        BillingPaymentResult result =
+                pointOfSaleTransactionService
+                        .completePayment(id);
+
+        LOG.info(
+                "Complete payment finished. InternalTransactionId={}, PaymentId={}",
+                id,
+                result.paymentId()
         );
 
         return ResponseEntity.ok(

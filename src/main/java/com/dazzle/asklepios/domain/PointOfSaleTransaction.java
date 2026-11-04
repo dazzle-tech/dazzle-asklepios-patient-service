@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleEntryMode;
 import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleSourceType;
 import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleTransactionStatus;
 import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleTransactionType;
@@ -81,6 +82,11 @@ public class PointOfSaleTransaction extends AbstractAuditingEntity<Long> impleme
     @Column(name = "amount", precision = 21, scale = 2, nullable = false)
     private BigDecimal amount;
 
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @Column(name = "entry_mode", nullable = false, length = 20)
+    private PointOfSaleEntryMode entryMode = PointOfSaleEntryMode.TERMINAL;
+
     @Column(name = "currency_code")
     private String currencyCode;
 
@@ -110,6 +116,10 @@ public class PointOfSaleTransaction extends AbstractAuditingEntity<Long> impleme
 
     @Column(name = "scheme_label")
     private String schemeLabel;
+
+    @Column(name = "pan_number")
+    private String panNumber;
+
     @Column(name = "stan_no")
     private String stanNo;
 

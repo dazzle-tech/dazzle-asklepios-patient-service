@@ -36,6 +36,12 @@ public interface BillingPricingSnapshotRepository
     );
 
     List<BillingPricingSnapshot>
+    findAllByChargeLine_IdInAndStatusOrderByIdDesc(
+            List<Long> chargeLineIds,
+            BillingPricingSnapshotStatus status
+    );
+
+    List<BillingPricingSnapshot>
     findAllByChargeLine_IdOrderByIdDesc(
             Long chargeLineId
     );

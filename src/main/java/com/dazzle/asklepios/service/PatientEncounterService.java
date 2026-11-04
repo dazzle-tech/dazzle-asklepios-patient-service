@@ -11,6 +11,7 @@ import com.dazzle.asklepios.domain.BodyMeasurements;
 import com.dazzle.asklepios.domain.EncounterDischargeLog;
 import com.dazzle.asklepios.domain.PainAssessment;
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientDocument;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientEncounterFieldAudit;
 import com.dazzle.asklepios.domain.PatientObservationsComplaints;
@@ -19,6 +20,7 @@ import com.dazzle.asklepios.domain.VitalSigns;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.AdditionalMeasurementsRepository;
@@ -48,8 +50,10 @@ import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import feign.FeignException;
 import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
+import com.dazzle.asklepios.service.dto.patientEncounter.DiagnosticCheckoutApproval;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCompletionValidationDTO;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Join;
@@ -60,13 +64,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.UncategorizedSQLException;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -138,6 +146,11 @@ public class PatientEncounterService {
     private final PatientEncounterFieldAuditRepository auditRepository;
     private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
     private final EncounterPreAuthorizationGuardService encounterPreAuthorizationGuardService;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
+    private final EncounterReopenGuard encounterReopenGuard;
+    private final EncounterAmendmentService encounterAmendmentService;
+    private final InsuranceCheckoutDiagnosticApprovalService insuranceCheckoutDiagnosticApprovalService;
+    private final PatientActivityService patientActivityService;
 
     public PatientEncounterService(
             PatientEncounterRepository patientEncounterRepository,
@@ -169,12 +182,17 @@ public class PatientEncounterService {
             @Lazy BillingEngineService billingEngineService,
             NotificationHelper notificationHelper, InvoiceGenerationService invoiceGenerationService, UserRepository userRepository, EncounterDischargeLogRepository encounterDischargeLogRepository, PatientEncounterFieldAuditRepository auditRepository,
             FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy,
-            EncounterPreAuthorizationGuardService encounterPreAuthorizationGuardService) {
+            EncounterPreAuthorizationGuardService encounterPreAuthorizationGuardService,
+            ReopenSessionAuditContext reopenSessionAuditContext,
+            EncounterReopenGuard encounterReopenGuard,
+            EncounterAmendmentService encounterAmendmentService,
+            InsuranceCheckoutDiagnosticApprovalService insuranceCheckoutDiagnosticApprovalService,
+            @Lazy PatientActivityService patientActivityService) {
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientRepository = patientRepository;
         this.entityManager = entityManager;
-        
-        
+
+
         this.encounterAssignToBedService = encounterAssignToBedService;
         this.additionalMeasurementsRepository = additionalMeasurementsRepository;
         this.painAssessmentRepository = painAssessmentRepository;
@@ -208,6 +226,11 @@ public class PatientEncounterService {
         this.auditRepository = auditRepository;
         this.followUpReviewDefaultServicePolicy = followUpReviewDefaultServicePolicy;
         this.encounterPreAuthorizationGuardService = encounterPreAuthorizationGuardService;
+        this.reopenSessionAuditContext = reopenSessionAuditContext;
+        this.encounterReopenGuard = encounterReopenGuard;
+        this.encounterAmendmentService = encounterAmendmentService;
+        this.insuranceCheckoutDiagnosticApprovalService = insuranceCheckoutDiagnosticApprovalService;
+        this.patientActivityService = patientActivityService;
     }
 
     public PatientEncounter create(PatientEncounterCreateDTO createDTO) {
@@ -260,6 +283,8 @@ public class PatientEncounterService {
                 .priorityLevel(createDTO.priorityLevel())
                 .originType(createDTO.originType())
                 .originName(createDTO.originName())
+                .promotionName(createDTO.promotionName())
+                .promotionCode(createDTO.promotionCode())
                 .notes(createDTO.notes())
                 .chiefComplaint(createDTO.chiefComplaint())
                 .encounterDate(createDTO.encounterDate())
@@ -326,6 +351,8 @@ public class PatientEncounterService {
                     );
                 });
 
+        reopenSessionAuditContext.applyOpenSession(existingPatientEncounter.getId());
+
         Patient patient = patientRepository.findById(updateDTO.patientId())
                 .orElseThrow(() -> {
                     LOG.warn("[UPDATE] PatientEncounter rejected: patient not found patientId={} encounterId={}",
@@ -351,6 +378,8 @@ public class PatientEncounterService {
         existingPatientEncounter.setPriorityLevel(updateDTO.priorityLevel());
         existingPatientEncounter.setOriginType(updateDTO.originType());
         existingPatientEncounter.setOriginName(updateDTO.originName());
+        existingPatientEncounter.setPromotionName(updateDTO.promotionName());
+        existingPatientEncounter.setPromotionCode(updateDTO.promotionCode());
         existingPatientEncounter.setNotes(updateDTO.notes());
         existingPatientEncounter.setChiefComplaint(updateDTO.chiefComplaint());
         existingPatientEncounter.setPhysicalExaminationSummery(updateDTO.physicalExaminationSummery());
@@ -385,6 +414,14 @@ public class PatientEncounterService {
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             LOG.warn("[UPDATE] PatientEncounter failed (constraint) id={} payload={}", patientEncounterId, updateDTO, ex);
             throw handleConstraintViolation(ex);
+        } catch (UncategorizedSQLException ex) {
+            BadRequestAlertException ongoingEmergency = ongoingEmergencyEncounterViolation(ex);
+            if (ongoingEmergency != null) {
+                LOG.warn("[UPDATE] PatientEncounter failed (constraint) id={} payload={}", patientEncounterId, updateDTO, ex);
+                throw ongoingEmergency;
+            }
+            LOG.error("[UPDATE] PatientEncounter failed (unexpected) id={} payload={}", patientEncounterId, updateDTO, ex);
+            throw ex;
         } catch (RuntimeException ex) {
             LOG.error("[UPDATE] PatientEncounter failed (unexpected) id={} payload={}", patientEncounterId, updateDTO, ex);
             throw ex;
@@ -468,7 +505,11 @@ public class PatientEncounterService {
 
             List<Predicate> predicates = new ArrayList<>();
 
-            predicates.add(cb.equal(root.get("departmentId"), filter.departmentId()));
+            if (filter.departmentIds() != null && !filter.departmentIds().isEmpty()) {
+                predicates.add(root.get("departmentId").in(filter.departmentIds()));
+            } else {
+                predicates.add(cb.equal(root.get("departmentId"), filter.departmentId()));
+            }
             predicates.add(cb.between(root.get("encounterDate"), effectiveFrom, effectiveTo));
             predicates.add(root.get("status").in(effectiveStatuses));
 
@@ -493,48 +534,294 @@ public class PatientEncounterService {
                 );
             }
 
-            if (hasPatientName || hasMrn) {
-                Join<PatientEncounter, Patient> patientJoin = root.join("patient", JoinType.INNER);
-
-                if (hasMrn) {
-                    predicates.add(cb.equal(patientJoin.get("medicalRecordNumber"), filter.mrn().trim()));
-                }
-
-                if (hasPatientName) {
-                    String[] tokens = filter.patientName().trim().toLowerCase().split("\\s+");
-
-                    Expression<String> first = cb.lower(cb.coalesce(patientJoin.get("firstName"), ""));
-                    Expression<String> second = cb.lower(cb.coalesce(patientJoin.get("secondName"), ""));
-                    Expression<String> third = cb.lower(cb.coalesce(patientJoin.get("thirdName"), ""));
-                    Expression<String> last = cb.lower(cb.coalesce(patientJoin.get("lastName"), ""));
-
-                    Predicate[] tokenPredicates = Arrays.stream(tokens)
-                            .filter(token -> token != null && !token.isBlank())
-                            .map(token -> {
-                                String like = "%" + token + "%";
-                                return cb.or(
-                                        cb.like(first, like),
-                                        cb.like(second, like),
-                                        cb.like(third, like),
-                                        cb.like(last, like)
-                                );
-                            })
-                            .toArray(Predicate[]::new);
-
-                    if (tokenPredicates.length > 0) {
-                        predicates.add(cb.and(tokenPredicates));
-                    }
-                }
-            }
+            applyPatientIdentityFilters(root, query, cb, predicates, filter);
 
             return cb.and(predicates.toArray(new Predicate[0]));
         };
+        Pageable effectivePageable = pageable;
 
-        Page<PatientEncounter> result = patientEncounterRepository.findAll(spec, pageable);
+        if (Boolean.TRUE.equals(filter.sortByPriority())) {
+            Sort prioritySort = Sort.by(
+                    Sort.Order.desc("priorityLevel"),
+                    Sort.Order.desc("encounterDate"),
+                    Sort.Order.desc("encounterTime"),
+                    Sort.Order.desc("id")
+            );
+
+            effectivePageable = PageRequest.of(
+                    pageable.getPageNumber(),
+                    pageable.getPageSize(),
+                    prioritySort
+            );
+        }
+
+        Page<PatientEncounter> result =
+                patientEncounterRepository.findAll(spec, effectivePageable);
 
         LOG.debug("[FILTER] PatientEncounters result totalElements={} totalPages={} pageNumber={} pageSize={}", result.getTotalElements(), result.getTotalPages(), result.getNumber(), result.getSize());
 
         return result;
+    }
+
+
+    @Transactional(readOnly = true)
+    public Page<PatientEncounter> filterOpdEncounters(
+            Long facilityId,
+            PatientEncounterSearchFilterDTO filter,
+            Pageable pageable
+    ) {
+        LOG.debug(
+                "Service filter OPD PatientEncounters facilityId={} filter={} pageable={}",
+                facilityId,
+                filter,
+                pageable
+        );
+
+        LocalDate today = LocalDate.now();
+
+        LocalDate effectiveFrom =
+                filter.fromDate() != null
+                        ? filter.fromDate()
+                        : today;
+
+        LocalDate effectiveTo =
+                filter.toDate() != null
+                        ? filter.toDate()
+                        : today;
+
+        List<TreatmentStatus> effectiveStatuses =
+                (filter.statuses() != null && !filter.statuses().isEmpty())
+                        ? filter.statuses()
+                        : List.of(
+                        TreatmentStatus.NEW,
+                        TreatmentStatus.ONGOING
+                );
+
+        boolean hasPatientName =
+                filter.patientName() != null
+                        && !filter.patientName().isBlank();
+
+        boolean hasMrn =
+                filter.mrn() != null
+                        && !filter.mrn().isBlank();
+
+        boolean hasEncounterNumber =
+                filter.encounterNumber() != null
+                        && !filter.encounterNumber().isBlank();
+
+        boolean hasChief =
+                filter.chiefComplaint() != null
+                        && !filter.chiefComplaint().isBlank();
+
+        LOG.debug(
+                "[OPD FILTER] facilityId={} effectiveFrom={} effectiveTo={} " +
+                        "treatmentStatuses={} hasPatientName={} hasMrn={} " +
+                        "hasEncounterNumber={} hasChief={}",
+                facilityId,
+                effectiveFrom,
+                effectiveTo,
+                effectiveStatuses,
+                hasPatientName,
+                hasMrn,
+                hasEncounterNumber,
+                hasChief
+        );
+
+        Specification<PatientEncounter> spec = (root, query, cb) -> {
+
+            applyFetches(root, query);
+
+            List<Predicate> predicates = new ArrayList<>();
+            predicates.add(
+                    cb.equal(
+                            root.get("facilityId"),
+                            facilityId
+                    )
+            );
+            predicates.add(
+                    cb.equal(
+                            root.get("encounterType"),
+                            EncounterType.CLINIC
+                    )
+            );
+
+            predicates.add(
+                    cb.between(
+                            root.get("encounterDate"),
+                            effectiveFrom,
+                            effectiveTo
+                    )
+            );
+
+            predicates.add(
+                    root.get("status").in(effectiveStatuses)
+            );
+
+            if (
+                    filter.encounterReasons() != null
+                            && !filter.encounterReasons().isEmpty()
+            ) {
+                predicates.add(
+                        root.get("encounterReason")
+                                .in(filter.encounterReasons())
+                );
+            }
+
+            if (
+                    filter.priorities() != null
+                            && !filter.priorities().isEmpty()
+            ) {
+                predicates.add(
+                        root.get("priorityLevel")
+                                .in(filter.priorities())
+                );
+            }
+
+            if (filter.practitionerId() != null) {
+                predicates.add(
+                        cb.equal(
+                                root.get("practitionerId"),
+                                filter.practitionerId()
+                        )
+                );
+            }
+
+            if (hasEncounterNumber) {
+                predicates.add(
+                        cb.like(
+                                cb.lower(
+                                        cb.coalesce(
+                                                root.get("encounterNumber"),
+                                                ""
+                                        )
+                                ),
+                                "%" +
+                                        filter.encounterNumber()
+                                                .trim()
+                                                .toLowerCase()
+                                        + "%"
+                        )
+                );
+            }
+
+            if (hasChief) {
+                predicates.add(
+                        cb.like(
+                                cb.lower(
+                                        cb.coalesce(
+                                                root.get("chiefComplaint"),
+                                                ""
+                                        )
+                                ),
+                                "%" +
+                                        filter.chiefComplaint()
+                                                .trim()
+                                                .toLowerCase()
+                                        + "%"
+                        )
+                );
+            }
+
+            applyPatientIdentityFilters(root, query, cb, predicates, filter);
+
+            return cb.and(
+                    predicates.toArray(
+                            new Predicate[0]
+                    )
+            );
+        };
+
+        Page<PatientEncounter> result =
+                patientEncounterRepository.findAll(
+                        spec,
+                        pageable
+                );
+
+        LOG.debug(
+                "[OPD FILTER] result totalElements={} totalPages={} pageNumber={} pageSize={}",
+                result.getTotalElements(),
+                result.getTotalPages(),
+                result.getNumber(),
+                result.getSize()
+        );
+
+        return result;
+    }
+
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private void applyPatientIdentityFilters(
+            Root<PatientEncounter> root,
+            CriteriaQuery<?> query,
+            CriteriaBuilder cb,
+            List<Predicate> predicates,
+            PatientEncounterSearchFilterDTO filter
+    ) {
+        if (filter == null) {
+            return;
+        }
+
+        boolean hasPatientName = hasText(filter.patientName());
+        boolean hasMrn = hasText(filter.mrn());
+        boolean hasPhone = hasText(filter.primaryMobileNumber());
+        boolean hasDocument = hasText(filter.documentNumber());
+        boolean hasDob = filter.dateOfBirth() != null;
+
+        if (!(hasPatientName || hasMrn || hasPhone || hasDocument || hasDob)) {
+            return;
+        }
+
+        Join<PatientEncounter, Patient> patientJoin = root.join("patient", JoinType.INNER);
+
+        if (hasMrn) {
+            predicates.add(cb.equal(patientJoin.get("medicalRecordNumber"), filter.mrn().trim()));
+        }
+
+        if (hasPhone) {
+            predicates.add(cb.equal(patientJoin.get("primaryMobileNumber"), filter.primaryMobileNumber().trim()));
+        }
+
+        if (hasDob) {
+            predicates.add(cb.equal(patientJoin.get("dateOfBirth"), filter.dateOfBirth()));
+        }
+
+        if (hasDocument) {
+            Join<Patient, PatientDocument> documentJoin =
+                    patientJoin.join("patientDocuments", JoinType.INNER);
+            predicates.add(cb.equal(documentJoin.get("number"), filter.documentNumber().trim()));
+            if (query != null) {
+                query.distinct(true);
+            }
+        }
+
+        if (hasPatientName) {
+            String[] tokens = filter.patientName().trim().toLowerCase().split("\\s+");
+
+            Expression<String> first = cb.lower(cb.coalesce(patientJoin.get("firstName"), ""));
+            Expression<String> second = cb.lower(cb.coalesce(patientJoin.get("secondName"), ""));
+            Expression<String> third = cb.lower(cb.coalesce(patientJoin.get("thirdName"), ""));
+            Expression<String> last = cb.lower(cb.coalesce(patientJoin.get("lastName"), ""));
+
+            Predicate[] tokenPredicates = Arrays.stream(tokens)
+                    .filter(token -> token != null && !token.isBlank())
+                    .map(token -> {
+                        String like = "%" + token + "%";
+                        return cb.or(
+                                cb.like(first, like),
+                                cb.like(second, like),
+                                cb.like(third, like),
+                                cb.like(last, like)
+                        );
+                    })
+                    .toArray(Predicate[]::new);
+
+            if (tokenPredicates.length > 0) {
+                predicates.add(cb.and(tokenPredicates));
+            }
+        }
     }
 
     private void applyFetches(Root<PatientEncounter> root, CriteriaQuery<?> query) {
@@ -615,6 +902,13 @@ public class PatientEncounterService {
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             LOG.warn("[START] failed (constraint) id={}", encounterId, ex);
             throw handleConstraintViolation(ex);
+        } catch (UncategorizedSQLException ex) {
+            BadRequestAlertException ongoingEmergency = ongoingEmergencyEncounterViolation(ex);
+            if (ongoingEmergency != null) {
+                LOG.warn("[START] failed (constraint) id={}", encounterId, ex);
+                throw ongoingEmergency;
+            }
+            throw ex;
         }
     }
 
@@ -649,6 +943,7 @@ public class PatientEncounterService {
 
         boolean isDoctor = switch (jobRole) {
             case "PHYSICIAN",
+                 "DENTIST",
                  "GENERAL_PRACTITIONER",
                  "SPECIALIST",
                  "ANESTHESIOLOGIST",
@@ -657,6 +952,7 @@ public class PatientEncounterService {
                  "PSYCHIATRIST" -> true;
             default -> false;
         };
+
 
         if (!isDoctor) {
             throw new BadRequestAlertException(
@@ -671,8 +967,12 @@ public class PatientEncounterService {
         return value == null || value.isBlank();
     }
 
-    public PatientEncounter cancelEncounter(Long encounterId) {
-        LOG.info("[CANCEL] PatientEncounter id={}", encounterId);
+    public PatientEncounter cancelEncounter(Long encounterId, String cancellationReason) {
+        LOG.info(
+                "[CANCEL] PatientEncounter id={} cancellationReason={}",
+                encounterId,
+                cancellationReason
+        );
 
         PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -686,13 +986,16 @@ public class PatientEncounterService {
                 TreatmentStatus.WAITING_TRIAGE,
                 TreatmentStatus.PENDING_PAYMENT
         ).contains(encounter.getStatus())) {
+
             throw new BadRequestAlertException(
                     "cancel.notAllowed.rule",
                     "patientEncounter",
                     "Cancel is allowed only when status is NEW, WAITING_TRIAGE, or PENDING_PAYMENT."
             );
         }
-        boolean hasObservation = !findEncounterIdsWithObservation(List.of(encounterId)).isEmpty();
+
+        boolean hasObservation =
+                !findEncounterIdsWithObservation(List.of(encounterId)).isEmpty();
 
         if (hasObservation) {
             throw new BadRequestAlertException(
@@ -702,24 +1005,51 @@ public class PatientEncounterService {
             );
         }
 
+        String cancellationReasonText =
+                isBlank(cancellationReason)
+                        ? null
+                        : cancellationReason.trim();
+
         billingEngineService.cancelEncounter(
                 encounterId,
-                "Clinical encounter cancelled",
+                cancellationReasonText,
                 "ENCOUNTER-CANCEL:" + encounterId
         );
 
         encounter.setStatus(TreatmentStatus.CANCELLED);
+        encounter.setCancellationReason(cancellationReasonText);
+        encounter.setCancelledBy(currentUsername());
+        encounter.setCancelledAt(Instant.now());
+
         try {
-            PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
-            encounterAssignToBedService.dischargeActiveAssignmentByEncounterId(saved.getId());
-            LOG.info("[CANCEL] success id={} status={}", saved.getId(), saved.getStatus());
+            PatientEncounter saved =
+                    patientEncounterRepository.saveAndFlush(encounter);
+
+            encounterAssignToBedService
+                    .dischargeActiveAssignmentByEncounterId(saved.getId());
+
+            LOG.info(
+                    "[CANCEL] success id={} status={} cancellationReason={} cancelledBy={} cancelledAt={}",
+                    saved.getId(),
+                    saved.getStatus(),
+                    saved.getCancellationReason(),
+                    saved.getCancelledBy(),
+                    saved.getCancelledAt()
+            );
+
             return saved;
+
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
-            LOG.warn("[CANCEL] failed (constraint) id={}", encounterId, ex);
+
+            LOG.warn(
+                    "[CANCEL] failed (constraint) id={}",
+                    encounterId,
+                    ex
+            );
+
             throw handleConstraintViolation(ex);
         }
     }
-
     public PatientEncounter dischargeEncounter(Long encounterId) {
         LOG.info("[DISCHARGE] PatientEncounter id={}", encounterId);
 
@@ -742,6 +1072,7 @@ public class PatientEncounterService {
 
         PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
         encounterAssignToBedService.dischargeActiveAssignmentByEncounterId(saved.getId());
+        recordPostVisitFollowUp(saved);
         LOG.info("[DISCHARGE] success id={} status={}", saved.getId(), saved.getStatus());
         return saved;
     }
@@ -756,6 +1087,17 @@ public class PatientEncounterService {
                         "patientEncounter",
                         "id.notfound"
                 ));
+
+        var openAmendmentId = encounterReopenGuard.findOpenReopenSessionId(encounter.getId());
+        if (openAmendmentId.isPresent()) {
+            LOG.info(
+                    "[COMPLETE] open amendment encounterId={} sessionId={} -> finish amendment",
+                    encounterId,
+                    openAmendmentId.get()
+            );
+            encounterAmendmentService.finishAmendment(encounter.getId(), openAmendmentId.get());
+            return patientEncounterRepository.findById(encounter.getId()).orElse(encounter);
+        }
 
         if (encounter.getStatus() != TreatmentStatus.NEW
                 && encounter.getStatus() != TreatmentStatus.ONGOING
@@ -824,6 +1166,15 @@ public class PatientEncounterService {
                     NotificationCode.ENCOUNTER_CLOSED,
                     null
             );
+            if (saved.getEncounterType() == EncounterType.CLINIC) {
+                notifyEncounterEvent(
+                        saved,
+                        NotificationCode.OPD_REPORT_APPROVED,
+                        null
+                );
+            }
+
+            recordPostVisitFollowUp(saved);
 
             LOG.info(
                     "[COMPLETE] success id={} status={} completedAt={} completedBy={}",
@@ -846,7 +1197,10 @@ public class PatientEncounterService {
     }
 
     @Transactional(readOnly = true)
-    public PatientEncounterCompletionValidationDTO validateCompletion(Long encounterId) {
+    public PatientEncounterCompletionValidationDTO validateCompletion(
+            Long encounterId,
+            boolean includeDiagnostics
+    ) {
 
         PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -878,6 +1232,7 @@ public class PatientEncounterService {
                     true, // vitalSigns
                     true, // bodyMeasurements
                     true, // canComplete
+                    Collections.emptyList(),
                     Collections.emptyList()
             );
         }
@@ -1003,7 +1358,7 @@ public class PatientEncounterService {
             missing.add("Social History");
         }
 
-        if (!progressNotes) {
+        if (!progressNotes && encounter.getEncounterType() != EncounterType.CLINIC) {
             missing.add("Progress Notes");
         }
 
@@ -1016,6 +1371,10 @@ public class PatientEncounterService {
         }
 
         boolean canComplete = missing.isEmpty();
+
+        List<DiagnosticCheckoutApproval> diagnosticApprovals = includeDiagnostics
+                ? insuranceCheckoutDiagnosticApprovalService.findUnapproved(encounterId)
+                : List.of();
 
         return new PatientEncounterCompletionValidationDTO(
                 encounterId,
@@ -1035,7 +1394,8 @@ public class PatientEncounterService {
                 bodyMeasurements,
                 vitalSigns,
                 canComplete,
-                missing
+                missing,
+                diagnosticApprovals
         );
     }
 
@@ -1071,16 +1431,16 @@ public class PatientEncounterService {
             );
         }
 
-       EncounterHasInvoiceResponse invoiceResponse =
-          invoiceGenerationService.hasInvoice(encounterId);
+        EncounterHasInvoiceResponse invoiceResponse =
+                invoiceGenerationService.hasInvoice(encounterId);
 
-         if (invoiceResponse != null && invoiceResponse.hasInvoice()) {
-             throw new BadRequestAlertException(
-                     "Cannot reopen encounter because an invoice has already been generated.",
-                     "patientEncounter",
-                     "reopen.invoiceExists"
-             );
-         }
+        if (invoiceResponse != null && invoiceResponse.hasInvoice()) {
+            throw new BadRequestAlertException(
+                    "Cannot reopen encounter because an invoice has already been generated.",
+                    "patientEncounter",
+                    "reopen.invoiceExists"
+            );
+        }
 
 
 
@@ -1112,8 +1472,20 @@ public class PatientEncounterService {
         encounter.setDischargeAt(null);
         encounter.setDischargeType(null);
 
-        PatientEncounter saved =
-                patientEncounterRepository.saveAndFlush(encounter);
+        PatientEncounter saved;
+        try {
+            saved = patientEncounterRepository.saveAndFlush(encounter);
+        } catch (DataIntegrityViolationException | JpaSystemException ex) {
+            LOG.warn("[REOPEN] failed (constraint) id={}", encounterId, ex);
+            throw handleConstraintViolation(ex);
+        } catch (UncategorizedSQLException ex) {
+            BadRequestAlertException ongoingEmergency = ongoingEmergencyEncounterViolation(ex);
+            if (ongoingEmergency != null) {
+                LOG.warn("[REOPEN] failed (constraint) id={}", encounterId, ex);
+                throw ongoingEmergency;
+            }
+            throw ex;
+        }
 
         LOG.info(
                 "[REOPEN] success id={} fromStatus={} toStatus={}",
@@ -1312,97 +1684,7 @@ public class PatientEncounterService {
             /*
              * Patient Name / MRN
              */
-            if (hasPatientName || hasMrn) {
-
-                Join<PatientEncounter, Patient> patientJoin =
-                        root.join(
-                                "patient",
-                                JoinType.INNER
-                        );
-
-                /*
-                 * MRN
-                 */
-                if (hasMrn) {
-                    predicates.add(
-                            cb.equal(
-                                    patientJoin.get("medicalRecordNumber"),
-                                    filter.mrn().trim()
-                            )
-                    );
-                }
-
-                /*
-                 * Patient Name
-                 */
-                if (hasPatientName) {
-
-                    String[] tokens =
-                            filter.patientName()
-                                    .trim()
-                                    .toLowerCase()
-                                    .split("\\s+");
-
-                    Expression<String> first =
-                            cb.lower(
-                                    cb.coalesce(
-                                            patientJoin.get("firstName"),
-                                            ""
-                                    )
-                            );
-
-                    Expression<String> second =
-                            cb.lower(
-                                    cb.coalesce(
-                                            patientJoin.get("secondName"),
-                                            ""
-                                    )
-                            );
-
-                    Expression<String> third =
-                            cb.lower(
-                                    cb.coalesce(
-                                            patientJoin.get("thirdName"),
-                                            ""
-                                    )
-                            );
-
-                    Expression<String> last =
-                            cb.lower(
-                                    cb.coalesce(
-                                            patientJoin.get("lastName"),
-                                            ""
-                                    )
-                            );
-
-                    Predicate[] tokenPredicates =
-                            Arrays.stream(tokens)
-                                    .filter(
-                                            token ->
-                                                    token != null
-                                                            && !token.isBlank()
-                                    )
-                                    .map(token -> {
-
-                                        String like =
-                                                "%" + token + "%";
-
-                                        return cb.or(
-                                                cb.like(first, like),
-                                                cb.like(second, like),
-                                                cb.like(third, like),
-                                                cb.like(last, like)
-                                        );
-                                    })
-                                    .toArray(Predicate[]::new);
-
-                    if (tokenPredicates.length > 0) {
-                        predicates.add(
-                                cb.and(tokenPredicates)
-                        );
-                    }
-                }
-            }
+            applyPatientIdentityFilters(root, query, cb, predicates, filter);
 
             /*
              * =========================================================
@@ -1699,93 +1981,7 @@ public class PatientEncounterService {
                 );
             }
 
-            if (hasPatientName || hasMrn) {
-
-                Join<PatientEncounter, Patient> patientJoin =
-                        root.join(
-                                "patient",
-                                JoinType.INNER
-                        );
-
-                if (hasMrn) {
-                    predicates.add(
-                            cb.equal(
-                                    patientJoin.get(
-                                            "medicalRecordNumber"
-                                    ),
-                                    filter.mrn().trim()
-                            )
-                    );
-                }
-
-                if (hasPatientName) {
-
-                    String[] tokens =
-                            filter.patientName()
-                                    .trim()
-                                    .toLowerCase()
-                                    .split("\\s+");
-
-                    Expression<String> first =
-                            cb.lower(
-                                    cb.coalesce(
-                                            patientJoin.get("firstName"),
-                                            ""
-                                    )
-                            );
-
-                    Expression<String> second =
-                            cb.lower(
-                                    cb.coalesce(
-                                            patientJoin.get("secondName"),
-                                            ""
-                                    )
-                            );
-
-                    Expression<String> third =
-                            cb.lower(
-                                    cb.coalesce(
-                                            patientJoin.get("thirdName"),
-                                            ""
-                                    )
-                            );
-
-                    Expression<String> last =
-                            cb.lower(
-                                    cb.coalesce(
-                                            patientJoin.get("lastName"),
-                                            ""
-                                    )
-                            );
-
-                    Predicate[] tokenPredicates =
-                            Arrays.stream(tokens)
-                                    .filter(
-                                            token ->
-                                                    token != null
-                                                            && !token.isBlank()
-                                    )
-                                    .map(token -> {
-
-                                        String like =
-                                                "%" + token + "%";
-
-                                        return cb.or(
-                                                cb.like(first, like),
-                                                cb.like(second, like),
-                                                cb.like(third, like),
-                                                cb.like(last, like)
-                                        );
-                                    })
-                                    .toArray(Predicate[]::new);
-
-                    if (tokenPredicates.length > 0) {
-                        predicates.add(
-                                cb.and(tokenPredicates)
-                        );
-                    }
-                }
-            }
+            applyPatientIdentityFilters(root, query, cb, predicates, filter);
 
             return cb.and(
                     predicates.toArray(
@@ -1855,6 +2051,34 @@ public class PatientEncounterService {
                 });
     }
 
+    @Transactional(readOnly = true)
+    public PatientEncounter getByEncounterNumber(String encounterNumber) {
+        String normalized =
+                encounterNumber == null ? "" : encounterNumber.trim();
+        LOG.debug("[GET_BY_ENCOUNTER_NUMBER] encounterNumber={}", normalized);
+
+        if (normalized.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "Encounter number is required",
+                    "patientEncounter",
+                    "encounterNumber.required"
+            );
+        }
+
+        return patientEncounterRepository.findByEncounterNumber(normalized)
+                .orElseThrow(() -> {
+                    LOG.warn(
+                            "[GET_BY_ENCOUNTER_NUMBER] PatientEncounter not found encounterNumber={}",
+                            normalized
+                    );
+                    return new NotFoundAlertException(
+                            "PatientEncounter not found with encounterNumber " + normalized,
+                            "patientEncounter",
+                            "encounterNumber.notfound"
+                    );
+                });
+    }
+
     private void validateEmergencyEncounterCreation(Long patientId, Object encounterType) {
         if (encounterType == null || !"EMERGENCY".equals(encounterType.toString())) {
             return;
@@ -1873,6 +2097,11 @@ public class PatientEncounterService {
         String messageLower = message != null ? message.toLowerCase() : "";
 
         LOG.warn("[DB_CONSTRAINT] PatientEncounter constraint violated rootMessage={}", message, exception);
+
+        BadRequestAlertException ongoingEmergency = ongoingEmergencyEncounterViolation(exception);
+        if (ongoingEmergency != null) {
+            return ongoingEmergency;
+        }
 
         if (messageLower.contains("ck_patient_encounters_follow_up_required")) {
             return new BadRequestAlertException(
@@ -1935,6 +2164,44 @@ public class PatientEncounterService {
                 "patientEncounter",
                 "db.constraint"
         );
+    }
+
+    private BadRequestAlertException ongoingEmergencyEncounterViolation(Throwable exception) {
+        if (!mentionsOngoingEmergencyEncounter(exception)) {
+            return null;
+        }
+        return new BadRequestAlertException(
+                "Patient already has an ongoing emergency encounter. Cannot create another ongoing emergency encounter.",
+                "patientEncounter",
+                "patient.emergency.ongoingEncounter"
+        );
+    }
+
+    private boolean mentionsOngoingEmergencyEncounter(Throwable exception) {
+        Throwable current = exception;
+        int depth = 0;
+        while (current != null && depth++ < 20) {
+            if (containsOngoingEmergencyText(current.getMessage())) {
+                return true;
+            }
+            if (current instanceof SQLException sqlException) {
+                SQLException next = sqlException.getNextException();
+                int nextDepth = 0;
+                while (next != null && nextDepth++ < 20) {
+                    if (containsOngoingEmergencyText(next.getMessage())) {
+                        return true;
+                    }
+                    next = next.getNextException();
+                }
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private boolean containsOngoingEmergencyText(String message) {
+        return message != null
+                && message.toLowerCase().contains("patient already has an ongoing emergency encounter");
     }
 
     @Transactional(readOnly = true)
@@ -2149,6 +2416,13 @@ public class PatientEncounterService {
                     NotificationCode.ENCOUNTER_CLOSED,
                     null
             );
+            notifyEncounterEvent(
+                    saved,
+                    NotificationCode.DISCHARGE_REPORT_APPROVED,
+                    null
+            );
+
+            recordPostVisitFollowUp(saved);
 
             LOG.info(
                     "[DISCHARGE] success id={} status={} dischargeType={} dischargeAt={} dischargedBy={}",
@@ -2363,6 +2637,7 @@ public class PatientEncounterService {
                         "idnotfound"
                 ));
 
+        reopenSessionAuditContext.applyOpenSession(encounter.getId());
         encounter.setHistoryOfPresentIllness(historyOfPresentIllness);
 
         PatientEncounter saved = patientEncounterRepository.save(encounter);
@@ -2478,6 +2753,23 @@ public class PatientEncounterService {
         return saved;
     }
 
+    private void recordPostVisitFollowUp(PatientEncounter encounter) {
+        if (encounter == null || encounter.getId() == null) {
+            return;
+        }
+        Long patientId = encounter.getPatient() == null ? null : encounter.getPatient().getId();
+        Long appointmentId = encounter.getAppointment() == null ? null : encounter.getAppointment().getId();
+        patientActivityService.recordOccurred(
+                patientId,
+                encounter.getId(),
+                appointmentId,
+                PatientActivityType.POST_VISIT_FOLLOW_UP,
+                PatientActivityService.SOURCE_ENCOUNTER,
+                encounter.getId(),
+                "Post-visit follow-up"
+        );
+    }
+
     private void notifyEncounterEvent(PatientEncounter encounter, NotificationCode notificationCode, Map<String, Object> extraData) {
         if (encounter == null || notificationCode == null) {
             return;
@@ -2538,5 +2830,28 @@ public class PatientEncounterService {
     public List<PatientEncounterFieldAudit> getAuditHistory(Long encounterId) {
 
         return auditRepository.findByPatientEncounterIdOrderByLogDateDesc(encounterId);
+    }
+
+    @Transactional
+    public void assignNurse(Long encounterId, Long nurseId) {
+        PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
+                .orElse(null);
+
+        if (encounter == null) {
+            return;
+        }
+
+        if (encounter.getStatus() != TreatmentStatus.ONGOING
+                && encounter.getStatus() != TreatmentStatus.ASSIGNED_TO_BED
+                && encounter.getStatus() != TreatmentStatus.TRIAGE_STARTED) {
+            throw new BadRequestAlertException(
+                    "Nurse can only be assigned when status is Ongoing, Assigned to Bed, or Triage Started.",
+                    "patientEncounter",
+                    "nurseAssignment.notAllowed"
+            );
+        }
+
+        encounter.setAssignedNurseId(nurseId);
+        patientEncounterRepository.save(encounter);
     }
 }

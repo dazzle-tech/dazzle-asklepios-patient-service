@@ -1,10 +1,10 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.converter.ToothNumberListConverter;
 import com.dazzle.asklepios.domain.enumeration.ToothNumber;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -22,6 +22,8 @@ import lombok.Setter;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "dental_procedure")
@@ -45,9 +47,10 @@ public class DentalProcedure extends AbstractAuditingEntity<Long> implements Ser
     @JoinColumn(name = "encounter_id", nullable = false)
     private PatientEncounter encounter;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "tooth_number", nullable = false)
-    private ToothNumber toothNumber;
+    @Convert(converter = ToothNumberListConverter.class)
+    @Column(name = "tooth_number", nullable = false, columnDefinition = "TEXT")
+    @Builder.Default
+    private List<ToothNumber> toothNumbers = new ArrayList<>();
 
     @Column(name = "surface", nullable = false)
     private String surface;

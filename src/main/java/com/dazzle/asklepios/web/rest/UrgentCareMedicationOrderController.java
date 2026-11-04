@@ -77,6 +77,17 @@ public class UrgentCareMedicationOrderController {
         return ResponseEntity.ok(result);
     }
 
+    /** Create Plan: splits a submitted order that was not split on submit, using its frequency setup */
+    @PostMapping("/urgent-care-medication-orders/group/{orderGroupId}/plan")
+    public ResponseEntity<List<UrgentCareMedicationOrder>> createPlan(@PathVariable("orderGroupId") Long orderGroupId) {
+        LOG.debug("[CREATE_PLAN] request -> orderGroupId={}", orderGroupId);
+
+        List<UrgentCareMedicationOrder> doses = UrgentCareMedicationOrderService.createPlan(orderGroupId);
+
+        LOG.debug("[CREATE_PLAN] response -> orderGroupId={} doses={}", orderGroupId, doses.size());
+        return ResponseEntity.ok(doses);
+    }
+
     @PostMapping("/urgent-care-medication-orders/group/{orderGroupId}/submit")
     public ResponseEntity<List<UrgentCareMedicationOrder>> submitGroup(
             @PathVariable("orderGroupId") Long orderGroupId,
@@ -425,7 +436,14 @@ public class UrgentCareMedicationOrderController {
         LOG.debug("[ADMINISTER] request -> id={}", id);
 
         UrgentCareMedicationOrder result =
-                UrgentCareMedicationOrderService.administer(id, currentUsername(),dto.actualAdministerTime());
+                UrgentCareMedicationOrderService.administer(
+                        id,
+                        currentUsername(),
+                        dto.actualAdministerTime(),
+                        dto.brandMedicationId(),
+                        dto.uomGroupUnitId(),
+                        dto.quantity()
+                );
 
         LOG.debug("[ADMINISTER] response -> id={} status={}", result.getId(), result.getStatus());
         return ResponseEntity.ok(result);

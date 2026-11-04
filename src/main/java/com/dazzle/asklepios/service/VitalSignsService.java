@@ -10,6 +10,7 @@ import com.dazzle.asklepios.service.dto.vitalSigns.VitalSignsCreateDTO;
 import com.dazzle.asklepios.service.dto.vitalSigns.VitalSignsUpdateDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import com.dazzle.asklepios.web.rest.vm.observations.VitalSignsFieldHistoryVM;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,7 +22,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
@@ -36,6 +41,7 @@ public class VitalSignsService {
     private final VitalSignsRepository vitalSignsRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public VitalSigns create(VitalSignsCreateDTO dto) {
         LOG.info("[CREATE] VitalSigns payload={}", dto);
@@ -56,6 +62,8 @@ public class VitalSignsService {
                         )
                 );
 
+        reopenSessionAuditContext.applyOpenSession(encounter.getId());
+
         try {
             resetIsActiveForEncounterToday(dto.encounterId());
 
@@ -69,13 +77,16 @@ public class VitalSignsService {
                     .heartRate(dto.heartRate())
                     .oxygenSaturation(dto.oxygenSaturation())
                     .respiratoryRate(dto.respiratoryRate())
-                    .fastingBloodGlucose(dto.fastingBloodGlucose())
+                    .fluidStatus(dto.fluidStatus())
+                    .edema(dto.edema())
+                    .urineOutput(dto.urineOutput())
                     .notes(dto.notes())
                     .isTriage(dto.isTriage())
                     .isActive(true)
                     .build();
 
-            return vitalSignsRepository.saveAndFlush(entity);
+            VitalSigns saved = vitalSignsRepository.saveAndFlush(entity);
+            return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);
@@ -87,6 +98,8 @@ public class VitalSignsService {
         LOG.info("[UPDATE] VitalSigns id={} payload={}", targetId, dto);
 
         return vitalSignsRepository.findById(targetId).map(entity -> {
+            Long ownedEncounterId = entity.getEncounterId();
+            reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
 
             Patient patient = patientRepository.findById(dto.patientId())
                     .orElseThrow(() -> new NotFoundAlertException(
@@ -94,6 +107,7 @@ public class VitalSignsService {
                             "vitalSigns",
                             "patient.notfound"
                     ));
+
             PatientEncounter encounter = patientEncounterRepository.findById(dto.encounterId())
                     .orElseThrow(() ->
                             new NotFoundAlertException(
@@ -106,7 +120,11 @@ public class VitalSignsService {
             entity.setPatient(patient);
             entity.setEncounterId(encounter.getId());
             entity.setBloodPressureSystolic(dto.bloodPressureSystolic());
-            entity.setFastingBloodGlucose(dto.fastingBloodGlucose());
+
+            entity.setFluidStatus(dto.fluidStatus());
+            entity.setEdema(dto.edema());
+            entity.setUrineOutput(dto.urineOutput());
+
             entity.setBloodPressureDiastolic(dto.bloodPressureDiastolic());
             entity.setTemperature(dto.temperature());
             entity.setMeasurementSite(dto.measurementSite());
@@ -118,7 +136,8 @@ public class VitalSignsService {
             entity.setIsActive(dto.isActive());
 
             try {
-                return vitalSignsRepository.saveAndFlush(entity);
+                VitalSigns saved = vitalSignsRepository.saveAndFlush(entity);
+                return saved;
             } catch (DataIntegrityViolationException | JpaSystemException ex) {
                 throw handleConstraintViolation(ex);
             }
@@ -128,7 +147,9 @@ public class VitalSignsService {
     @Transactional(readOnly = true)
     public Optional<VitalSigns> findLatestByEncounterId(Long encounterId) {
         LOG.debug("[FIND_LATEST_BY_ENCOUNTER] encounterId={}", encounterId);
-        return vitalSignsRepository.findFirstByEncounterIdAndIsActiveTrueOrderByCreatedDateDesc(encounterId);
+
+        return vitalSignsRepository
+                .findFirstByEncounterIdAndIsActiveTrueOrderByCreatedDateDesc(encounterId);
     }
 
     @Transactional(readOnly = true)
@@ -139,16 +160,99 @@ public class VitalSignsService {
                 .findFirstByEncounterIdAndIsTriageTrueAndIsActiveTrueOrderByCreatedDateDesc(encounterId);
     }
 
+    @Transactional(readOnly = true)
+    public List<VitalSignsFieldHistoryVM> findFieldHistoryByEncounterId(Long encounterId) {
+        LOG.debug("[FIND_FIELD_HISTORY_BY_ENCOUNTER] encounterId={}", encounterId);
+
+        List<VitalSigns> versions =
+                vitalSignsRepository.findByEncounterIdOrderByCreatedDateAscIdAsc(encounterId);
+
+        if (versions == null || versions.size() < 2) {
+            return List.of();
+        }
+
+        List<VitalSignsFieldHistoryVM> history = new ArrayList<>();
+        for (int i = 1; i < versions.size(); i++) {
+            VitalSigns previous = versions.get(i - 1);
+            VitalSigns current = versions.get(i);
+            Map<String, String[]> fieldValues = readingFieldValues(previous, current);
+
+            for (Map.Entry<String, String[]> entry : fieldValues.entrySet()) {
+                String oldValue = entry.getValue()[0];
+                String newValue = entry.getValue()[1];
+                if (Objects.equals(oldValue, newValue)) {
+                    continue;
+                }
+                history.add(
+                        new VitalSignsFieldHistoryVM(
+                                entry.getKey(),
+                                oldValue,
+                                newValue,
+                                current.getLastModifiedBy() != null
+                                        ? current.getLastModifiedBy()
+                                        : current.getCreatedBy(),
+                                current.getCreatedDate()
+                        )
+                );
+            }
+        }
+
+        return history;
+    }
+
+    private static Map<String, String[]> readingFieldValues(VitalSigns previous, VitalSigns current) {
+        Map<String, String[]> fields = new LinkedHashMap<>();
+        fields.put(
+                "Blood Pressure Systolic",
+                new String[] {asText(previous.getBloodPressureSystolic()), asText(current.getBloodPressureSystolic())}
+        );
+        fields.put(
+                "Blood Pressure Diastolic",
+                new String[] {asText(previous.getBloodPressureDiastolic()), asText(current.getBloodPressureDiastolic())}
+        );
+        fields.put(
+                "Measurement Site",
+                new String[] {asText(previous.getMeasurementSite()), asText(current.getMeasurementSite())}
+        );
+        fields.put("Heart Rate", new String[] {asText(previous.getHeartRate()), asText(current.getHeartRate())});
+        fields.put("Temperature", new String[] {asText(previous.getTemperature()), asText(current.getTemperature())});
+        fields.put(
+                "Oxygen Saturation",
+                new String[] {asText(previous.getOxygenSaturation()), asText(current.getOxygenSaturation())}
+        );
+        fields.put(
+                "Respiratory Rate",
+                new String[] {asText(previous.getRespiratoryRate()), asText(current.getRespiratoryRate())}
+        );
+        fields.put("Fluid Status", new String[] {asText(previous.getFluidStatus()), asText(current.getFluidStatus())});
+        fields.put("Edema", new String[] {asText(previous.getEdema()), asText(current.getEdema())});
+        fields.put("Urine Output", new String[] {asText(previous.getUrineOutput()), asText(current.getUrineOutput())});
+        fields.put("Notes", new String[] {asText(previous.getNotes()), asText(current.getNotes())});
+        return fields;
+    }
+
+    private static String asText(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+
     private RuntimeException handleConstraintViolation(Exception exception) {
         Throwable root = getRootCause(exception);
         String message = root != null ? root.getMessage() : exception.getMessage();
         String messageLower = message != null ? message.toLowerCase() : "";
 
-        LOG.warn("[DB_CONSTRAINT] VitalSigns constraint violated rootMessage={}", message, exception);
+        LOG.warn(
+                "[DB_CONSTRAINT] VitalSigns constraint violated rootMessage={}",
+                message,
+                exception
+        );
 
         if (messageLower.contains("fk_encounter_vital_signs_patient")
                 || messageLower.contains("fk_vital_signs_patient")) {
-            return new BadRequestAlertException("Invalid patient id.", "vitalSigns", "patient.invalid");
+            return new BadRequestAlertException(
+                    "Invalid patient id.",
+                    "vitalSigns",
+                    "patient.invalid"
+            );
         }
 
         return new BadRequestAlertException(
@@ -175,17 +279,21 @@ public class VitalSignsService {
                         dayStart,
                         dayEnd
                 )
-                .ifPresentOrElse(vitalSigns -> {
-                    vitalSigns.setIsActive(false);
-                    vitalSignsRepository.flush();
-                    LOG.debug(
-                            "[RESET ACTIVE] Reset done. vitalSignsId={} encounterId={}",
-                            vitalSigns.getId(),
-                            encounterId
-                    );
-                }, () -> LOG.debug(
-                        "[RESET ACTIVE] No active VitalSigns found to reset"
-                ));
+                .ifPresentOrElse(
+                        vitalSigns -> {
+                            vitalSigns.setIsActive(false);
+                            vitalSignsRepository.flush();
+
+                            LOG.debug(
+                                    "[RESET ACTIVE] Reset done. vitalSignsId={} encounterId={}",
+                                    vitalSigns.getId(),
+                                    encounterId
+                            );
+                        },
+                        () -> LOG.debug(
+                                "[RESET ACTIVE] No active VitalSigns found to reset"
+                        )
+                );
     }
 
     @Transactional(readOnly = true)
@@ -198,7 +306,10 @@ public class VitalSignsService {
 
         LOG.debug(
                 "[FIND_BY_PATIENT_BETWEEN_DATES] patientId={} from={} to={} pageable={}",
-                patientId, from, to, pageable
+                patientId,
+                from,
+                to,
+                pageable
         );
 
         patientRepository.findById(patientId)
@@ -210,11 +321,19 @@ public class VitalSignsService {
 
         if (from != null && to != null) {
             return vitalSignsRepository
-                    .findByPatientIdAndCreatedDateBetween(patientId, from, to, pageable);
+                    .findByPatientIdAndCreatedDateBetween(
+                            patientId,
+                            from,
+                            to,
+                            pageable
+                    );
         }
 
         return vitalSignsRepository
-                .findByPatientId(patientId, pageable);
+                .findByPatientId(
+                        patientId,
+                        pageable
+                );
     }
 
     @Transactional(readOnly = true)
@@ -223,7 +342,13 @@ public class VitalSignsService {
             Instant from,
             Instant to
     ) {
-        LOG.debug("[FIND_VITAL_SIGNS_LIST] patientId={} from={} to={}", patientId, from, to);
+
+        LOG.debug(
+                "[FIND_VITAL_SIGNS_LIST] patientId={} from={} to={}",
+                patientId,
+                from,
+                to
+        );
 
         patientRepository.findById(patientId)
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -233,7 +358,10 @@ public class VitalSignsService {
                 ));
 
         return vitalSignsRepository
-                .findByPatientIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateAsc(patientId, from, to);
+                .findByPatientIdAndIsActiveTrueAndCreatedDateBetweenOrderByCreatedDateAsc(
+                        patientId,
+                        from,
+                        to
+                );
     }
-
 }

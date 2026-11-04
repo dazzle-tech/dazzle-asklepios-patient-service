@@ -65,6 +65,9 @@ public class PatientServiceAndProduct extends AbstractAuditingEntity<Long> imple
     @Column(name = "procedure_id")
     private Long procedureId;
 
+    @Column(name = "vaccine_brand_id")
+    private Long vaccineBrandId;
+
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "service_source", nullable = false, length = 50)
@@ -76,6 +79,17 @@ public class PatientServiceAndProduct extends AbstractAuditingEntity<Long> imple
     @Column(name = "quantity", nullable = false)
     @Builder.Default
     private Long quantity = 1L;
+
+    /** UOM unit the quantity is charged in, when it differs from the price base unit */
+    @Column(name = "uom_group_unit_id")
+    private Long uomGroupUnitId;
+
+    /**
+     * Price base UOM units in one charged unit. The resolved (base unit) price
+     * is multiplied by it on every pricing; null means 1.
+     */
+    @Column(name = "uom_price_factor", precision = 19, scale = 6)
+    private BigDecimal uomPriceFactor;
 
     @Column(name = "unit_price", nullable = false, precision = 10, scale = 2)
     @Builder.Default

@@ -63,9 +63,104 @@ public record EncounterBillingItemSummary(
 
         List<BillingResponsibilitySummary> responsibilities,
 
-        String clinicalStatus
+        String clinicalStatus,
+
+        BigDecimal taxRate,
+
+        String discountType,
+
+        BigDecimal discountRate,
+
+        String discountSource,
+
+        String discountReason,
+
+        /*
+         * Tax carried by the patient share / the insurance share of the line
+         * (Patient Copayment / Claim Share). Null when unknown: unbilled
+         * items and lines billed before the toggles existed.
+         */
+        BigDecimal patientTaxAmount,
+
+        BigDecimal insuranceTaxAmount
 
 ) implements Serializable {
+
+    /**
+     * Summary without the party tax split.
+     */
+    public EncounterBillingItemSummary(
+            Long patientServiceProductId,
+            Long chargeLineId,
+            String billingItemType,
+            Long sourceId,
+            String itemCode,
+            String itemName,
+            BigDecimal quantity,
+            BigDecimal unitPrice,
+            BigDecimal setupUnitPrice,
+            String priceSource,
+            String priceListItemCode,
+            BigDecimal grossAmount,
+            BigDecimal discountAmount,
+            BigDecimal exemptionAmount,
+            BigDecimal taxAmount,
+            BigDecimal netAmount,
+            BigDecimal patientResponsibilityAmount,
+            BigDecimal insuranceResponsibilityAmount,
+            BigDecimal otherPayerResponsibilityAmount,
+            BigDecimal reservedAmount,
+            BigDecimal allocatedAmount,
+            BigDecimal outstandingAmount,
+            boolean exempted,
+            Currency currency,
+            BillingChargeLineStatus status,
+            java.time.Instant chargedAt,
+            List<BillingResponsibilitySummary> responsibilities,
+            BigDecimal taxRate,
+            String discountType,
+            BigDecimal discountRate,
+            String discountSource,
+            String discountReason
+    ) {
+        this(
+                patientServiceProductId,
+                chargeLineId,
+                billingItemType,
+                sourceId,
+                itemCode,
+                itemName,
+                quantity,
+                unitPrice,
+                setupUnitPrice,
+                priceSource,
+                priceListItemCode,
+                grossAmount,
+                discountAmount,
+                exemptionAmount,
+                taxAmount,
+                netAmount,
+                patientResponsibilityAmount,
+                insuranceResponsibilityAmount,
+                otherPayerResponsibilityAmount,
+                reservedAmount,
+                allocatedAmount,
+                outstandingAmount,
+                exempted,
+                currency,
+                status,
+                chargedAt,
+                responsibilities,
+                null,
+                taxRate,
+                discountType,
+                discountRate,
+                discountSource,
+                discountReason,
+                null,
+                null
+        );
+    }
 
     public EncounterBillingItemSummary withClinicalStatus(String nextClinicalStatus) {
         if ((clinicalStatus == null && nextClinicalStatus == null)
@@ -101,7 +196,14 @@ public record EncounterBillingItemSummary(
                 status,
                 chargedAt,
                 responsibilities,
-                nextClinicalStatus
+                nextClinicalStatus,
+                taxRate,
+                discountType,
+                discountRate,
+                discountSource,
+                discountReason,
+                patientTaxAmount,
+                insuranceTaxAmount
         );
     }
 }

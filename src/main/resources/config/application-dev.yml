@@ -108,7 +108,7 @@ patient:
     secretAccessKey: mNFZKBA/BPXTHVUsde8y/2MslOn7zZEiPzwfIuhLrx4
     presignExpirySeconds: 300
     maxBytes: 52428800
-    allowed: application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png,text/plain
+    allowed: application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png,text/plain,audio/webm,audio/mp4,audio/mpeg,audio/wav,audio/ogg
   appointment:
     auto-no-show:
       job-zone: Asia/Hebron
@@ -119,3 +119,11 @@ patient:
       zone: "Asia/Gaza"
       springdoc:
       pre-loading-enabled: true
+    template-interval-ending-soon:
+      cron: "0 0 7 * * *"
+      zone: "Asia/Gaza"
+      lead-days: 7
+  ambient-scribe:
+    audio-retention:
+      cron: "0 30 2 * * *"
+      zone: "Asia/Gaza"

@@ -42,7 +42,8 @@ public class InvoiceApplicableOnAdjustmentService {
             List<FinancialDocumentItem> items,
             Long facilityId,
             Currency currency,
-            LocalDate pricingDate
+            LocalDate pricingDate,
+            Boolean patientCitizen
     ) {
         if (items == null || items.isEmpty()) {
             return items;
@@ -53,15 +54,17 @@ public class InvoiceApplicableOnAdjustmentService {
                 facilityId,
                 currency,
                 pricingDate,
-                TaxApplicableOn.INVOICE_LINE,
-                DiscountApplicableOn.INVOICE_LINE
+                null,
+                DiscountApplicableOn.INVOICE_LINE,
+                patientCitizen
         );
 
         applyInvoiceScopeAdjustmentsOnly(
                 items,
                 facilityId,
                 currency,
-                pricingDate
+                pricingDate,
+                patientCitizen
         );
 
         return items;
@@ -75,7 +78,8 @@ public class InvoiceApplicableOnAdjustmentService {
             List<FinancialDocumentItem> items,
             Long facilityId,
             Currency currency,
-            LocalDate pricingDate
+            LocalDate pricingDate,
+            Boolean patientCitizen
     ) {
         if (items == null || items.isEmpty()) {
             return items;
@@ -87,7 +91,8 @@ public class InvoiceApplicableOnAdjustmentService {
                 currency,
                 pricingDate,
                 TaxApplicableOn.INVOICE,
-                DiscountApplicableOn.INVOICE
+                DiscountApplicableOn.INVOICE,
+                patientCitizen
         );
 
         return items;
@@ -99,7 +104,8 @@ public class InvoiceApplicableOnAdjustmentService {
             Currency currency,
             LocalDate pricingDate,
             TaxApplicableOn taxApplicableOn,
-            DiscountApplicableOn discountApplicableOn
+            DiscountApplicableOn discountApplicableOn,
+            Boolean patientCitizen
     ) {
         BillingAdjustmentResolveResponse rules =
                 resolveRules(
@@ -107,7 +113,8 @@ public class InvoiceApplicableOnAdjustmentService {
                         currency,
                         pricingDate,
                         taxApplicableOn,
-                        discountApplicableOn
+                        discountApplicableOn,
+                        patientCitizen
                 );
 
         if (!hasDiscountRule(rules) && !hasTaxRule(rules)) {
@@ -116,7 +123,11 @@ public class InvoiceApplicableOnAdjustmentService {
 
         if (taxApplicableOn == TaxApplicableOn.INVOICE
                 || discountApplicableOn == DiscountApplicableOn.INVOICE) {
-            applyInvoiceLevelAdjustments(items, rules);
+            applyInvoiceLevelAdjustments(
+                    items,
+                    rules,
+                    items.stream().allMatch(item -> isTaxApplicable(item, rules))
+            );
             return;
         }
 
@@ -125,9 +136,15 @@ public class InvoiceApplicableOnAdjustmentService {
         }
     }
 
+    /**
+     * An invoice document belongs to one party (patient or insurance claim),
+     * so the invoice-wide tax is applied only when that party's toggle on the
+     * resolved tax is on.
+     */
     private void applyInvoiceLevelAdjustments(
             List<FinancialDocumentItem> items,
-            BillingAdjustmentResolveResponse rules
+            BillingAdjustmentResolveResponse rules,
+            boolean taxApplicable
     ) {
         BigDecimal subtotal =
                 items.stream()
@@ -151,21 +168,26 @@ public class InvoiceApplicableOnAdjustmentService {
                         .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
 
         BigDecimal invoiceTax =
-                calculateTaxAmount(
-                        afterDiscount,
-                        rules
-                );
+                taxApplicable
+                        ? calculateTaxAmount(
+                                afterDiscount,
+                                rules
+                        )
+                        : zeroMoney();
         BigDecimal finalTotal =
-                afterDiscount
-                        .add(invoiceTax)
-                        .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+                taxIncludedInPrice(rules)
+                        ? afterDiscount
+                        : afterDiscount
+                                .add(invoiceTax)
+                                .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
 
         distributeProportionally(
                 items,
                 subtotal,
                 invoiceDiscount,
                 invoiceTax,
-                finalTotal
+                finalTotal,
+                taxIncludedInPrice(rules)
         );
 
         invoiceItemPricingSnapshotService.appendInvoiceScopeAdjustments(
@@ -191,7 +213,8 @@ public class InvoiceApplicableOnAdjustmentService {
             BigDecimal subtotal,
             BigDecimal invoiceDiscount,
             BigDecimal invoiceTax,
-            BigDecimal finalTotal
+            BigDecimal finalTotal,
+            boolean taxIncludedInPrice
     ) {
         BigDecimal allocatedDiscount = BigDecimal.ZERO;
         BigDecimal allocatedTax = BigDecimal.ZERO;
@@ -234,7 +257,11 @@ public class InvoiceApplicableOnAdjustmentService {
                             ? finalTotal.subtract(allocatedNet)
                             : lineNet
                                     .subtract(lineDiscountShare)
-                                    .add(lineTaxShare)
+                                    .add(
+                                            taxIncludedInPrice
+                                                    ? BigDecimal.ZERO
+                                                    : lineTaxShare
+                                    )
                                     .setScale(
                                             MONEY_SCALE,
                                             RoundingMode.HALF_UP
@@ -279,14 +306,18 @@ public class InvoiceApplicableOnAdjustmentService {
                         .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
 
         BigDecimal taxAmount =
-                calculateTaxAmount(
-                        afterDiscount,
-                        rules
-                );
+                isTaxApplicable(item, rules)
+                        ? calculateTaxAmount(
+                                afterDiscount,
+                                rules
+                        )
+                        : zeroMoney();
         BigDecimal finalNet =
-                afterDiscount
-                        .add(taxAmount)
-                        .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+                taxIncludedInPrice(rules)
+                        ? afterDiscount
+                        : afterDiscount
+                                .add(taxAmount)
+                                .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
 
         item.setDiscountAmount(
                 money(item.getDiscountAmount())
@@ -304,6 +335,37 @@ public class InvoiceApplicableOnAdjustmentService {
                 rules,
                 discountAmount,
                 taxAmount
+        );
+    }
+
+    /**
+     * Patient Copayment controls tax on a patient-share item (including
+     * self-pay, where the patient carries the whole item); Claim Share
+     * controls tax on an insurance-share item.
+     */
+    private boolean isTaxApplicable(
+            FinancialDocumentItem item,
+            BillingAdjustmentResolveResponse rules
+    ) {
+        if (money(item.getPatientShareAmount()).signum() > 0) {
+            return !Boolean.FALSE.equals(
+                    rules.taxApplyOnPatientCopayment()
+            );
+        }
+
+        if (money(item.getInsuranceShareAmount()).signum() > 0) {
+            return !Boolean.FALSE.equals(
+                    rules.taxApplyOnClaimShare()
+            );
+        }
+
+        return true;
+    }
+
+    private BigDecimal zeroMoney() {
+        return BigDecimal.ZERO.setScale(
+                MONEY_SCALE,
+                RoundingMode.HALF_UP
         );
     }
 
@@ -328,7 +390,8 @@ public class InvoiceApplicableOnAdjustmentService {
             Currency currency,
             LocalDate pricingDate,
             TaxApplicableOn taxApplicableOn,
-            DiscountApplicableOn discountApplicableOn
+            DiscountApplicableOn discountApplicableOn,
+            Boolean patientCitizen
     ) {
         try {
             return setupBillingAdjustmentClient.resolveAdjustments(
@@ -337,7 +400,8 @@ public class InvoiceApplicableOnAdjustmentService {
                             currency,
                             taxApplicableOn,
                             discountApplicableOn,
-                            pricingDate
+                            pricingDate,
+                            patientCitizen
                     )
             );
         } catch (FeignException exception) {
@@ -427,13 +491,26 @@ public class InvoiceApplicableOnAdjustmentService {
         }
 
         if (rules.taxType() == TaxType.FIXED_AMOUNT) {
-            return defaultZero(rules.taxFixedAmount());
+            BigDecimal fixedAmount =
+                    defaultZero(rules.taxFixedAmount());
+            if (taxIncludedInPrice(rules)) {
+                return fixedAmount.min(baseAmount);
+            }
+            return fixedAmount;
         }
 
         return BigDecimal.ZERO.setScale(
                 MONEY_SCALE,
                 RoundingMode.HALF_UP
         );
+    }
+
+    private boolean taxIncludedInPrice(
+            BillingAdjustmentResolveResponse rules
+    ) {
+        return rules != null
+                && rules.taxCalculationType()
+                == TaxCalculationType.INCLUSIVE;
     }
 
     private boolean hasDiscountRule(
@@ -463,6 +540,8 @@ public class InvoiceApplicableOnAdjustmentService {
                 null,
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
+                null,
+                null,
                 null,
                 null,
                 null,

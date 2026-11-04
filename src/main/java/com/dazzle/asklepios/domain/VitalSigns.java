@@ -69,8 +69,14 @@ public class VitalSigns extends AbstractAuditingEntity<Long> implements Serializ
     @Column(name = "respiratory_rate")
     private Integer respiratoryRate;
 
-    @Column(name = "fasting_blood_glucose")
-    private String fastingBloodGlucose;
+    @Column(name = "fluid_status")
+    private String fluidStatus;
+
+    @Column(name = "edema")
+    private String edema;
+
+    @Column(name = "urine_output")
+    private String urineOutput;
 
     @Column(name = "is_triage")
     private Boolean isTriage = false;

@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.service.PatientAuthenticationService;
 import com.dazzle.asklepios.service.PatientOtpAuthenticationService;
 import com.dazzle.asklepios.service.PatientService;
+import com.dazzle.asklepios.service.dto.patient.ExternalPatientCreateDTO;
 import com.dazzle.asklepios.service.dto.patient.FacilityPatientFilterDTO;
 import com.dazzle.asklepios.service.dto.patient.KeyAndPasswordDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientConditionsDTO;
@@ -22,6 +23,7 @@ import com.dazzle.asklepios.web.rest.errors.InvalidPasswordException;
 import com.dazzle.asklepios.web.rest.vm.patient.CreatePasswordKeyValidationVM;
 import com.dazzle.asklepios.web.rest.vm.patient.ManagedPatientVM;
 import com.dazzle.asklepios.web.rest.vm.patient.PatientBasicInformationResponseVM;
+import com.dazzle.asklepios.web.rest.vm.patient.PortalAppUpdateNotificationVM;
 import com.dazzle.asklepios.web.rest.vm.patientPortal.PatientPortalLoginVM;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.Valid;
@@ -98,6 +100,23 @@ public class PatientController {
         }
 
         Patient created = patientService.create(patientDTO);
+        return ResponseEntity.created(URI.create("/api/patient/" + created.getId())).body(created);
+    }
+
+    /**
+     * Creates a patient and a primary document for a system caller.
+     * Authentication is the {@code X-Portal-Secret} header ({@code PATIENT_PORTAL_SECRET}),
+     * checked by {@link com.dazzle.asklepios.security.PatientPortalSecretFilter}, not a bearer token.
+     */
+    @PostMapping("/external")
+    public ResponseEntity<Patient> createPatientWithSecret(@Valid @RequestBody ExternalPatientCreateDTO patientDTO) {
+        LOG.debug("REST create Patient via secret key payload={}", patientDTO);
+
+        if (patientDTO == null) {
+            throw new BadRequestAlertException("Patient payload is required", "patient", "payload.required");
+        }
+
+        Patient created = patientService.createExternal(patientDTO);
         return ResponseEntity.created(URI.create("/api/patient/" + created.getId())).body(created);
     }
 
@@ -232,6 +251,16 @@ public class PatientController {
 
             @RequestParam(required = false) String patientName,
 
+            @RequestParam(required = false) String mrn,
+
+            @RequestParam(required = false) String primaryMobileNumber,
+
+            @RequestParam(required = false) String documentNumber,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate dateOfBirth,
+
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate registrationDateFrom,
@@ -247,6 +276,10 @@ public class PatientController {
 
         FacilityPatientFilterDTO filter = new FacilityPatientFilterDTO(
                 patientName,
+                mrn,
+                primaryMobileNumber,
+                documentNumber,
+                dateOfBirth,
                 registrationDateFrom,
                 registrationDateTo,
                 insuranceId
@@ -556,6 +589,12 @@ public class PatientController {
                 .findPatientByPinAndDocument(pin, documentNumber)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/patient-portal/notify-app-update")
+    public ResponseEntity<PortalAppUpdateNotificationVM> notifyPortalPatientsToUpdateApp() {
+        LOG.debug("REST notify portal patients to update app version");
+        return ResponseEntity.ok(patientService.notifyPortalPatientsToUpdateAppVersion());
     }
 
     @PostMapping("/patient-portal/request-otp")

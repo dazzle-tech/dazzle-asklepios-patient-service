@@ -79,7 +79,9 @@ public record EncounterBillingSummary(
 
         BillingCoverageType coverageType,
 
-        Long patientInsuranceId
+        Long patientInsuranceId,
+
+        BigDecimal encounterWalletAmount
 
 ) implements Serializable {
 }

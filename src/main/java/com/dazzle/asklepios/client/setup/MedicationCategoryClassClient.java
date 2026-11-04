@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.client.setup;
 
+import com.dazzle.asklepios.client.setup.dto.SetupNameDTO;
 import com.dazzle.asklepios.config.SetupServiceFeignConfig;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -12,5 +13,8 @@ public interface MedicationCategoryClassClient{
 
     @GetMapping("/api/setup/medication-categories-class/{id}")
     ResponseEntity<Void> existsMedicationCategoryClass(@PathVariable("id") @NotNull Long id );
+
+    @GetMapping("/api/setup/medication-categories-class/{id}")
+    SetupNameDTO getMedicationCategoryClass(@PathVariable("id") @NotNull Long id);
 
 }

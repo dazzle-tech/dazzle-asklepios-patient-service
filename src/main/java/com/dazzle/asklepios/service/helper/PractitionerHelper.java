@@ -36,4 +36,12 @@ public class PractitionerHelper {
             );
         }
     }
+
+    public PractitionerDTO getPractitionerInternal(Long practitionerId) {
+        try {
+            return practitionerClient.getPractitionerInternal(practitionerId);
+        } catch (feign.FeignException.NotFound ex) {
+            return null;
+        }
+    }
 }

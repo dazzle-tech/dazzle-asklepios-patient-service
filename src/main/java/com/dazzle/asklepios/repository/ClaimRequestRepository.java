@@ -30,6 +30,11 @@ public interface ClaimRequestRepository
 
     Optional<ClaimRequest> findFirstByFinancialDocumentIdOrderByIdDesc(Long financialDocumentId);
 
+    List<ClaimRequest> findByFinancialDocumentIdInAndStatusOrderByIdDesc(
+            Collection<Long> financialDocumentIds,
+            ClaimStatus status
+    );
+
     boolean existsByFinancialDocumentIdAndStatusIn(Long financialDocumentId, List<ClaimStatus> statuses);
 
     boolean existsByFinancialDocumentIdAndClaimTypeAndStatusIn(

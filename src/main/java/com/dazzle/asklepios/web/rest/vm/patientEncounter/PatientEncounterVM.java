@@ -3,6 +3,7 @@ package com.dazzle.asklepios.web.rest.vm.patientEncounter;
 import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
@@ -32,6 +33,8 @@ public record PatientEncounterVM(
         EncounterStatus encounterStatus,
         String originType,
         String originName,
+        String promotionName,
+        String promotionCode,
         String notes,
 
         Integer departmentDailySequenceNumber,
@@ -47,8 +50,12 @@ public record PatientEncounterVM(
         Boolean isObserved,
         Instant createdAt,
         LocalDateTime dischargeAt,
+        Instant completedAt,
         String historyOfPresentIllness,
-        String createdBy
+        String createdBy,
+        Long assignedNurseId,
+        String assignedNurseName,
+        DiagnosticStatus latestDiagnosticOrderStatus
 
 ) {
 
@@ -57,7 +64,28 @@ public record PatientEncounterVM(
             Boolean hasOrder,
             Boolean hasPrescription,
             Boolean hasObservation,
-            String documentType
+            String documentType,
+            String assignedNurseName
+    ) {
+        return ofEntity(
+                encounter,
+                hasOrder,
+                hasPrescription,
+                hasObservation,
+                documentType,
+                assignedNurseName,
+                null
+        );
+    }
+
+    public static PatientEncounterVM ofEntity(
+            PatientEncounter encounter,
+            Boolean hasOrder,
+            Boolean hasPrescription,
+            Boolean hasObservation,
+            String documentType,
+            String assignedNurseName,
+            DiagnosticStatus latestDiagnosticOrderStatus
     ) {
         if (encounter == null) {
             return null;
@@ -82,6 +110,8 @@ public record PatientEncounterVM(
                 encounter.getEncounterStatus(),
                 encounter.getOriginType(),
                 encounter.getOriginName(),
+                encounter.getPromotionName(),
+                encounter.getPromotionCode(),
                 encounter.getNotes(),
 
                 encounter.getDepartmentDailySequenceNumber(),
@@ -98,8 +128,12 @@ public record PatientEncounterVM(
 
                 encounter.getCreatedDate(),
                 encounter.getDischargeAt(),
+                encounter.getCompletedAt(),
                 encounter.getHistoryOfPresentIllness(),
-                encounter.getCreatedBy()
+                encounter.getCreatedBy(),
+                encounter.getAssignedNurseId(),
+                assignedNurseName,
+                latestDiagnosticOrderStatus
         );
     }
-   }
+}

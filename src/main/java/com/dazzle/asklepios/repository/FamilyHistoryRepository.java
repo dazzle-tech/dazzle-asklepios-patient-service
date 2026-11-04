@@ -6,6 +6,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
+
 public interface FamilyHistoryRepository extends JpaRepository<FamilyHistory, Long> {
 
     Page<FamilyHistory> findAllByPatientId(
@@ -17,5 +19,9 @@ public interface FamilyHistoryRepository extends JpaRepository<FamilyHistory, Lo
             Long patientId,
             PatientHistoryStatus status,
             Pageable pageable
+    );
+    List<FamilyHistory> findAllByPatientIdAndStatus(
+            Long patientId,
+            PatientHistoryStatus status
     );
 }

@@ -39,6 +39,18 @@ public class BillingTriggerMatcher {
 
             case DEBIT_NOTE ->
                     eventType == BillingEventType.DEBIT_NOTE;
+
+            case SUBMIT_ORDER ->
+                    eventType == BillingEventType.SUBMIT_ORDER;
+
+            case COLLECT_SAMPLE ->
+                    eventType == BillingEventType.COLLECT_SAMPLE;
+
+            case ACCEPT_ORDER ->
+                    eventType == BillingEventType.ACCEPT_ORDER;
+
+            case APPROVED ->
+                    eventType == BillingEventType.APPROVED;
         };
     }
 }

@@ -26,6 +26,7 @@ public record EncounterListFilterDTO(
         String documentType,
         String documentNumber,
         String primaryMobileNumber,
+        LocalDate dateOfBirth,
 
         EncounterType encounterType,
         String encounterNumber,

@@ -26,11 +26,18 @@ public class ReviewOfSystemService {
     private final ReviewOfSystemRepository reviewOfSystemRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
-    public ReviewOfSystemService(ReviewOfSystemRepository reviewOfSystemRepository, PatientRepository patientRepository, PatientEncounterRepository patientEncounterRepository) {
+    public ReviewOfSystemService(
+            ReviewOfSystemRepository reviewOfSystemRepository,
+            PatientRepository patientRepository,
+            PatientEncounterRepository patientEncounterRepository,
+            ReopenSessionAuditContext reopenSessionAuditContext
+    ) {
         this.reviewOfSystemRepository = reviewOfSystemRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
+        this.reopenSessionAuditContext = reopenSessionAuditContext;
     }
 
     public ReviewOfSystem create(ReviewOfSystemCreateDTO dto) {
@@ -40,6 +47,8 @@ public class ReviewOfSystemService {
         ReviewOfSystem reviewOfSystem = reviewOfSystemRepository
                 .findByEncounterIdAndBodySystemAndSystemDetail(dto.encounterId(), dto.bodySystem(), dto.systemDetail())
                 .orElseGet(ReviewOfSystem::new);
+        boolean creating = reviewOfSystem.getId() == null;
+        Long ownedEncounterId = reviewOfSystem.getEncounterId();
 
         Patient patient = patientRepository.findById(dto.patientId())
                 .orElseThrow(() -> new NotFoundAlertException(
@@ -59,7 +68,13 @@ public class ReviewOfSystemService {
         reviewOfSystem.setSystemDetail(dto.systemDetail());
         reviewOfSystem.setNote(dto.note());
 
-        return reviewOfSystemRepository.save(reviewOfSystem);
+        if (creating) {
+            reopenSessionAuditContext.applyOpenSession(encounter.getId());
+        } else {
+            reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
+        }
+        ReviewOfSystem saved = reviewOfSystemRepository.save(reviewOfSystem);
+        return saved;
     }
 
     public ReviewOfSystem update(ReviewOfSystemUpdateDTO dto) {
@@ -71,6 +86,7 @@ public class ReviewOfSystemService {
                         "review_of_system",
                         "notfound"
                 ));
+        Long ownedEncounterId = existing.getEncounterId();
         Patient patient = patientRepository.findById(dto.patientId())
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Patient not found with id " + dto.patientId(),
@@ -89,7 +105,9 @@ public class ReviewOfSystemService {
         existing.setSystemDetail(dto.systemDetail());
         existing.setNote(dto.note());
 
-        return reviewOfSystemRepository.save(existing);
+        reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
+        ReviewOfSystem saved = reviewOfSystemRepository.save(existing);
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -116,11 +134,17 @@ public class ReviewOfSystemService {
         LOG.debug("Request to delete ReviewOfSystem encounterId={} bodySystem={} systemDetail={}",
                 encounterId, bodySystem, systemDetail
         );
+        var existing = reviewOfSystemRepository
+                .findByEncounterIdAndBodySystemAndSystemDetail(encounterId, bodySystem, systemDetail);
+        Long ownedEncounterId = existing.map(ReviewOfSystem::getEncounterId).orElse(encounterId);
+        reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
         reviewOfSystemRepository.deleteByEncounterIdAndBodySystemAndSystemDetail(encounterId, bodySystem, systemDetail);
     }
 
     public void delete(Long id) {
+        var existing = reviewOfSystemRepository.findById(id);
+        Long ownedEncounterId = existing.map(ReviewOfSystem::getEncounterId).orElse(null);
+        reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
         reviewOfSystemRepository.deleteById(id);
     }
 }
-

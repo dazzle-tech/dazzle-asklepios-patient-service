@@ -17,5 +17,13 @@ public enum BillingTrigger {
 
     MANUAL,
 
-    DEBIT_NOTE
+    DEBIT_NOTE,
+
+    SUBMIT_ORDER,
+
+    COLLECT_SAMPLE,
+
+    ACCEPT_ORDER,
+
+    APPROVED
 }

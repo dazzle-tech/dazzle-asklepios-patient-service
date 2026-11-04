@@ -36,7 +36,9 @@ public record BillingPricingResolveRequest(
 
         LocalDate pricingDate,
 
-        EncounterType visitType
+        EncounterType visitType,
+
+        Boolean patientCitizen
 
 ) implements Serializable {
 }

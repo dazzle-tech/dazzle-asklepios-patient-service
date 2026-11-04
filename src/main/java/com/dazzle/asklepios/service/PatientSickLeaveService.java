@@ -22,10 +22,16 @@ public class PatientSickLeaveService {
 
     private final PatientSickLeaveRepository patientSickLeaveRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
-    public PatientSickLeaveService(PatientSickLeaveRepository patientSickLeaveRepository, PatientEncounterRepository patientEncounterRepository) {
+    public PatientSickLeaveService(
+            PatientSickLeaveRepository patientSickLeaveRepository,
+            PatientEncounterRepository patientEncounterRepository,
+            ReopenSessionAuditContext reopenSessionAuditContext
+    ) {
         this.patientSickLeaveRepository = patientSickLeaveRepository;
         this.patientEncounterRepository = patientEncounterRepository;
+        this.reopenSessionAuditContext = reopenSessionAuditContext;
     }
 
     public PatientSickLeave create(PatientSickLeaveCreateDTO dto) {
@@ -37,13 +43,15 @@ public class PatientSickLeaveService {
 
         PatientSickLeave sickLeave = new PatientSickLeave();
         sickLeave.setPatientId(encounter.getPatient().getId());
-        sickLeave.setEncounterId(dto.encounterId());
+        sickLeave.setEncounterId(encounter.getId());
         sickLeave.setStartDate(dto.startDate());
         sickLeave.setEndDate(dto.endDate());
         sickLeave.setNotes(dto.notes());
         sickLeave.setLanguage(dto.language() != null ? dto.language() : "en");
 
-        return patientSickLeaveRepository.save(sickLeave);
+        reopenSessionAuditContext.applyOpenSession(encounter.getId());
+        PatientSickLeave saved = patientSickLeaveRepository.save(sickLeave);
+        return saved;
     }
 
     @Transactional(readOnly = true)

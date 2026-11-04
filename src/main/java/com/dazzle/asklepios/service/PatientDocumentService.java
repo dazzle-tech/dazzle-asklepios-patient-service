@@ -74,6 +74,7 @@ public class PatientDocumentService {
         try {
             PatientDocument saved = patientDocumentRepository.saveAndFlush(entity);
             syncPatientDocumentId(saved);
+            setCitizenTrueIfSaudiNationalId(saved);
 
             LOG.info(
                     "Successfully created PatientDocument id={} for patientId={} isPrimary={}",
@@ -136,6 +137,7 @@ public class PatientDocumentService {
         try {
             PatientDocument updated = patientDocumentRepository.saveAndFlush(existing);
             syncPatientDocumentId(updated);
+            setCitizenTrueIfSaudiNationalId(updated);
             LOG.info("Successfully updated PatientDocument id={}", updated.getId());
             return updated;
 
@@ -194,6 +196,34 @@ public class PatientDocumentService {
         }
     }
 
+
+    /**
+     * Saudi Arabia + NATIONAL_ID + trimmed number starting with "1" → set isCitizen=true.
+     * Non-matching documents leave Citizen unchanged. Never clears Citizen.
+     */
+    public void setCitizenTrueIfSaudiNationalId(PatientDocument document) {
+        if (!matchesSaudiNationalIdCitizenRule(document)) {
+            return;
+        }
+
+        Patient patient = document.getPatient();
+        if (patient == null || patient.getId() == null) {
+            return;
+        }
+
+        if (Boolean.TRUE.equals(patient.getIsCitizen())) {
+            return;
+        }
+
+        patient.setIsCitizen(true);
+        patientRepository.saveAndFlush(patient);
+        LOG.info(
+                "[PATIENT_DOCUMENT] Set patient.isCitizen=true for patientId={} from Saudi NATIONAL_ID documentId={}",
+                patient.getId(),
+                document.getId()
+        );
+    }
+
     // ─── Private Helpers ───────────────────────────────────────────────────────
 
     private void validateDocumentNumber(DocumentType type, CountryName countryCode, String number) {
@@ -219,7 +249,7 @@ public class PatientDocumentService {
                     );
                 }
             }
-            case IQAMA, BORDER_NUMBER -> {
+            case IQAMA -> {
                 if (!num.startsWith("2")) {
                     throw new BadRequestAlertException(
                             "Saudi " + type.name() + " number must start with 2.",
@@ -284,6 +314,20 @@ public class PatientDocumentService {
                 "patientDocument",
                 "db.constraint"
         );
+    }
+
+    private boolean matchesSaudiNationalIdCitizenRule(PatientDocument document) {
+        if (document == null || document.getCountryId() == null) {
+            return false;
+        }
+        if (document.getType() != DocumentType.NATIONAL_ID) {
+            return false;
+        }
+        String number = document.getNumber() == null ? "" : document.getNumber().trim();
+        if (!number.startsWith("1")) {
+            return false;
+        }
+        return countryHelper.getCountryName(document.getCountryId()) == CountryName.SAUDI_ARABIA;
     }
 
     private void syncPatientDocumentId(PatientDocument document) {

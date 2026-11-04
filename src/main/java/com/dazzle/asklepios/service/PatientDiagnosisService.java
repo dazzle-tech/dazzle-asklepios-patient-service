@@ -38,15 +38,18 @@ public class PatientDiagnosisService {
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final ICDTreeClient iCDTreeClient;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public PatientDiagnosisService(
             PatientDiagnosisRepository patientDiagnosisRepository,
             PatientRepository patientRepository,
-            PatientEncounterRepository patientEncounterRepository, ICDTreeClient iCDTreeClient) {
+            PatientEncounterRepository patientEncounterRepository, ICDTreeClient iCDTreeClient,
+            ReopenSessionAuditContext reopenSessionAuditContext) {
         this.patientDiagnosisRepository = patientDiagnosisRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
         this.iCDTreeClient = iCDTreeClient;
+        this.reopenSessionAuditContext = reopenSessionAuditContext;
     }
 
     public PatientDiagnosis create(PatientDiagnosisCreateDTO dto) {
@@ -77,7 +80,9 @@ public class PatientDiagnosisService {
                 .build();
 
         try {
-            return patientDiagnosisRepository.saveAndFlush(entity);
+            reopenSessionAuditContext.applyOpenSession(encounter.getId());
+            PatientDiagnosis saved = patientDiagnosisRepository.saveAndFlush(entity);
+            return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);
@@ -99,6 +104,7 @@ public class PatientDiagnosisService {
                         "notfound"
                 ));
 
+        Long ownedEncounterId = existing.getEncounterId();
         Patient patient = patientRepository.findById(dto.patientId())
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Patient not found with id " + dto.patientId(),
@@ -122,7 +128,9 @@ public class PatientDiagnosisService {
         existing.setLastModifiedDate(Instant.now());
 
         try {
-            return patientDiagnosisRepository.saveAndFlush(existing);
+            reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
+            PatientDiagnosis saved = patientDiagnosisRepository.saveAndFlush(existing);
+            return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);
@@ -146,6 +154,24 @@ public class PatientDiagnosisService {
     public Page<PatientDiagnosis> findByPatientId(Long patientId, Pageable pageable) {
         LOG.debug("[FIND PAGE] patientId={} pageable={}", patientId, pageable);
         return patientDiagnosisRepository.findByPatient_IdOrderByCreatedDateDesc(patientId, pageable);
+    }
+
+    /**
+     * Lists a patient's diagnoses split by visit: {@code currentEncounter=true} returns those added in
+     * {@code encounterId}, {@code false} returns those added in the patient's other (previous) encounters.
+     */
+    @Transactional(readOnly = true)
+    public Page<PatientDiagnosis> findByPatientIdAndEncounter(
+            Long patientId,
+            Long encounterId,
+            boolean currentEncounter,
+            Pageable pageable
+    ) {
+        LOG.debug("[FIND PAGE] patientId={} encounterId={} currentEncounter={} pageable={}",
+                patientId, encounterId, currentEncounter, pageable);
+        return currentEncounter
+                ? patientDiagnosisRepository.findByPatient_IdAndEncounterIdOrderByCreatedDateDesc(patientId, encounterId, pageable)
+                : patientDiagnosisRepository.findByPatient_IdAndEncounterIdNotOrderByCreatedDateDesc(patientId, encounterId, pageable);
     }
 
 
@@ -173,6 +199,8 @@ public class PatientDiagnosisService {
                         "notfound"
                 ));
 
+        Long encounterId = entity.getEncounterId();
+        reopenSessionAuditContext.applyOpenSession(encounterId);
         patientDiagnosisRepository.delete(entity);
 
         LOG.info("[HARD_DELETE] PatientDiagnosis deleted permanently id={}", id);

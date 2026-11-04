@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.ProgressNote;
+import com.dazzle.asklepios.domain.ProgressNoteLog;
 import com.dazzle.asklepios.service.ProgressNoteService;
 import com.dazzle.asklepios.service.dto.progressNotes.ProgressNoteCancelDTO;
 import com.dazzle.asklepios.service.dto.progressNotes.ProgressNoteCreateDTO;
@@ -127,19 +128,24 @@ public class ProgressNoteController {
         LOG.debug("REST get ProgressNote logs id={}", id);
         List<ProgressNoteLogVM> result = service.findLogsByProgressNoteId(id)
                 .stream()
-                .map(log -> new ProgressNoteLogVM(
-                        log.getId(),
-                        log.getAction(),
-                        log.getCreatedBy(),
-                        log.getCreatedDate(),
-                        log.getLastModifiedBy(),
-                        log.getLastModifiedDate(),
-                        log.getPayload(),
-                        log.getOldNoteText(),
-                        log.getNewNoteText()
-                ))
+                .map(this::toLogVm)
                 .toList();
         LOG.info("REST get ProgressNote logs - returned {} logs", result.size());
         return ResponseEntity.ok(result);
+    }
+
+    private ProgressNoteLogVM toLogVm(ProgressNoteLog log) {
+        return new ProgressNoteLogVM(
+                log.getId(),
+                log.getAction(),
+                log.getCreatedBy(),
+                log.getCreatedDate(),
+                log.getLastModifiedBy(),
+                log.getLastModifiedDate(),
+                log.getPayload(),
+                log.getOldNoteText(),
+                log.getNewNoteText(),
+                log.getReopenSessionId()
+        );
     }
 }

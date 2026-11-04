@@ -21,7 +21,13 @@ public record CollectInvoiceBalanceRequest(
         @NotBlank
         String requestId,
 
-        String notes
+        String notes,
+
+        String authorizationCode,
+
+        String processorReference,
+
+        String cardLastFour
 
 ) implements Serializable {
 }

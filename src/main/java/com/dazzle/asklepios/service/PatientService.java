@@ -12,9 +12,12 @@ import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.integration.waseel.service.CchiPatientLookupService;
 import com.dazzle.asklepios.repository.DuplicationCandidateRepository;
 import com.dazzle.asklepios.repository.PatientDocumentRepository;
+import com.dazzle.asklepios.repository.PatientLoginOtpRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.dto.patient.ExternalPatientCreateDTO;
 import com.dazzle.asklepios.service.dto.patient.FacilityPatientFilterDTO;
+import com.dazzle.asklepios.service.dto.patientDocuments.PatientDocumentCreateDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientConditionsDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientCreateDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientDuplicationLookupDTO;
@@ -28,7 +31,10 @@ import com.dazzle.asklepios.web.rest.errors.InvalidPasswordException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.errors.PatientAlreadyActiveException;
 import com.dazzle.asklepios.web.rest.vm.patient.CreatePasswordKeyValidationVM;
+import com.dazzle.asklepios.web.rest.vm.patient.PortalAppUpdateNotificationVM;
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
@@ -66,6 +72,7 @@ public class PatientService {
     private static final Logger LOG = LoggerFactory.getLogger(PatientService.class);
 
     private final PatientRepository patientRepository;
+    private final PatientLoginOtpRepository patientLoginOtpRepository;
     private final PatientDocumentRepository patientDocumentRepository;
     private final DuplicationCandidateRepository duplicationCandidateRepository;
     private static final long CREATE_PASSWORD_KEY_EXPIRATION_HOURS = 24;
@@ -77,18 +84,22 @@ public class PatientService {
     private final NotificationHelper notificationHelper;
     private final CchiPatientLookupService cchiPatientLookupService;
     private final PayorHelper payorHelper;
+    private final PatientDocumentService patientDocumentService;
 
     public PatientService(
             PatientRepository patientRepository,
+            PatientLoginOtpRepository patientLoginOtpRepository,
             PatientDocumentRepository patientDocumentRepository,
             DuplicationCandidateRepository duplicationCandidateRepository,
             PasswordEncoder passwordEncoder,
             SystemConfigurationClient systemConfigurationClient,
             NotificationHelper notificationHelper,
             CchiPatientLookupService cchiPatientLookupService,
-            PayorHelper payorHelper
+            PayorHelper payorHelper,
+            PatientDocumentService patientDocumentService
     ) {
         this.patientRepository = patientRepository;
+        this.patientLoginOtpRepository = patientLoginOtpRepository;
         this.patientDocumentRepository = patientDocumentRepository;
         this.duplicationCandidateRepository = duplicationCandidateRepository;
         this.passwordEncoder = passwordEncoder;
@@ -96,6 +107,7 @@ public class PatientService {
         this.notificationHelper = notificationHelper;
         this.cchiPatientLookupService = cchiPatientLookupService;
         this.payorHelper = payorHelper;
+        this.patientDocumentService = patientDocumentService;
     }
 
     @Value("${application.asklepios-application-url}")
@@ -152,6 +164,7 @@ public class PatientService {
                 .responsibleParty(dto.responsibleParty())
                 .educationalLevel(dto.educationalLevel())
                 .isCchiPatient(cchiPatient)
+                .isCitizen(Boolean.TRUE.equals(dto.isCitizen()))
                 .documentId(documentId)
                 .previousId(dto.previousId())
                 .archivingNumber(dto.archivingNumber())
@@ -178,11 +191,36 @@ public class PatientService {
         }
     }
 
+    public Patient createExternal(ExternalPatientCreateDTO dto) {
+        LOG.info("[CREATE EXTERNAL] Request to create Patient payload={}", dto);
+
+        if (dto.primaryDocumentType() == DocumentType.NO_DOCUMENT) {
+            throw new BadRequestAlertException(
+                    "A primary document requires a document type other than NO_DOCUMENT",
+                    "patientDocument",
+                    "invalidType"
+            );
+        }
+
+        Patient created = create(dto.toPatientCreateDTO());
+        patientDocumentService.create(
+                new PatientDocumentCreateDTO(
+                        created.getId(),
+                        dto.countryId(),
+                        dto.primaryDocumentType(),
+                        dto.primaryDocumentNumber().trim(),
+                        null
+                )
+        );
+        return patientRepository.findById(created.getId()).orElse(created);
+    }
+
     public Patient createUnknown(UnknownPatientCreateDTO dto) {
         Patient unknownPatient = Patient.builder()
                 .isUnknown(true)
                 .isVerified(Boolean.TRUE.equals(dto.isVerified()))
                 .isCompletedPatient(Boolean.TRUE.equals(dto.isCompletedPatient()))
+                .isCitizen(false)
                 .activated(false)
                 .build();
 
@@ -264,6 +302,7 @@ public class PatientService {
         if (dto.isCchiPatient() != null) {
             existing.setIsCchiPatient(Boolean.TRUE.equals(dto.isCchiPatient()));
         }
+        applyCitizenFlag(existing, dto.isCitizen());
         if (dto.documentId() != null) {
             String normalizedDocumentId = normalizeDocumentId(dto.documentId());
             if (normalizedDocumentId != null) {
@@ -430,6 +469,29 @@ public class PatientService {
                                     cb.like(cb.lower(root.get("lastNameSecondaryLang")), pattern)
                             )
                     );
+                }
+            }
+
+            if (filter.mrn() != null && !filter.mrn().isBlank()) {
+                predicates.add(cb.equal(root.get("medicalRecordNumber"), filter.mrn().trim()));
+            }
+
+            if (filter.primaryMobileNumber() != null && !filter.primaryMobileNumber().isBlank()) {
+                predicates.add(
+                        cb.equal(root.get("primaryMobileNumber"), filter.primaryMobileNumber().trim())
+                );
+            }
+
+            if (filter.dateOfBirth() != null) {
+                predicates.add(cb.equal(root.get("dateOfBirth"), filter.dateOfBirth()));
+            }
+
+            if (filter.documentNumber() != null && !filter.documentNumber().isBlank()) {
+                Join<Patient, PatientDocument> documents =
+                        root.join("patientDocuments", JoinType.INNER);
+                predicates.add(cb.equal(documents.get("number"), filter.documentNumber().trim()));
+                if (query != null) {
+                    query.distinct(true);
                 }
             }
 
@@ -865,11 +927,30 @@ public class PatientService {
             );
         }
 
+        if (lower.contains("is_citizen")
+                && (lower.contains("null value") || lower.contains("not-null") || lower.contains("not null"))) {
+            throw new BadRequestAlertException(
+                    "Citizen flag is required.",
+                    "patient",
+                    "is_citizen.required"
+            );
+        }
+
         throw new BadRequestAlertException(
                 "Database constraint violated while saving patient.",
                 "patient",
                 "db.constraint"
         );
+    }
+
+    private void applyCitizenFlag(Patient patient, Boolean requested) {
+        if (requested != null) {
+            patient.setIsCitizen(requested);
+            return;
+        }
+        if (patient.getIsCitizen() == null) {
+            patient.setIsCitizen(false);
+        }
     }
 
     private Specification<Patient> buildDuplicationSpec(Map<String, Boolean> fields, PatientDuplicationLookupDTO duplicationLookupDTO) {
@@ -1087,6 +1168,55 @@ public class PatientService {
         return patients.stream()
                 .filter(patient -> patient.getId().equals(patientId))
                 .findFirst();
+    }
+
+    public PortalAppUpdateNotificationVM notifyPortalPatientsToUpdateAppVersion() {
+        List<Patient> patients = patientLoginOtpRepository.findDistinctPatientByPatientIsNotNull();
+        int notified = 0;
+
+        for (Patient patient : patients) {
+            try {
+                Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
+                        notificationHelper.recipientsForPatient(patient);
+
+                if (recipientsByRule == null || recipientsByRule.isEmpty()) {
+                    LOG.debug(
+                            "[NOTIFICATION] Skip app version update because patient has no reachable channel. patientId={}",
+                            patient.getId()
+                    );
+                    continue;
+                }
+
+                Map<String, Object> data = new LinkedHashMap<>();
+                data.put("patient_name", getPatientName(patient));
+                data.put("medical_record_number", patient.getMedicalRecordNumber());
+
+                notificationHelper.sendNotification(
+                        null,
+                        NotificationCode.PATIENT_APP_VERSION_UPDATE,
+                        recipientsByRule,
+                        data,
+                        "PATIENT",
+                        patient.getId()
+                );
+                notified++;
+            } catch (Exception e) {
+                LOG.warn(
+                        "[NOTIFICATION] Failed to send app version update notification. patientId={}, error={}",
+                        patient.getId(),
+                        e.getMessage(),
+                        e
+                );
+            }
+        }
+
+        LOG.info(
+                "[NOTIFICATION] App version update notification finished. portalPatients={}, notified={}",
+                patients.size(),
+                notified
+        );
+
+        return new PortalAppUpdateNotificationVM(patients.size(), notified);
     }
 
     private void sendPatientWelcomeNotification(Patient patient) {

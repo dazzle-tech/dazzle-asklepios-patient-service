@@ -18,6 +18,18 @@ public interface PatientDiagnosisRepository extends JpaRepository<PatientDiagnos
             Long patientId,
             Pageable pageable
     );
+    Page<PatientDiagnosis> findByPatient_IdAndEncounterIdOrderByCreatedDateDesc(
+            Long patientId,
+            Long encounterId,
+            Pageable pageable
+    );
+
+    Page<PatientDiagnosis> findByPatient_IdAndEncounterIdNotOrderByCreatedDateDesc(
+            Long patientId,
+            Long encounterId,
+            Pageable pageable
+    );
+
     boolean existsByEncounterId(Long encounterId);
 
     List<PatientDiagnosis> findByEncounterId(Long encounterId);

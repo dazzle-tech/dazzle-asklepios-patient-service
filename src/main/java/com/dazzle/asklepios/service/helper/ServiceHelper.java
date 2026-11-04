@@ -60,4 +60,12 @@ public class ServiceHelper {
             );
         }
     }
+
+    public ServiceSetupDTO getServiceInternal(Long serviceId) {
+        try {
+            return serviceClient.getServiceDetailsInternal(serviceId);
+        } catch (feign.FeignException.NotFound ex) {
+            return null;
+        }
+    }
 }

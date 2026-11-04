@@ -14,6 +14,7 @@ import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.EncounterBillingStatus;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
+import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
@@ -63,6 +64,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -124,6 +126,8 @@ public class InvoiceGenerationService {
 
     private final EncounterChargeLineEnsuringService encounterChargeLineEnsuringService;
     private final EncounterBillingGuardService encounterBillingGuardService;
+    private final ClaimEncounterCopyService claimEncounterCopyService;
+    private final PatientActivityService patientActivityService;
 
     @Transactional(readOnly = true)
     public List<BillableVisitResponse> findBillableVisits(Long patientId) {
@@ -565,6 +569,8 @@ public class InvoiceGenerationService {
         encounter.setBillingStatus(EncounterBillingStatus.INVOICED);
         patientEncounterRepository.save(encounter);
 
+        claimEncounterCopyService.createFromEncounterIfNotExists(encounter);
+
         return new GenerateInvoiceResult(
                 encounterId,
                 EncounterBillingStatus.INVOICED,
@@ -632,7 +638,8 @@ public class InvoiceGenerationService {
                 items,
                 encounter.getFacilityId(),
                 document.getCurrency(),
-                LocalDate.now()
+                LocalDate.now(),
+                patient.getIsCitizen()
         );
 
         invoiceChargePaymentSyncService.syncPreInvoicePayments(items);
@@ -646,7 +653,39 @@ public class InvoiceGenerationService {
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         document.setTotalAmount(totalAmount);
-        return financialDocumentRepository.save(document);
+        document = financialDocumentRepository.save(document);
+        recordPatientPaymentFollowUp(encounter, patient, document, items, subtype);
+        return document;
+    }
+
+    private void recordPatientPaymentFollowUp(
+            PatientEncounter encounter,
+            Patient patient,
+            FinancialDocument document,
+            List<FinancialDocumentItem> items,
+            FinancialDocumentSubtype subtype
+    ) {
+        if (subtype != FinancialDocumentSubtype.PATIENT || document.getId() == null || patient == null) {
+            return;
+        }
+
+        BigDecimal outstanding = items.stream()
+                .map(item -> money(item.getNetAmount()).subtract(money(item.getPaidAmount())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (outstanding.signum() <= 0) {
+            return;
+        }
+
+        Long appointmentId = encounter.getAppointment() == null ? null : encounter.getAppointment().getId();
+        patientActivityService.recordOccurred(
+                patient.getId(),
+                encounter.getId(),
+                appointmentId,
+                PatientActivityType.PATIENT_PAYMENT_FOLLOW_UP,
+                PatientActivityService.SOURCE_FINANCIAL_DOCUMENT,
+                document.getId(),
+                "Patient payment follow-up"
+        );
     }
 
     private List<FinancialDocumentItem> buildInvoiceItems(
@@ -662,10 +701,13 @@ public class InvoiceGenerationService {
                             ? money(line.getInsuranceResponsibilityAmount())
                             : money(line.getPatientResponsibilityAmount());
 
+            boolean wholeLineToPatient = false;
+
             if (subtype == FinancialDocumentSubtype.PATIENT
                     && shareAmount.signum() == 0
                     && document.getEligibilityReference() == null) {
                 shareAmount = money(line.getNetAmount());
+                wholeLineToPatient = true;
             }
 
             if (shareAmount.signum() <= 0) {
@@ -673,12 +715,26 @@ public class InvoiceGenerationService {
             }
 
             BigDecimal lineNet = money(line.getNetAmount());
-            BigDecimal grossAmount =
-                    proportional(line.getGrossAmount(), shareAmount, lineNet);
-            BigDecimal discountAmount =
-                    proportional(line.getDiscountAmount(), shareAmount, lineNet);
             BigDecimal taxAmount =
-                    proportional(line.getTaxAmount(), shareAmount, lineNet);
+                    resolveShareTax(
+                            line,
+                            subtype,
+                            shareAmount,
+                            lineNet,
+                            wholeLineToPatient
+                    );
+
+            /*
+             * Gross and discount follow the share before tax, so a party whose
+             * tax was removed still shows its full pre-tax amounts.
+             */
+            BigDecimal shareBeforeTax = shareAmount.subtract(taxAmount);
+            BigDecimal lineBeforeTax =
+                    lineNet.subtract(money(line.getTaxAmount()));
+            BigDecimal grossAmount =
+                    proportional(line.getGrossAmount(), shareBeforeTax, lineBeforeTax);
+            BigDecimal discountAmount =
+                    proportional(line.getDiscountAmount(), shareBeforeTax, lineBeforeTax);
 
             BigDecimal patientShare =
                     subtype == FinancialDocumentSubtype.PATIENT
@@ -785,6 +841,42 @@ public class InvoiceGenerationService {
                         subtype,
                         FINAL_INVOICE_STATUSES
                 );
+    }
+
+    /**
+     * Uses the tax already distributed on the charge line for the invoiced
+     * party instead of recalculating it. Lines whose party tax does not add up
+     * to the line tax (billed before the Patient Copayment / Claim Share
+     * toggles, or reshaped by a later adjustment) keep the previous
+     * proportional split.
+     */
+    private BigDecimal resolveShareTax(
+            BillingChargeLine line,
+            FinancialDocumentSubtype subtype,
+            BigDecimal shareAmount,
+            BigDecimal lineNet,
+            boolean wholeLineToPatient
+    ) {
+        BigDecimal lineTax = money(line.getTaxAmount());
+
+        if (wholeLineToPatient) {
+            return lineTax;
+        }
+
+        BigDecimal patientTax = money(line.getPatientTaxAmount());
+        BigDecimal insuranceTax = money(line.getInsuranceTaxAmount());
+
+        boolean distributed =
+                line.getCalculatedTaxAmount() != null
+                        && patientTax.add(insuranceTax).compareTo(lineTax) == 0;
+
+        if (!distributed) {
+            return proportional(line.getTaxAmount(), shareAmount, lineNet);
+        }
+
+        return subtype == FinancialDocumentSubtype.INSURANCE_CLAIM
+                ? insuranceTax
+                : patientTax;
     }
 
     private BigDecimal proportional(
@@ -922,11 +1014,16 @@ public class InvoiceGenerationService {
             Patient patient
     ) {
         String fullName =
-                String.join(
-                        " ",
-                        Objects.toString(patient.getFirstName(), "").trim(),
-                        Objects.toString(patient.getLastName(), "").trim()
-                ).trim();
+                Stream.of(
+                        patient.getFirstName(),
+                        patient.getSecondName(),
+                        patient.getThirdName(),
+                        patient.getLastName()
+                )
+                        .filter(Objects::nonNull)
+                        .map(String::trim)
+                        .filter(part -> !part.isEmpty())
+                        .collect(Collectors.joining(" "));
 
         return new EncounterInvoiceDetailsResponse.PatientInvoiceHeader(
                 patient.getId(),

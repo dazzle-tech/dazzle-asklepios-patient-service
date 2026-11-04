@@ -22,6 +22,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 
@@ -44,6 +45,9 @@ public class PatientPrescriptionMedication extends AbstractAuditingEntity<Long> 
 
     @Column(name = "medications_id")
     private Long medicationsId;
+
+    @Column(name = "pharmaceutical_id")
+    private Long pharmaceuticalId;
 
     @Column(name = "other_medication_name", length = 255)
     private String otherMedicationName;
@@ -70,8 +74,8 @@ public class PatientPrescriptionMedication extends AbstractAuditingEntity<Long> 
     @Column(name = "frequency", length = 100)
     private String frequency;
 
-    @Column(name = "duration")
-    private Long duration;
+    @Column(name = "duration", precision = 10, scale = 2)
+    private BigDecimal duration;
 
     @Column(name = "duration_type", length = 50)
     private String durationType;
@@ -79,8 +83,8 @@ public class PatientPrescriptionMedication extends AbstractAuditingEntity<Long> 
     @Column(name = "chronic_medication", nullable = false)
     private Boolean chronicMedication = false;
 
-    @Column(name = "maximum_dose")
-    private Long maximumDose;
+    @Column(name = "maximum_dose", precision = 10, scale = 2)
+    private BigDecimal maximumDose;
 
 
 

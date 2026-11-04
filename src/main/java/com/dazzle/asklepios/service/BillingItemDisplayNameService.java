@@ -4,6 +4,7 @@ import com.dazzle.asklepios.client.setup.BrandMedicationClient;
 import com.dazzle.asklepios.client.setup.DiagnosticTestClient;
 import com.dazzle.asklepios.client.setup.ProcedureClient;
 import com.dazzle.asklepios.client.setup.ServiceClient;
+import com.dazzle.asklepios.client.setup.VaccineBrandClient;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import feign.FeignException;
@@ -29,6 +30,7 @@ public class BillingItemDisplayNameService {
     private final BrandMedicationClient brandMedicationClient;
     private final ProcedureClient procedureClient;
     private final DiagnosticTestClient diagnosticTestClient;
+    private final VaccineBrandClient vaccineBrandClient;
 
     public String resolveDisplayName(
             BillingItemTypes billingItemType,
@@ -120,6 +122,18 @@ public class BillingItemDisplayNameService {
                                 )
                                 .name()
                 );
+                case VACCINE -> readName(
+                        vaccineBrandClient
+                                .getVaccineBrand(
+                                        pickId(
+                                                item == null
+                                                        ? null
+                                                        : item.getVaccineBrandId(),
+                                                sourceId
+                                        )
+                                )
+                                .name()
+                );
             };
         } catch (FeignException ex) {
             LOG.debug(
@@ -172,6 +186,10 @@ public class BillingItemDisplayNameService {
             return item.getDiagnosticTestId();
         }
 
+        if (item.getVaccineBrandId() != null) {
+            return item.getVaccineBrandId();
+        }
+
         return item.getSourceId();
     }
 
@@ -185,6 +203,10 @@ public class BillingItemDisplayNameService {
 
         String upper = value.trim().toUpperCase();
 
+        if (isInternalTechnicalDescription(upper)) {
+            return false;
+        }
+
         if (billingItemType != null
                 && upper.equals(billingItemType.name())) {
             return false;
@@ -197,6 +219,12 @@ public class BillingItemDisplayNameService {
         return !TECHNICAL_LABEL.matcher(upper).matches();
     }
 
+    private boolean isInternalTechnicalDescription(String upperValue) {
+        return upperValue.startsWith("CREATED WHEN")
+                || upperValue.contains("ORDERID=")
+                || upperValue.contains("ORDERTESTID=");
+    }
+
     private String readName(String name) {
         if (name == null || name.isBlank()) {
             return "-";
@@ -207,7 +235,8 @@ public class BillingItemDisplayNameService {
 
     private String fallbackLabel(String storedDescription) {
         if (storedDescription != null
-                && !storedDescription.isBlank()) {
+                && !storedDescription.isBlank()
+                && isHumanReadable(storedDescription, null)) {
             return storedDescription.trim();
         }
 

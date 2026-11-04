@@ -270,11 +270,11 @@ public class InvoiceBalancePaymentService {
 
                         null,
 
-                        null,
+                        request.authorizationCode(),
 
-                        null,
+                        request.processorReference(),
 
-                        null,
+                        request.cardLastFour(),
 
                         null,
 
@@ -512,7 +512,7 @@ public class InvoiceBalancePaymentService {
 
             case "DEDUCT_FROM_FREE_BALANCE" -> PaymentCategory.WALLET;
 
-            case "CREDIT_CARD", "CREDIT_DEBIT_CARD" -> PaymentCategory.CASH;
+            case "CREDIT_CARD", "CREDIT_DEBIT_CARD" -> PaymentCategory.CARD;
 
             case "BANK_TRANSFER" -> PaymentCategory.BANK_TRANSFER;
 
@@ -878,13 +878,32 @@ public class InvoiceBalancePaymentService {
 
         BigDecimal patientShare = money(item.getPatientShareAmount());
 
-        BigDecimal newRemaining =
+        BigDecimal priorRemaining = money(item.getRemainingAmount());
+
+        BigDecimal shareRemaining =
 
                 patientShare
 
                         .subtract(newPaid)
 
                         .max(BigDecimal.ZERO);
+
+        /*
+         * Healthy lines have remaining + paid = patient share, so both
+         * figures match. A credited line keeps the original share with
+         * remaining already closed; do not reopen that balance.
+         */
+        BigDecimal newRemaining =
+
+                shareRemaining.min(
+
+                        priorRemaining
+
+                                .subtract(linePayment)
+
+                                .max(BigDecimal.ZERO)
+
+                );
 
 
 

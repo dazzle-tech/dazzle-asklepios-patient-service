@@ -13,6 +13,21 @@ waseel:
     system-type: ${WASEEL_SYSTEM_TYPE:1}
     timeout-seconds: 90
 
+# Nahdi pharmacy integration (prescriptions are sent to Nahdi on submit)
+nahdi:
+  enabled: ${NAHDI_ENABLED:false}
+  base-url: ${NAHDI_BASE_URL:https://m2.nahdi.sa/ProvidersIntegration/Home}
+  provider-id: ${NAHDI_PROVIDER_ID:}
+  provider-token: ${NAHDI_PROVIDER_TOKEN:}
+  timeout-seconds: ${NAHDI_TIMEOUT_SECONDS:30}
+  send-prescription-endpoint: ${NAHDI_SEND_PRESCRIPTION_ENDPOINT:/SendPrescription_clinics}
+  prescription:
+    status: ${NAHDI_PRESCRIPTION_STATUS:Approved}
+    type-cash: ${NAHDI_PRESCRIPTION_TYPE_CASH:1}
+    type-insurance: ${NAHDI_PRESCRIPTION_TYPE_INSURANCE:2}
+    item-approval-status: ${NAHDI_ITEM_APPROVAL_STATUS:A}
+    item-code-priority: ${NAHDI_ITEM_CODE_PRIORITY:SFDA}
+
 management:
   prometheus:
     metrics:
@@ -118,14 +133,23 @@ patient:
     secretAccessKey: ${ATTACHMENTS_SECRET_ACCESS_KEY}
     presignExpirySeconds: 300
     maxBytes: 52428800
-    allowed: application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png,text/plain
+    allowed: application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png,text/plain,audio/webm,audio/mp4,audio/mpeg,audio/wav,audio/ogg
   appointment:
     template-interval-ended:
       cron: "0 0 7 * * *"
       zone: "Asia/Gaza"
       springdoc:
       pre-loading-enabled: true
+    template-interval-ending-soon:
+      cron: "0 0 7 * * *"
+      zone: "Asia/Gaza"
+      lead-days: 7
+  ambient-scribe:
+    audio-retention:
+      cron: "0 30 2 * * *"
+      zone: "Asia/Gaza"
   portal:
-    # Shared secret for POST /api/patient/patient-portal/request-otp and verify-login-otp.
+    # Shared secret for POST /api/patient/patient-portal/request-otp, verify-login-otp,
+    # and POST /api/patient/external.
     # Callers send it in the X-Portal-Secret header. Set PATIENT_PORTAL_SECRET in each environment.
     secret: ${PATIENT_PORTAL_SECRET:}

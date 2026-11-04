@@ -1,12 +1,18 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
+import com.dazzle.asklepios.client.setup.dto.BrandMedicationSetupDTO;
 import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.enumeration.FrequencyList;
+import com.dazzle.asklepios.domain.enumeration.MedFrequency;
 import com.dazzle.asklepios.domain.UrgentCareMedicationOrder;
+import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.MedicationOrderStatus;
+import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
@@ -15,9 +21,13 @@ import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderCreateDTO;
 import com.dazzle.asklepios.service.dto.medicalsheets.urgentcaremedicationorders.UrgentCareMedicationOrderUpdateDTO;
 import com.dazzle.asklepios.service.helper.ActiveIngredientHelper;
+import com.dazzle.asklepios.service.helper.BrandMedicationHelper;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
+import com.dazzle.asklepios.domain.MedFrequencySetup;
+import com.dazzle.asklepios.repository.MedFrequencySetupRepository;
 import com.dazzle.asklepios.service.helper.NotificationHelper;
+import com.dazzle.asklepios.service.helper.UomPriceFactorHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.uccmedicationorders.PatientUccMedicationOrderGroupVM;
@@ -31,7 +41,10 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,11 +63,23 @@ public class UrgentCareMedicationOrderService {
     private final DepartmentHelper departmentHelper;
     private final FacilityHelper facilityHelper;
     private final NotificationHelper notificationHelper;
+    private final EncounterReopenGuard encounterReopenGuard;
+    private final MedFrequencySetupRepository medFrequencySetupRepository;
+    private final BrandMedicationHelper brandMedicationHelper;
+    private final UomPriceFactorHelper uomPriceFactorHelper;
+    private final PatientServiceAndProductService patientServiceAndProductService;
 
     public UrgentCareMedicationOrderService(
             UrgentCareMedicationOrderRepository urgentCareMedicationOrderRepository,
             PatientRepository patientRepository,
-            PatientEncounterRepository patientEncounterRepository, ActiveIngredientHelper activeIngredientHelper, DepartmentHelper departmentHelper, FacilityHelper facilityHelper, NotificationHelper notificationHelper) {
+            PatientEncounterRepository patientEncounterRepository, ActiveIngredientHelper activeIngredientHelper, DepartmentHelper departmentHelper, FacilityHelper facilityHelper, NotificationHelper notificationHelper,
+            EncounterReopenGuard encounterReopenGuard, MedFrequencySetupRepository medFrequencySetupRepository,
+            BrandMedicationHelper brandMedicationHelper, UomPriceFactorHelper uomPriceFactorHelper,
+            PatientServiceAndProductService patientServiceAndProductService) {
+        this.medFrequencySetupRepository = medFrequencySetupRepository;
+        this.brandMedicationHelper = brandMedicationHelper;
+        this.uomPriceFactorHelper = uomPriceFactorHelper;
+        this.patientServiceAndProductService = patientServiceAndProductService;
         this.urgentCareMedicationOrderRepository = urgentCareMedicationOrderRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
@@ -62,6 +87,19 @@ public class UrgentCareMedicationOrderService {
         this.departmentHelper = departmentHelper;
         this.facilityHelper = facilityHelper;
         this.notificationHelper = notificationHelper;
+        this.encounterReopenGuard = encounterReopenGuard;
+    }
+
+    private void rejectIfAmendmentOpen(PatientEncounter encounter) {
+        if (encounterReopenGuard != null && encounter != null) {
+            encounterReopenGuard.rejectIfOpenReopenSession(encounter.getId());
+        }
+    }
+
+    private void rejectIfAmendmentOpen(UrgentCareMedicationOrder order) {
+        if (order != null) {
+            rejectIfAmendmentOpen(order.getEncounter());
+        }
     }
 
     public List<UrgentCareMedicationOrder> create(UrgentCareMedicationOrderCreateDTO dto) {
@@ -85,6 +123,7 @@ public class UrgentCareMedicationOrderService {
                                 "encounter.notfound"
                         )
                 );
+        rejectIfAmendmentOpen(encounter);
 
         activeIngredientHelper.validateActiveIngredientExists(dto.activeIngredientId());
 
@@ -126,77 +165,53 @@ public class UrgentCareMedicationOrderService {
             return orders;
         }
 
-        java.time.LocalDateTime doseTime =
-                java.time.LocalDateTime.of(
-                        java.time.LocalDate.now(),
-                        dto.startTime()
-                );
+        // Custom instructions: one order with Dose / Unit / ROA / Frequency (MedFrequency, STAT included).
+        // No dose schedule is generated any more (duration, start time and frequency number/unit were removed).
+        UrgentCareMedicationOrder order = new UrgentCareMedicationOrder();
 
-        for (int i = 0; i < dto.duration(); i++) {
+        order.setActiveIngredientId(dto.activeIngredientId());
+        order.setInstructionType(dto.instructionType());
+        order.setInstructionText(dto.instructionText());
+        order.setDose(dto.dose());
+        order.setDoseUnit(dto.doseUnit());
+        order.setRoute(dto.route());
+        order.setFrequency(dto.frequency());
 
-            UrgentCareMedicationOrder order = new UrgentCareMedicationOrder();
+        order.setFrequencyNumber(null);
+        order.setFrequencyUnit(null);
+        order.setDuration(null);
+        order.setStartTime(null);
+        order.setDoseTime(null);
 
-            order.setActiveIngredientId(dto.activeIngredientId());
-            order.setInstructionType(dto.instructionType());
-            order.setInstructionText(dto.instructionText());
-            order.setDose(dto.dose());
-            order.setDoseUnit(dto.doseUnit());
-            order.setRoute(dto.route());
+        order.setStatus(MedicationOrderStatus.NEW);
+        order.setPatient(patient);
+        order.setEncounter(encounter);
 
-            order.setFrequencyNumber(dto.frequencyNumber());
-            order.setFrequencyUnit(dto.frequencyUnit());
-            order.setDuration(dto.duration());
-            order.setStartTime(dto.startTime());
+        UrgentCareMedicationOrder saved =
+                urgentCareMedicationOrderRepository.save(order);
 
-            order.setDoseTime(doseTime);
+        saved.setOrderGroupId(saved.getId());
 
-            order.setStatus(MedicationOrderStatus.NEW);
-            order.setPatient(patient);
-            order.setEncounter(encounter);
+        saved = urgentCareMedicationOrderRepository.save(saved);
 
-            orders.add(order);
+        notificationForUCCMedicationOrderCreated(saved, patient, encounter);
 
-            if (dto.frequencyUnit() ==
-                    com.dazzle.asklepios.domain.enumeration.FrequencyList.MINUTES) {
-
-                doseTime = doseTime.plusMinutes(dto.frequencyNumber());
-
-            } else if (dto.frequencyUnit() ==
-                    com.dazzle.asklepios.domain.enumeration.FrequencyList.HOURS) {
-
-                doseTime = doseTime.plusHours(dto.frequencyNumber());
-            }
-        }
-
-        /*
-         * Save all doses first so the database generates their IDs.
-         */
-        List<UrgentCareMedicationOrder> savedOrders =
-                urgentCareMedicationOrderRepository.saveAll(orders);
-
-        Long orderGroupId = savedOrders.get(0).getId();
-
-        savedOrders.forEach(order -> order.setOrderGroupId(orderGroupId));
-
-        savedOrders =
-                urgentCareMedicationOrderRepository.saveAll(savedOrders);
-
-        for (UrgentCareMedicationOrder saved : savedOrders) {
-            notificationForUCCMedicationOrderCreated(saved, patient, encounter);
-        }
+        orders.add(saved);
 
         LOG.debug(
-                "[SERVICE][CREATE] created {} medication dose records for patientId={} encounterId={} orderGroupId={}",
-                savedOrders.size(),
+                "[SERVICE][CREATE] created custom medication order id={} frequency={} for patientId={} encounterId={}",
+                saved.getId(),
+                saved.getFrequency(),
                 dto.patientId(),
-                dto.encounterId(),
-                orderGroupId
+                dto.encounterId()
         );
 
-        return savedOrders;
+        return orders;
     }
+
     public UrgentCareMedicationOrder update(UrgentCareMedicationOrder existing, UrgentCareMedicationOrderUpdateDTO dto) {
         LOG.debug("[SERVICE][UPDATE] request -> existingId={} payload={}", existing.getId(), dto);
+        rejectIfAmendmentOpen(existing);
         activeIngredientHelper.validateActiveIngredientExists(dto.activeIngredientId());
         existing.setActiveIngredientId(dto.activeIngredientId());
         existing.setInstructionType(dto.instructionType());
@@ -204,10 +219,12 @@ public class UrgentCareMedicationOrderService {
         existing.setDose(dto.dose());
         existing.setDoseUnit(dto.doseUnit());
         existing.setRoute(dto.route());
-        existing.setFrequencyNumber(dto.frequencyNumber());
-        existing.setFrequencyUnit(dto.frequencyUnit());
-        existing.setDuration(dto.duration());
-        existing.setStartTime(dto.startTime());
+        existing.setFrequency(dto.frequency());
+        // Replaced by frequency: cleared when an order is edited
+        existing.setFrequencyNumber(null);
+        existing.setFrequencyUnit(null);
+        existing.setDuration(null);
+        existing.setStartTime(null);
         UrgentCareMedicationOrder saved = urgentCareMedicationOrderRepository.save(existing);
 
         LOG.debug("[SERVICE][UPDATE] saved -> id={} status={}", saved.getId(), saved.getStatus());
@@ -236,6 +253,7 @@ public class UrgentCareMedicationOrderService {
                     "No medication orders found for orderGroupId " + orderGroupId
             );
         }
+        orders.forEach(this::rejectIfAmendmentOpen);
 
         for (UrgentCareMedicationOrder order : orders) {
 
@@ -253,10 +271,12 @@ public class UrgentCareMedicationOrderService {
             order.setDose(dto.dose());
             order.setDoseUnit(dto.doseUnit());
             order.setRoute(dto.route());
-            order.setFrequencyNumber(dto.frequencyNumber());
-            order.setFrequencyUnit(dto.frequencyUnit());
-            order.setDuration(dto.duration());
-            order.setStartTime(dto.startTime());
+            order.setFrequency(dto.frequency());
+            // Replaced by frequency: cleared when an order is edited
+            order.setFrequencyNumber(null);
+            order.setFrequencyUnit(null);
+            order.setDuration(null);
+            order.setStartTime(null);
         }
 
         List<UrgentCareMedicationOrder> savedOrders =
@@ -271,6 +291,146 @@ public class UrgentCareMedicationOrderService {
         return savedOrders;
     }
 
+    public List<UrgentCareMedicationOrder> createPlan(Long orderGroupId) {
+        LOG.debug("[SERVICE][CREATE_PLAN] request -> orderGroupId={}", orderGroupId);
+
+        List<UrgentCareMedicationOrder> group =
+                urgentCareMedicationOrderRepository.findByOrderGroupId(orderGroupId);
+
+        if (group.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "No medication orders found for orderGroupId " + orderGroupId,
+                    "patient_ucc_medication_order",
+                    "notfound"
+            );
+        }
+        group.forEach(this::rejectIfAmendmentOpen);
+
+        UrgentCareMedicationOrder first = group.get(0);
+
+        if (group.size() > 1 || first.getDoseTime() != null) {
+            throw new BadRequestAlertException(
+                    "The doses of this medication order were already split",
+                    "patient_ucc_medication_order",
+                    "plan_exists"
+            );
+        }
+
+        // Once administered (or discarded / cancelled) the order is no longer split
+        if (first.getStatus() != MedicationOrderStatus.SUBMITTED) {
+            throw new BadRequestAlertException(
+                    "A plan can only be created for a submitted medication that was not administered",
+                    "patient_ucc_medication_order",
+                    "invalid_status"
+            );
+        }
+
+        if (first.getFrequency() == null || first.getFrequency() == MedFrequency.STAT) {
+            throw new BadRequestAlertException(
+                    "A STAT medication (or one without a frequency) is a single dose and cannot be split",
+                    "patient_ucc_medication_order",
+                    "stat_no_plan"
+            );
+        }
+
+        if (medFrequencySetupRepository.findByFrequencyAndIsActiveTrue(first.getFrequency()).isEmpty()) {
+            throw new BadRequestAlertException(
+                    "This frequency has no active frequency setup",
+                    "patient_ucc_medication_order",
+                    "no_setup"
+            );
+        }
+
+        List<UrgentCareMedicationOrder> doses = splitDosesOnSubmit(first);
+
+        LOG.debug("[SERVICE][CREATE_PLAN] saved -> orderGroupId={} doses={}", orderGroupId, doses.size());
+        return doses;
+    }
+
+    private List<UrgentCareMedicationOrder> splitDosesOnSubmit(UrgentCareMedicationOrder first) {
+        List<UrgentCareMedicationOrder> group =
+                urgentCareMedicationOrderRepository.findByOrderGroupId(first.getOrderGroupId());
+
+        // Already split: keep the doses as they are
+        if (group.size() > 1 || first.getDoseTime() != null) {
+            return group;
+        }
+
+        // STAT is a single immediate dose; manual instructions have no frequency
+        if (first.getFrequency() == null || first.getFrequency() == MedFrequency.STAT) {
+            return List.of(first);
+        }
+
+        MedFrequencySetup setup = medFrequencySetupRepository
+                .findByFrequencyAndIsActiveTrue(first.getFrequency())
+                .orElse(null);
+        if (setup == null || setup.getFrequencyNumber() == null || setup.getFrequencyNumber() < 1
+                || setup.getFrequencyUnit() == null) {
+            return List.of(first);
+        }
+
+        LocalDateTime start = LocalDateTime.ofInstant(first.getSubmittedDate(), ZoneId.systemDefault());
+        LocalDateTime end = start.plusHours(24);
+
+        List<UrgentCareMedicationOrder> doses = new java.util.ArrayList<>();
+        for (LocalDateTime doseTime = start; doseTime.isBefore(end);
+             doseTime = addInterval(doseTime, setup.getFrequencyNumber(), setup.getFrequencyUnit())) {
+            doses.add(doses.isEmpty() ? first : copyDose(first));
+            doses.get(doses.size() - 1).setDoseTime(doseTime);
+        }
+
+        List<UrgentCareMedicationOrder> saved = urgentCareMedicationOrderRepository.saveAll(doses);
+
+        // The first dose already notified when the order was created; notify the new ones
+        Patient patient = first.getPatient();
+        PatientEncounter encounter = first.getEncounter();
+        saved.stream()
+                .filter(dose -> !dose.getId().equals(first.getId()))
+                .forEach(dose -> notificationForUCCMedicationOrderCreated(dose, patient, encounter));
+
+        LOG.debug(
+                "[STATUS][SUBMIT] split -> orderGroupId={} frequency={} every {} {} doses={}",
+                first.getOrderGroupId(),
+                first.getFrequency(),
+                setup.getFrequencyNumber(),
+                setup.getFrequencyUnit(),
+                saved.size()
+        );
+
+        return saved;
+    }
+
+    /** A new dose of the same group, with the same medication and state as the given order */
+    private static UrgentCareMedicationOrder copyDose(UrgentCareMedicationOrder first) {
+        UrgentCareMedicationOrder dose = new UrgentCareMedicationOrder();
+        dose.setOrderGroupId(first.getOrderGroupId());
+        dose.setPatient(first.getPatient());
+        dose.setEncounter(first.getEncounter());
+        dose.setActiveIngredientId(first.getActiveIngredientId());
+        dose.setInstructionType(first.getInstructionType());
+        dose.setInstructionText(first.getInstructionText());
+        dose.setDose(first.getDose());
+        dose.setDoseUnit(first.getDoseUnit());
+        dose.setRoute(first.getRoute());
+        dose.setFrequency(first.getFrequency());
+        dose.setIsHighAlert(first.getIsHighAlert());
+        // Same state as the original order, so a SUBMITTED order's doses are ready to administer
+        dose.setStatus(first.getStatus());
+        dose.setSubmittedBy(first.getSubmittedBy());
+        dose.setSubmittedDate(first.getSubmittedDate());
+        return dose;
+    }
+
+    /** Next dose time: adds the interval in the given unit (minutes, hours, days, weeks or months) */
+    private static LocalDateTime addInterval(LocalDateTime time, int amount, FrequencyList unit) {
+        return switch (unit) {
+            case MINUTES -> time.plusMinutes(amount);
+            case HOURS -> time.plusHours(amount);
+            case DAYS -> time.plusDays(amount);
+            case WEEKS -> time.plusWeeks(amount);
+            case MONTHS -> time.plusMonths(amount);
+        };
+    }
 
     @Transactional(readOnly = true)
     public UrgentCareMedicationOrder findOne(Long id) {
@@ -449,7 +609,8 @@ public class UrgentCareMedicationOrderService {
                 first.getStartTime(),
                 orders.size(),
                 first.getStatus(),
-                isHighAlert
+                isHighAlert,
+                first.getFrequency()
         );
     }
 
@@ -457,6 +618,7 @@ public class UrgentCareMedicationOrderService {
         LOG.debug("[STATUS][SUBMIT] request -> orderId={} username={} isHighAlert={}", orderId, username, isHighAlert);
 
         UrgentCareMedicationOrder order = getOrder(orderId);
+        rejectIfAmendmentOpen(order);
 
         ensureTransition(order, MedicationOrderStatus.SUBMITTED);
 
@@ -469,6 +631,9 @@ public class UrgentCareMedicationOrderService {
 
         LOG.debug("[STATUS][SUBMIT] saved -> id={} status={} submittedBy={}",
                 saved.getId(), saved.getStatus(), saved.getSubmittedBy());
+
+        // The submitted order stays the first dose of its split
+        splitDosesOnSubmit(saved);
 
         return saved;
     }
@@ -495,6 +660,7 @@ public class UrgentCareMedicationOrderService {
                     "No medication orders found for orderGroupId " + orderGroupId
             );
         }
+        orders.forEach(this::rejectIfAmendmentOpen);
 
         Instant submittedDate = Instant.now();
 
@@ -510,6 +676,11 @@ public class UrgentCareMedicationOrderService {
         List<UrgentCareMedicationOrder> savedOrders =
                 urgentCareMedicationOrderRepository.saveAll(orders);
 
+        // A single order is split into its doses; an already split group is kept as it is
+        if (savedOrders.size() == 1) {
+            savedOrders = splitDosesOnSubmit(savedOrders.get(0));
+        }
+
         LOG.debug(
                 "[STATUS][SUBMIT_GROUP] saved -> orderGroupId={} size={}",
                 orderGroupId,
@@ -522,7 +693,10 @@ public class UrgentCareMedicationOrderService {
     public UrgentCareMedicationOrder administer(
             Long orderId,
             String username,
-            Instant actualAdministerTime
+            Instant actualAdministerTime,
+            Long brandMedicationId,
+            Long uomGroupUnitId,
+            Long quantity
     ) {
 
         LOG.debug(
@@ -532,6 +706,7 @@ public class UrgentCareMedicationOrderService {
         );
 
         UrgentCareMedicationOrder order = getOrder(orderId);
+        rejectIfAmendmentOpen(order);
 
         if (order.getStatus() != MedicationOrderStatus.SUBMITTED) {
             throw new BadRequestAlertException(
@@ -552,7 +727,90 @@ public class UrgentCareMedicationOrderService {
         order.setAdministeredBy(username);
         order.setAdministeredDate(Instant.now());
 
+        chargeAdministration(order, brandMedicationId, uomGroupUnitId, quantity);
+
         return urgentCareMedicationOrderRepository.save(order);
+    }
+
+    /**
+     * Puts the administered brand on the patient's services and products, in the
+     * UOM unit the nurse charges in. The brand price is per its price base unit,
+     * so the unit price is converted with the UOM group relations.
+     */
+    private void chargeAdministration(
+            UrgentCareMedicationOrder order,
+            Long brandMedicationId,
+            Long uomGroupUnitId,
+            Long quantity
+    ) {
+        if (brandMedicationId == null || uomGroupUnitId == null) {
+            throw new BadRequestAlertException(
+                    "Brand and UOM are required to administer the medication",
+                    "patient_ucc_medication_order",
+                    "administer.brandAndUomRequired"
+            );
+        }
+
+        if (quantity == null || quantity <= 0) {
+            throw new BadRequestAlertException(
+                    "Quantity must be a whole number greater than zero",
+                    "patient_ucc_medication_order",
+                    "administer.quantityInvalid"
+            );
+        }
+
+        BrandMedicationSetupDTO brand = brandMedicationHelper.getActiveBrandOfActiveIngredient(
+                brandMedicationId,
+                order.getActiveIngredientId()
+        );
+
+        BigDecimal uomPriceFactor = uomPriceFactorHelper.resolveFactor(
+                brand.uomGroupId(),
+                uomGroupUnitId,
+                brand.priceBaseUomId()
+        );
+
+        patientServiceAndProductService.createUrgentCareMedicationAdministration(
+                order.getPatient().getId(),
+                order.getEncounter().getId(),
+                order.getId(),
+                brandMedicationId,
+                quantity,
+                uomGroupUnitId,
+                uomPriceFactor,
+                resolveCurrency(brand.currency())
+        );
+
+        LOG.debug(
+                "[STATUS][ADMINISTER] charged -> orderId={} brandId={} uomUnitId={} quantity={} uomPriceFactor={}",
+                order.getId(),
+                brandMedicationId,
+                uomGroupUnitId,
+                quantity,
+                uomPriceFactor
+        );
+    }
+
+    private static Currency resolveCurrency(String currency) {
+        if (currency == null || currency.isBlank()) {
+            return Currency.SAR;
+        }
+
+        try {
+            return Currency.valueOf(currency.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            return Currency.SAR;
+        }
+    }
+
+    /** A dose waiting for double check was already charged on administer; no line means nothing to cancel */
+    private void cancelAdministrationCharge(UrgentCareMedicationOrder order, String reason) {
+        patientServiceAndProductService.cancelBySource(
+                ServiceSource.URGENT_CARE_MEDICATION_ORDER,
+                order.getId(),
+                BillingItemTypes.MEDICATION,
+                reason
+        );
     }
 
     public UrgentCareMedicationOrder doubleCheck(Long orderId, String username) {
@@ -563,6 +821,7 @@ public class UrgentCareMedicationOrderService {
         );
 
         UrgentCareMedicationOrder order = getOrder(orderId);
+        rejectIfAmendmentOpen(order);
 
         if (order.getStatus() != MedicationOrderStatus.WAITING_DOUBLE_CHECK) {
             LOG.error(
@@ -613,8 +872,10 @@ public class UrgentCareMedicationOrderService {
         LOG.debug("[STATUS][DISCARD] request -> orderId={} username={} reason={}", orderId, username, discardReason);
 
         UrgentCareMedicationOrder order = getOrder(orderId);
+        rejectIfAmendmentOpen(order);
 
         ensureTransition(order, MedicationOrderStatus.DISCARDED);
+        cancelAdministrationCharge(order, "UCC medication order discarded");
 
         order.setStatus(MedicationOrderStatus.DISCARDED);
         order.setDiscardedBy(username);
@@ -633,8 +894,10 @@ public class UrgentCareMedicationOrderService {
         LOG.debug("[STATUS][CANCEL] request -> orderId={} username={} reason={}", orderId, username, cancellationReason);
 
         UrgentCareMedicationOrder order = getOrder(orderId);
+        rejectIfAmendmentOpen(order);
 
         ensureTransition(order, MedicationOrderStatus.CANCELLED);
+        cancelAdministrationCharge(order, "UCC medication order cancelled");
 
         order.setStatus(MedicationOrderStatus.CANCELLED);
         order.setCancelledBy(username);
@@ -757,6 +1020,7 @@ public class UrgentCareMedicationOrderService {
         data.put("frequencyNumber", urgentCareMedicationOrder.getFrequencyNumber() != null ? urgentCareMedicationOrder.getFrequencyNumber() : "");
         data.put("frequencyUnit", urgentCareMedicationOrder.getFrequencyUnit() != null ? urgentCareMedicationOrder.getFrequencyUnit().toString() : "");
         data.put("duration", urgentCareMedicationOrder.getDuration() != null ? urgentCareMedicationOrder.getDuration() : "");
+        data.put("frequency", urgentCareMedicationOrder.getFrequency() != null ? urgentCareMedicationOrder.getFrequency().toString() : "");
         data.put("startTime", urgentCareMedicationOrder.getStartTime() != null ? urgentCareMedicationOrder.getStartTime().toString() : "");
         data.put("isHighAlert", urgentCareMedicationOrder.getIsHighAlert() != null ? urgentCareMedicationOrder.getIsHighAlert() : "");
         data.put("status", urgentCareMedicationOrder.getStatus() != null ? urgentCareMedicationOrder.getStatus().toString() : "");
@@ -783,6 +1047,7 @@ public class UrgentCareMedicationOrderService {
         );
 
         UrgentCareMedicationOrder order = getOrder(orderId);
+        rejectIfAmendmentOpen(order);
 
         order.setActualAdministerTime(actualAdministerTime);
 

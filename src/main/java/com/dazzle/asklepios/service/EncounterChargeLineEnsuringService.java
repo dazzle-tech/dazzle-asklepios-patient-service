@@ -48,6 +48,8 @@ public class EncounterChargeLineEnsuringService {
 
     private final BillingEngineService billingEngineService;
 
+    private final DiagnosticChargeTimingService diagnosticChargeTimingService;
+
     private final EncounterChargeLineEnsuringService self;
 
     public EncounterChargeLineEnsuringService(
@@ -55,12 +57,14 @@ public class EncounterChargeLineEnsuringService {
             PatientServiceAndProductRepository patientServiceAndProductRepository,
             BillingChargeService billingChargeService,
             @Lazy BillingEngineService billingEngineService,
+            DiagnosticChargeTimingService diagnosticChargeTimingService,
             @Lazy EncounterChargeLineEnsuringService self
     ) {
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.billingChargeService = billingChargeService;
         this.billingEngineService = billingEngineService;
+        this.diagnosticChargeTimingService = diagnosticChargeTimingService;
         this.self = self;
     }
 
@@ -321,6 +325,10 @@ public class EncounterChargeLineEnsuringService {
 
     private boolean isAutoBillable(PatientServiceAndProduct service) {
         if (service == null || service.getId() == null) {
+            return false;
+        }
+
+        if (diagnosticChargeTimingService.isChargeDeferred(service)) {
             return false;
         }
 

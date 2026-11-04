@@ -1,4 +1,5 @@
 package com.dazzle.asklepios.service.dto.pointOfSale;
+import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleEntryMode;
 import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleSourceType;
 import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleTransactionStatus;
 import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleTransactionType;
@@ -51,6 +52,10 @@ public record PointOfSaleTransactionDTO(
         String paymentMethod,
 
         String schemeLabel,
+
+        String panNumber,
+
+        PointOfSaleEntryMode entryMode,
 
         LocalDateTime transactionDate,
 

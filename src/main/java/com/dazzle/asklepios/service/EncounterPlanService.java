@@ -37,16 +37,19 @@ public class EncounterPlanService {
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final EncounterPlanFieldAuditRepository encounterPlanFieldAuditRepository;
+    private final ReopenSessionAuditContext reopenSessionAuditContext;
 
     public EncounterPlanService(
             EncounterPlanRepository encounterPlanRepository,
             PatientRepository patientRepository,
             PatientEncounterRepository patientEncounterRepository,
-            EncounterPlanFieldAuditRepository encounterPlanFieldAuditRepository) {
+            EncounterPlanFieldAuditRepository encounterPlanFieldAuditRepository,
+            ReopenSessionAuditContext reopenSessionAuditContext) {
         this.encounterPlanRepository = encounterPlanRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
         this.encounterPlanFieldAuditRepository = encounterPlanFieldAuditRepository;
+        this.reopenSessionAuditContext = reopenSessionAuditContext;
     }
 
     public EncounterPlan create(EncounterPlanCreateDTO createRequest) {
@@ -72,8 +75,11 @@ public class EncounterPlanService {
                 .treatmentPlan(createRequest.treatmentPlan())
                 .build();
 
+        reopenSessionAuditContext.applyOpenSession(encounter.getId());
+
         try {
-            return encounterPlanRepository.saveAndFlush(entity);
+            EncounterPlan saved = encounterPlanRepository.saveAndFlush(entity);
+            return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);
@@ -95,6 +101,9 @@ public class EncounterPlanService {
                         "notfound"
                 ));
 
+        Long ownedEncounterId = existing.getEncounterId();
+        reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
+
         Patient patient = patientRepository.findById(updateRequest.patientId())
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Patient not found with id " + updateRequest.patientId(),
@@ -115,7 +124,8 @@ public class EncounterPlanService {
         existing.setLastModifiedDate(Instant.now());
 
         try {
-            return encounterPlanRepository.saveAndFlush(existing);
+            EncounterPlan saved = encounterPlanRepository.saveAndFlush(existing);
+            return saved;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             handleConstraintsOnCreateOrUpdate(ex);
