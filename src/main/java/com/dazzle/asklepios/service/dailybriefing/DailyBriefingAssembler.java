@@ -365,7 +365,8 @@ public final class DailyBriefingAssembler {
                 "Responsibility amounts whose party is not the patient. Not added to patient responsibility and not treated as collected.", "مبالغ المسؤولية التي طرفها ليس المريض. لا تُضاف إلى مسؤولية المريض ولا تُعامل كمحصل.",
                 period, labeledExcept(billing.responsibilities(), "PATIENT"), Coverage.COMPLETE, null, null, false);
         indicators.amount("ISSUED_INVOICES", "Issued invoices", "الفواتير الصادرة",
-                "Billing invoices created on the previous facility day, excluding cancelled invoices. This is not collected revenue.", "فواتير الفوترة المنشأة في اليوم السابق للمنشأة، باستثناء الفواتير الملغاة. هذا ليس إيراداً محصلاً.",
+                "Financial document invoices created on the previous facility day, excluding draft and cancelled documents. This is not collected revenue.",
+                "فواتير المستندات المالية المنشأة في اليوم السابق للمنشأة، باستثناء المسودة والملغاة. هذا ليس إيراداً محصلاً.",
                 period, moneyRows(billing.issuedInvoices()), Coverage.COMPLETE,
                 indicators.pair("An issued invoice is not counted as a collection.", "الفاتورة الصادرة لا تُحسب تحصيلاً."), null, true);
         return section(indicators, "BILLING", "Billing and collections", "الفوترة والتحصيل", definition, definitionAr, List.of(), List.of());
@@ -375,7 +376,7 @@ public final class DailyBriefingAssembler {
         indicators.begin("INSURANCE");
         String open = indicators.pair("Open pipeline as of " + context.refreshedAt(), "خط مفتوح حتى " + context.refreshedAt());
         String previous = previousPeriod(context, indicators);
-        if (facts.authorizations() == null || facts.claims() == null) {
+        if (facts.authorizations() == null || facts.claims() == null || facts.patientInsurance() == null) {
             indicators.unavailable("PENDING_AUTHORIZATIONS", "Pending authorizations", "موافقات معلقة", "Prior authorizations that are not approved, denied, or closed.", "موافقات مسبقة ليست موافق عليها ولا مرفوضة ولا مغلقة.", open, Coverage.PARTIAL, "QUERY_FAILED", null, true);
             indicators.unavailable("CLAIM_DENIALS", "Claim denials", "رفض المطالبات", "Claims whose current status is rejected. Distinct from authorization denials.", "مطالبات حالتها الحالية مرفوضة. وهي غير رفض الموافقات.", open, Coverage.PARTIAL, "QUERY_FAILED", null, true);
             return section(indicators, "INSURANCE", "Insurance, authorizations, and claims", "التأمين والموافقات والمطالبات",
@@ -429,6 +430,24 @@ public final class DailyBriefingAssembler {
                 "Charge responsibilities that require prior authorization and are pending approval. Their amounts are not added to authorization or claim totals.",
                 "مسؤوليات رسوم تتطلب موافقة مسبقة وهي بانتظار الموافقة. مبالغها لا تُضاف إلى مجاميع الموافقات أو المطالبات.",
                 open, facts.servicesOnHoldCount(), facts.servicesOnHold() == null ? Coverage.PARTIAL : Coverage.COMPLETE, null, null, Drill.SERVICES_ON_HOLD, true);
+        DailyBriefingFacts.PatientInsuranceSnapshot coverage = facts.patientInsurance();
+        indicators.count("INSURED_PATIENTS", "Insured patients", "مرضى مؤمنون",
+                "Distinct previous-day patients who have at least one patient insurance record.",
+                "مرضى اليوم السابق الذين لديهم سجل تأمين مريض واحد على الأقل.",
+                previous, coverage.insuredPatients(), Coverage.COMPLETE, null, null, null, true);
+        indicators.count("PATIENT_INSURANCE_RECORDS", "Patient insurance records", "سجلات تأمين المريض",
+                "Patient insurance records linked to previous-day patients in scope.",
+                "سجلات تأمين المريض المرتبطة بمرضى اليوم السابق ضمن النطاق.",
+                previous, coverage.insuranceRecords(), Coverage.COMPLETE, null, null, null, false);
+        indicators.count("INSURANCE_WITH_BENEFIT_RULES", "Insurance with benefit rules", "تأمين له قواعد منافع",
+                "Patient insurance records that have at least one patient insurance benefit rule.",
+                "سجلات تأمين المريض التي لديها قاعدة منافع واحدة على الأقل.",
+                previous, coverage.withBenefitRules(), Coverage.COMPLETE, null, null, null, true);
+        indicators.count("INSURANCE_MISSING_BENEFIT_RULES", "Insurance missing benefit rules", "تأمين بلا قواعد منافع",
+                "Patient insurance records that have no patient insurance benefit rule.",
+                "سجلات تأمين المريض التي لا تملك أي قاعدة منافع.",
+                previous, coverage.missingBenefitRules(), Coverage.COMPLETE, null, null, null, true);
+
 
         long ready = claimCount(facts.claims(), "DRAFT");
         long rejected = claimCount(facts.claims(), "REJECTED");
@@ -450,13 +469,20 @@ public final class DailyBriefingAssembler {
 
         List<Breakdown> breakdowns = List.of(
                 new Breakdown("AUTH_AGING", indicators.pair("Authorization aging", "تقادم الموافقات"), authCoverage, null, aging.entrySet().stream().map(entry -> new DimensionRow(entry.getKey(), entry.getKey(), entry.getValue(), null, null)).toList()),
-                new Breakdown("AUTH_DENIALS_BY_PAYOR", indicators.pair("Authorization denials by payer", "رفض الموافقات حسب الدافع"), Coverage.COMPLETE, null, denialByPayor.entrySet().stream().map(entry -> new DimensionRow(entry.getKey(), entry.getKey(), entry.getValue(), null, null)).toList()),
+                new Breakdown("AUTH_DENIALS_BY_PAYOR", indicators.pair("Authorization denials by payer", "رفض الموافقات حسب الدافع"), Coverage.COMPLETE,
+                        indicators.pair("Payer comes from the linked patient insurance record when present.", "الدافع يؤخذ من سجل تأمين المريض المرتبط عند وجوده."),
+                        denialByPayor.entrySet().stream().map(entry -> new DimensionRow(entry.getKey(), entry.getKey(), entry.getValue(), null, null)).toList()),
                 new Breakdown("CLAIM_DENIALS_BY_REASON", indicators.pair("Claim denials by outcome", "رفض المطالبات حسب النتيجة"), Coverage.COMPLETE, indicators.pair("Grouped by the stored outcome. The claim message is not copied because it may contain clinical text.", "مجمعة حسب النتيجة المخزنة. لا تُنسخ رسالة المطالبة لأنها قد تحتوي نصاً سريرياً."), claimReasons(facts.claims()))
         );
         return section(indicators, "INSURANCE", "Insurance, authorizations, and claims", "التأمين والموافقات والمطالبات",
-                "Authorization denials, claim denials, requested amounts, claimed amounts, and collections are separate. They are not added together.",
-                "رفض الموافقات ورفض المطالبات والمبالغ المطلوبة والمبالغ المطالب بها والتحصيل كلها منفصلة. لا تُجمع معاً.",
-                breakdowns, List.of(indicators.pair("Pending requested net is a single requested-currency total only when every row shares that figure's currency field; rows here are summed as requested net without a currency column on the authorization.", "صافي الطلب للمعلقات يُجمع كصافي مطلوب. مستند الموافقة لا يحمل عملة في هذا التجميع.")));
+                "Authorization denials, claim denials, requested amounts, claimed amounts, patient insurance, and benefit rules are separate. They are not added together.",
+                "رفض الموافقات ورفض المطالبات والمبالغ المطلوبة والمبالغ المطالب بها وتأمين المريض وقواعد المنافع كلها منفصلة. لا تُجمع معاً.",
+                breakdowns, List.of(
+                        indicators.pair("Claim and authorization payers are read from patient insurance.", "دافع المطالبات والموافقات يُقرأ من تأمين المريض."),
+                        indicators.pair("Benefit-rule coverage is counted from patient insurance benefit rules for previous-day patients.", "تغطية قواعد المنافع تُحسب من قواعد منافع تأمين المريض لمرضى اليوم السابق."),
+                        indicators.pair("Pending requested net is a single requested-currency total only when every row shares that figure's currency field; rows here are summed as requested net without a currency column on the authorization.", "صافي الطلب للمعلقات يُجمع كصافي مطلوب. مستند الموافقة لا يحمل عملة في هذا التجميع.")
+                ));
+
     }
 
     private static Section waiting(BriefingContext context, DailyBriefingFacts facts, Indicators indicators) {
@@ -725,6 +751,10 @@ public final class DailyBriefingAssembler {
         countAlert(alerts, indicators, "SERVICES_ON_HOLD", "SERVICES_ON_HOLD", "LOW", "OPERATIONAL",
                 "Services are waiting for authorization.", "خدمات بانتظار موافقة.",
                 "Review the held services.", "راجع الخدمات الموقوفة.");
+        countAlert(alerts, indicators, "INSURANCE_MISSING_BENEFIT_RULES", "MISSING_BENEFIT_RULES", "MEDIUM", "FINANCIAL",
+                "Patient insurance records are missing benefit rules.", "سجلات تأمين المريض بلا قواعد منافع.",
+                "Review patient insurance benefit rules.", "راجع قواعد منافع تأمين المريض.");
+
         countAlert(alerts, indicators, "OVERDUE_ORDERS", "OVERDUE_ORDERS", "HIGH", "CLINICAL",
                 "Diagnostic orders are older than the turnaround highlight.", "طلبات تشخيص أقدم من حد الإنجاز.",
                 "Review the overdue orders and their department.", "راجع الطلبات المتأخرة وقسمها.");

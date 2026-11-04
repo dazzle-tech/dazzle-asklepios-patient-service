@@ -2,12 +2,13 @@ package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.BillingCharge;
 import com.dazzle.asklepios.domain.BillingChargeResponsibility;
-import com.dazzle.asklepios.domain.BillingInvoice;
 import com.dazzle.asklepios.domain.BillingPayment;
 import com.dazzle.asklepios.domain.BillingRefund;
+import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.PatientEncounter;
-import com.dazzle.asklepios.domain.enumeration.BillingInvoiceStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterBillingStatus;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentStatus;
@@ -17,6 +18,9 @@ import com.dazzle.asklepios.service.dailybriefing.BriefingScope;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
+
 import org.springframework.data.jpa.domain.Specification;
 
 import java.time.Instant;
@@ -183,13 +187,32 @@ public final class DailyBriefingBillingSpecification {
         };
     }
 
-    public static Specification<BillingInvoice> facilityInvoices(Long facilityId, Instant start, Instant end) {
-        return (root, query, cb) -> cb.and(
-                cb.equal(root.get("facilityId"), facilityId),
-                cb.notEqual(root.get("status"), BillingInvoiceStatus.CANCELLED),
-                cb.greaterThanOrEqualTo(root.get("createdDate"), start),
-                cb.lessThan(root.get("createdDate"), end)
-        );
+    public static Specification<FinancialDocument> issuedInvoices(BriefingScope scope, Instant start, Instant end) {
+        return (root, query, cb) -> {
+            Subquery<Long> encounters = query.subquery(Long.class);
+            Root<PatientEncounter> encounter = encounters.from(PatientEncounter.class);
+            encounters.select(encounter.get("id"));
+            List<Predicate> scopePredicates = new ArrayList<>();
+            scopePredicates.add(cb.equal(encounter.get("id"), root.get("encounterId")));
+            scopePredicates.add(cb.equal(encounter.get("facilityId"), scope.facilityId()));
+            if (scope.departmentId() != null) {
+                scopePredicates.add(cb.equal(encounter.get("departmentId"), scope.departmentId()));
+            }
+            if (scope.practitionerId() != null) {
+                scopePredicates.add(cb.equal(encounter.get("practitionerId"), scope.practitionerId()));
+            }
+            if (scope.practitionerIds() != null) {
+                scopePredicates.add(encounter.get("practitionerId").in(scope.practitionerIds()));
+            }
+            encounters.where(scopePredicates.toArray(Predicate[]::new));
+            return cb.and(
+                    cb.equal(root.get("documentType"), FinancialDocumentType.INVOICE),
+                    cb.not(root.get("status").in(List.of(FinancialDocumentStatus.DRAFT, FinancialDocumentStatus.CANCELLED))),
+                    cb.greaterThanOrEqualTo(root.get("createdDate"), start),
+                    cb.lessThan(root.get("createdDate"), end),
+                    cb.exists(encounters)
+            );
+        };
     }
 
     private static Predicate encounterScope(

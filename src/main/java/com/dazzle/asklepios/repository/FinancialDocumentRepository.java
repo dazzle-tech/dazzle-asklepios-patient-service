@@ -6,6 +6,7 @@ import com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -17,7 +18,7 @@ import java.util.Optional;
 import java.util.List;
 
 @Repository
-public interface FinancialDocumentRepository extends JpaRepository<FinancialDocument, Long> {
+public interface FinancialDocumentRepository extends JpaRepository<FinancialDocument, Long>, JpaSpecificationExecutor<FinancialDocument> {
 
     // ✅ find document by encounter (أهم method عندك الآن ✅)
     Optional<FinancialDocument> findByEncounterId(Long encounterId);

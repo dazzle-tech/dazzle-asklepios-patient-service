@@ -3,7 +3,6 @@ package com.dazzle.asklepios.service.dailybriefing;
 import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.BillingCharge;
 import com.dazzle.asklepios.domain.BillingChargeResponsibility;
-import com.dazzle.asklepios.domain.BillingInvoice;
 import com.dazzle.asklepios.domain.BillingPayment;
 import com.dazzle.asklepios.domain.BillingRefund;
 import com.dazzle.asklepios.domain.ClaimRequest;
@@ -11,7 +10,11 @@ import com.dazzle.asklepios.domain.Department;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.EncounterAssignToBed;
+import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.PatientInsurance;
+import com.dazzle.asklepios.domain.PatientInsuranceBenefitRule;
+
 import com.dazzle.asklepios.domain.PreAuthorizationRequest;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterBillingStatus;
@@ -26,7 +29,6 @@ import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
 import com.dazzle.asklepios.repository.AppointmentRepository;
 import com.dazzle.asklepios.repository.BillingChargeRepository;
 import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
-import com.dazzle.asklepios.repository.BillingInvoiceRepository;
 import com.dazzle.asklepios.repository.BillingPaymentRepository;
 import com.dazzle.asklepios.repository.BillingRefundRepository;
 import com.dazzle.asklepios.repository.ClaimRequestRepository;
@@ -39,7 +41,11 @@ import com.dazzle.asklepios.repository.DepartmentRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.repository.EncounterAssignToBedRepository;
+import com.dazzle.asklepios.repository.FinancialDocumentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientInsuranceBenefitRuleRepository;
+import com.dazzle.asklepios.repository.PatientInsuranceRepository;
+
 import com.dazzle.asklepios.repository.PreAuthorizationRequestRepository;
 import com.dazzle.asklepios.service.dto.dailybriefing.DailyBriefingCasesResponse.DailyBriefingCase;
 import com.dazzle.asklepios.service.dto.dailybriefing.DailyBriefingResponse.Drill;
@@ -92,9 +98,12 @@ public class DailyBriefingQueryGateway {
     private final BillingPaymentRepository billingPaymentRepository;
     private final BillingRefundRepository billingRefundRepository;
     private final BillingChargeResponsibilityRepository billingChargeResponsibilityRepository;
-    private final BillingInvoiceRepository billingInvoiceRepository;
+    private final FinancialDocumentRepository financialDocumentRepository;
     private final PreAuthorizationRequestRepository preAuthorizationRequestRepository;
     private final ClaimRequestRepository claimRequestRepository;
+    private final PatientInsuranceRepository patientInsuranceRepository;
+    private final PatientInsuranceBenefitRuleRepository patientInsuranceBenefitRuleRepository;
+
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
     private final DiagnosticOrderRepository diagnosticOrderRepository;
     private final EncounterAssignToBedRepository encounterAssignToBedRepository;
@@ -326,6 +335,8 @@ public class DailyBriefingQueryGateway {
         ), builder));
         builder.claims(read("insurance.claims", () -> claimRows(scope, null, null), builder));
         builder.claimsSubmittedYesterday(read("insurance.claimsSubmitted", () -> claimRows(scope, window.previousStart(), window.previousEnd()), builder));
+        builder.patientInsurance(read("insurance.patientInsurance", () -> patientInsuranceSnapshot(scope, window), builder));
+
     }
 
     private void loadOrders(BriefingScope scope, BriefingWindow window, DailyBriefingFacts.Builder builder) {
@@ -569,22 +580,34 @@ public class DailyBriefingQueryGateway {
     }
 
     private List<DailyBriefingFacts.MoneyRow> invoices(BriefingScope scope, BriefingWindow window) {
-        if (scope.matchNone() || scope.departmentId() != null || scope.practitionerId() != null || scope.practitionerIds() != null) {
-            return null;
-        }
         return moneyRows(
-                billingInvoiceRepository.findAll(DailyBriefingBillingSpecification.facilityInvoices(scope.facilityId(), window.previousStart(), window.previousEnd())),
-                invoice -> invoice.getCurrency() == null ? null : invoice.getCurrency().name(),
-                BillingInvoice::getTotalAmount,
+                financialDocumentRepository.findAll(
+                        DailyBriefingBillingSpecification.issuedInvoices(scope, window.previousStart(), window.previousEnd())
+                ),
+                document -> document.getCurrency() == null ? null : document.getCurrency().name(),
+                FinancialDocument::getTotalAmount,
+
                 ignored -> null
         );
     }
 
     private List<DailyBriefingFacts.AuthRow> authRows(BriefingScope scope) {
+        List<PreAuthorizationRequest> requests = preAuthorizationRequestRepository.findAll(
+                DailyBriefingClaimSpecification.authorizationsForScope(scope)
+        );
+        Map<Long, PatientInsurance> insurances = patientInsurancesById(
+                requests.stream().map(PreAuthorizationRequest::getPatientInsuranceId).filter(Objects::nonNull).collect(Collectors.toSet())
+        );
         Map<String, AuthAccumulator> totals = new LinkedHashMap<>();
-        for (PreAuthorizationRequest request : preAuthorizationRequestRepository.findAll(DailyBriefingClaimSpecification.authorizationsForScope(scope))) {
-            String key = request.getStatus() + "|" + request.getOutcome() + "|" + request.getPayorId() + "|" + request.getDateOrdered();
-            AuthAccumulator accumulator = totals.computeIfAbsent(key, ignored -> new AuthAccumulator(request.getStatus(), request.getOutcome(), request.getPayorId(), request.getDateOrdered()));
+        for (PreAuthorizationRequest request : requests) {
+            PatientInsurance insurance = insurances.get(request.getPatientInsuranceId());
+            Long payorId = insurance != null && insurance.getPayorId() != null ? insurance.getPayorId() : request.getPayorId();
+            String key = request.getStatus() + "|" + request.getOutcome() + "|" + payorId + "|" + request.getDateOrdered();
+            AuthAccumulator accumulator = totals.computeIfAbsent(
+                    key,
+                    ignored -> new AuthAccumulator(request.getStatus(), request.getOutcome(), payorId, request.getDateOrdered())
+            );
+
             accumulator.count++;
             accumulator.requestedNet = accumulator.requestedNet.add(zero(request.getTotalNet()));
         }
@@ -598,19 +621,71 @@ public class DailyBriefingQueryGateway {
         if (start != null) {
             specification = specification.and(DailyBriefingClaimSpecification.submittedBetween(start, end, SUBMITTED));
         }
+        List<ClaimRequest> claims = claimRequestRepository.findAll(specification);
+        Map<Long, PatientInsurance> insurances = patientInsurancesById(
+                claims.stream().map(ClaimRequest::getPatientInsuranceId).filter(Objects::nonNull).collect(Collectors.toSet())
+        );
         Map<String, ClaimAccumulator> totals = new LinkedHashMap<>();
-        for (ClaimRequest claim : claimRequestRepository.findAll(specification)) {
-            String key = claim.getStatus() + "|" + claim.getOutcome();
+        for (ClaimRequest claim : claims) {
+            PatientInsurance insurance = insurances.get(claim.getPatientInsuranceId());
+            Long payorId = insurance == null ? null : insurance.getPayorId();
+            String payerName = insurance == null ? null : insurance.getPayerName();
+            String key = claim.getStatus() + "|" + claim.getOutcome() + "|" + payorId + "|" + payerName;
             ClaimAccumulator accumulator = totals.computeIfAbsent(key, ignored -> new ClaimAccumulator(
                     claim.getStatus() == null ? null : claim.getStatus().name(),
-                    claim.getOutcome()
+                    claim.getOutcome(),
+                    payorId,
+                    payerName
+
             ));
             accumulator.count++;
             accumulator.claimedNet = accumulator.claimedNet.add(zero(claim.getTotalNet()));
         }
         return totals.values().stream()
-                .map(row -> new DailyBriefingFacts.ClaimRow(row.status, row.outcome, null, null, row.count, row.claimedNet))
+                .map(row -> new DailyBriefingFacts.ClaimRow(row.status, row.outcome, row.payorId, row.payerName, row.count, row.claimedNet))
                 .toList();
+    }
+
+    private DailyBriefingFacts.PatientInsuranceSnapshot patientInsuranceSnapshot(BriefingScope scope, BriefingWindow window) {
+        List<PatientEncounter> encounters = patientEncounterRepository.findAll(
+                DailyBriefingEncounterSpecification.forScope(scope)
+                        .and(DailyBriefingEncounterSpecification.encounterDate(window.previousDay()))
+                        .and(DailyBriefingEncounterSpecification.withPatient())
+        );
+        Set<Long> patientIds = encounters.stream()
+                .map(encounter -> encounter.getPatient() == null ? null : encounter.getPatient().getId())
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (patientIds.isEmpty()) {
+            return new DailyBriefingFacts.PatientInsuranceSnapshot(0L, 0L, 0L, 0L);
+        }
+        List<PatientInsurance> insurances = patientInsuranceRepository.findByPatient_IdIn(patientIds);
+        Set<Long> insuredPatients = insurances.stream()
+                .map(insurance -> insurance.getPatient() == null ? null : insurance.getPatient().getId())
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<Long> insuranceIds = insurances.stream().map(PatientInsurance::getId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Set<Long> withRules = insuranceIds.isEmpty()
+                ? Set.of()
+                : patientInsuranceBenefitRuleRepository.findByPatientInsuranceIdIn(insuranceIds).stream()
+                        .map(PatientInsuranceBenefitRule::getPatientInsuranceId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toCollection(LinkedHashSet::new));
+        long missing = insuranceIds.stream().filter(id -> !withRules.contains(id)).count();
+        return new DailyBriefingFacts.PatientInsuranceSnapshot(
+                (long) insuredPatients.size(),
+                (long) insuranceIds.size(),
+                (long) withRules.size(),
+                missing
+        );
+    }
+
+    private Map<Long, PatientInsurance> patientInsurancesById(Set<Long> ids) {
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        return patientInsuranceRepository.findAllById(ids).stream()
+                .collect(Collectors.toMap(PatientInsurance::getId, Function.identity(), (left, right) -> left));
     }
 
     private List<DailyBriefingFacts.TatSample> turnaround(BriefingScope scope, BriefingWindow window) {
@@ -925,12 +1000,16 @@ public class DailyBriefingQueryGateway {
     private static final class ClaimAccumulator {
         private final String status;
         private final String outcome;
+        private final Long payorId;
+        private final String payerName;
         private long count;
         private BigDecimal claimedNet = BigDecimal.ZERO;
 
-        private ClaimAccumulator(String status, String outcome) {
+        private ClaimAccumulator(String status, String outcome, Long payorId, String payerName) {
             this.status = status;
             this.outcome = outcome;
+            this.payorId = payorId;
+            this.payerName = payerName;
         }
     }
 
