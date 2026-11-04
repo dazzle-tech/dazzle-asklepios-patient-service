@@ -448,6 +448,7 @@ public final class DailyBriefingAssembler {
                 "سجلات تأمين المريض التي لا تملك أي قاعدة منافع.",
                 previous, coverage.missingBenefitRules(), Coverage.COMPLETE, null, null, null, true);
 
+
         long ready = claimCount(facts.claims(), "DRAFT");
         long rejected = claimCount(facts.claims(), "REJECTED");
         long failed = claimCount(facts.claims(), "FAILED");
@@ -481,6 +482,7 @@ public final class DailyBriefingAssembler {
                         indicators.pair("Benefit-rule coverage is counted from patient insurance benefit rules for previous-day patients.", "تغطية قواعد المنافع تُحسب من قواعد منافع تأمين المريض لمرضى اليوم السابق."),
                         indicators.pair("Pending requested net is a single requested-currency total only when every row shares that figure's currency field; rows here are summed as requested net without a currency column on the authorization.", "صافي الطلب للمعلقات يُجمع كصافي مطلوب. مستند الموافقة لا يحمل عملة في هذا التجميع.")
                 ));
+
     }
 
     private static Section waiting(BriefingContext context, DailyBriefingFacts facts, Indicators indicators) {
@@ -752,6 +754,7 @@ public final class DailyBriefingAssembler {
         countAlert(alerts, indicators, "INSURANCE_MISSING_BENEFIT_RULES", "MISSING_BENEFIT_RULES", "MEDIUM", "FINANCIAL",
                 "Patient insurance records are missing benefit rules.", "سجلات تأمين المريض بلا قواعد منافع.",
                 "Review patient insurance benefit rules.", "راجع قواعد منافع تأمين المريض.");
+
         countAlert(alerts, indicators, "OVERDUE_ORDERS", "OVERDUE_ORDERS", "HIGH", "CLINICAL",
                 "Diagnostic orders are older than the turnaround highlight.", "طلبات تشخيص أقدم من حد الإنجاز.",
                 "Review the overdue orders and their department.", "راجع الطلبات المتأخرة وقسمها.");

@@ -41,6 +41,7 @@ public record DailyBriefingFacts(
         List<ClaimRow> claims,
         List<ClaimRow> claimsSubmittedYesterday,
         PatientInsuranceSnapshot patientInsurance,
+
         OrderSnapshot orders,
         UrgentCareSnapshot urgentCare,
         Long unbilledEncountersWithActiveCharge,
@@ -140,6 +141,7 @@ public record DailyBriefingFacts(
     ) {
     }
 
+
     public record TatSample(String orderType, long minutes) {
     }
 
@@ -204,6 +206,7 @@ public record DailyBriefingFacts(
         private List<ClaimRow> claims = List.of();
         private List<ClaimRow> claimsSubmittedYesterday = List.of();
         private PatientInsuranceSnapshot patientInsurance = new PatientInsuranceSnapshot(0L, 0L, 0L, 0L);
+
         private OrderSnapshot orders = new OrderSnapshot(List.of(), false, 0, 0L, 0L, 0L);
         private UrgentCareSnapshot urgentCare = new UrgentCareSnapshot(false, null, null, null, null, null, null, null, null, null, null, null, null, null);
         private Long unbilledEncountersWithActiveCharge = 0L;
@@ -317,6 +320,7 @@ public record DailyBriefingFacts(
             return this;
         }
 
+
         public Builder orders(OrderSnapshot orders) {
             this.orders = orders;
             return this;
@@ -362,6 +366,7 @@ public record DailyBriefingFacts(
                     claims,
                     claimsSubmittedYesterday,
                     patientInsurance,
+
                     orders,
                     urgentCare,
                     unbilledEncountersWithActiveCharge,

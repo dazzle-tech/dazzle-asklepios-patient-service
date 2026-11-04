@@ -14,6 +14,7 @@ import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientInsuranceBenefitRule;
+
 import com.dazzle.asklepios.domain.PreAuthorizationRequest;
 import com.dazzle.asklepios.domain.enumeration.AppointmentStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterBillingStatus;
@@ -44,6 +45,7 @@ import com.dazzle.asklepios.repository.FinancialDocumentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceBenefitRuleRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
+
 import com.dazzle.asklepios.repository.PreAuthorizationRequestRepository;
 import com.dazzle.asklepios.service.dto.dailybriefing.DailyBriefingCasesResponse.DailyBriefingCase;
 import com.dazzle.asklepios.service.dto.dailybriefing.DailyBriefingResponse.Drill;
@@ -101,6 +103,7 @@ public class DailyBriefingQueryGateway {
     private final ClaimRequestRepository claimRequestRepository;
     private final PatientInsuranceRepository patientInsuranceRepository;
     private final PatientInsuranceBenefitRuleRepository patientInsuranceBenefitRuleRepository;
+
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
     private final DiagnosticOrderRepository diagnosticOrderRepository;
     private final EncounterAssignToBedRepository encounterAssignToBedRepository;
@@ -333,6 +336,7 @@ public class DailyBriefingQueryGateway {
         builder.claims(read("insurance.claims", () -> claimRows(scope, null, null), builder));
         builder.claimsSubmittedYesterday(read("insurance.claimsSubmitted", () -> claimRows(scope, window.previousStart(), window.previousEnd()), builder));
         builder.patientInsurance(read("insurance.patientInsurance", () -> patientInsuranceSnapshot(scope, window), builder));
+
     }
 
     private void loadOrders(BriefingScope scope, BriefingWindow window, DailyBriefingFacts.Builder builder) {
@@ -582,6 +586,7 @@ public class DailyBriefingQueryGateway {
                 ),
                 document -> document.getCurrency() == null ? null : document.getCurrency().name(),
                 FinancialDocument::getTotalAmount,
+
                 ignored -> null
         );
     }
@@ -602,6 +607,7 @@ public class DailyBriefingQueryGateway {
                     key,
                     ignored -> new AuthAccumulator(request.getStatus(), request.getOutcome(), payorId, request.getDateOrdered())
             );
+
             accumulator.count++;
             accumulator.requestedNet = accumulator.requestedNet.add(zero(request.getTotalNet()));
         }
@@ -630,6 +636,7 @@ public class DailyBriefingQueryGateway {
                     claim.getOutcome(),
                     payorId,
                     payerName
+
             ));
             accumulator.count++;
             accumulator.claimedNet = accumulator.claimedNet.add(zero(claim.getTotalNet()));

@@ -932,6 +932,7 @@ public class PatientEncounterService {
 
         boolean isDoctor = switch (jobRole) {
             case "PHYSICIAN",
+                 "DENTIST",
                  "GENERAL_PRACTITIONER",
                  "SPECIALIST",
                  "ANESTHESIOLOGIST",
@@ -940,6 +941,7 @@ public class PatientEncounterService {
                  "PSYCHIATRIST" -> true;
             default -> false;
         };
+
 
         if (!isDoctor) {
             throw new BadRequestAlertException(

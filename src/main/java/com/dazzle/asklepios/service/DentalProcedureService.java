@@ -11,6 +11,7 @@ import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
+import com.dazzle.asklepios.domain.enumeration.ToothNumber;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
@@ -44,7 +45,9 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 
@@ -413,7 +416,7 @@ public class DentalProcedureService {
         return DentalProcedure.builder()
                 .patient(patient)
                 .encounter(encounter)
-                .toothNumber(dto.toothNumber())
+                .toothNumbers(normalizeToothNumbers(dto.toothNumbers()))
                 .surface(dto.surface())
                 .anesthesiaUsed(dto.anesthesiaUsed())
                 .dose(dto.dose())
@@ -428,7 +431,7 @@ public class DentalProcedureService {
     }
 
     private void updateDentalProcedureFields(DentalProcedure entity, DentalProcedureUpdateDTO dto) {
-        entity.setToothNumber(dto.toothNumber());
+        entity.setToothNumbers(normalizeToothNumbers(dto.toothNumbers()));
         entity.setSurface(dto.surface());
         entity.setAnesthesiaUsed(dto.anesthesiaUsed());
         entity.setDose(dto.dose());
@@ -485,7 +488,7 @@ public class DentalProcedureService {
         BigDecimal unitPrice = setupProcedure.price();
         Long quantity = 1L;
         BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
-        String billingNotes = buildBillingNotesValue(notes, surface);
+        String billingNotes = buildBillingNotesValue(notes, surface, dentalProcedure.getToothNumbers());
 
         PatientServiceAndProduct.PatientServiceAndProductBuilder builder = PatientServiceAndProduct.builder()
                 .patientId(dentalProcedure.getPatient().getId())
@@ -530,7 +533,7 @@ public class DentalProcedureService {
         BigDecimal unitPrice =setupService.price();
         Long quantity = 1L;
         BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
-        String billingNotes = buildBillingNotesValue(notes, surface);
+        String billingNotes = buildBillingNotesValue(notes, surface, dentalProcedure.getToothNumbers());
 
         PatientServiceAndProduct.PatientServiceAndProductBuilder builder = PatientServiceAndProduct.builder()
                 .patientId(dentalProcedure.getPatient().getId())
@@ -640,9 +643,42 @@ public class DentalProcedureService {
         patientServiceAndProductRepository.flush();
     }
 
-    private String buildBillingNotesValue(String notesValue, String surface) {
+    private List<ToothNumber> normalizeToothNumbers(List<ToothNumber> toothNumbers) {
+        List<ToothNumber> normalized = toothNumbers == null
+                ? List.of()
+                : toothNumbers.stream().filter(Objects::nonNull).distinct().toList();
+
+        if (normalized.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "At least one tooth number is required",
+                    "dentalProcedure",
+                    "toothNumbersRequired"
+            );
+        }
+
+        return new ArrayList<>(normalized);
+    }
+
+    private String formatToothNumbers(List<ToothNumber> toothNumbers) {
+        if (toothNumbers == null || toothNumbers.isEmpty()) {
+            return "";
+        }
+
+        return toothNumbers.stream()
+                .map(tooth -> tooth.name().replaceFirst("^Tooth", ""))
+                .collect(Collectors.joining(", "));
+    }
+
+    private String buildBillingNotesValue(String notesValue, String surface, List<ToothNumber> toothNumbers) {
         String notes = notesValue == null ? "" : notesValue.trim();
         String surfaceValue = surface == null ? "" : surface.trim();
+        String teeth = formatToothNumbers(toothNumbers);
+
+        if (!teeth.isBlank()) {
+            notes = notes.isBlank()
+                    ? "Teeth: " + teeth
+                    : notes + " | Teeth: " + teeth;
+        }
 
         if (!surfaceValue.isBlank()) {
             notes = notes.isBlank()
