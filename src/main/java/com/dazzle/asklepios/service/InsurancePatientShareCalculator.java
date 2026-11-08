@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.ServiceClient;
+import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.client.setup.dto.ServiceSetupDTO;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientInsuranceCoverage;
@@ -11,9 +12,11 @@ import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.repository.PatientInsuranceCoverageRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.service.helper.PayorHelper;
 import com.dazzle.asklepios.service.dto.InsuranceBenefitRule;
 import com.dazzle.asklepios.service.dto.InsuranceSplit;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,11 +24,13 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 
 @Service
 @RequiredArgsConstructor
 public class InsurancePatientShareCalculator {
 
+    static final String MANUAL_COVERAGE = "MANUAL_COVERAGE";
     private static final Logger LOG =
             LoggerFactory.getLogger(InsurancePatientShareCalculator.class);
 
@@ -37,6 +42,8 @@ public class InsurancePatientShareCalculator {
     private final PatientInsuranceCoverageRepository patientInsuranceCoverageRepository;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final ServiceClient serviceClient;
+    private final PayorHelper payorHelper;
+    private final CoverageContractShareService coverageContractShareService;
 
     public InsuranceSplit calculateSplit(
             PatientInsurance insurance,
@@ -128,7 +135,7 @@ public class InsurancePatientShareCalculator {
             return cashSplit(normalizedNet);
         }
 
-        if (!insuranceBenefitRuleService.isLatestCoverageInForce(insurance)) {
+        if (!isLatestCoverageInForce(insurance)) {
             LOG.warn(
                     "[INSURANCE] Coverage is not in-force; billing as cash "
                             + "patientInsuranceId={} net={}",
@@ -138,34 +145,21 @@ public class InsurancePatientShareCalculator {
             return cashSplit(normalizedNet);
         }
 
-        InsuranceSplit manualOverride =
-                resolveManualCoverageOverride(
-                        insurance,
-                        item,
-                        normalizedNet
-                );
-        InsuranceSplit split;
-        if (manualOverride != null) {
-            split = manualOverride;
-        } else {
-            if (item != null && serviceCategory == null) {
-                serviceCategory = resolveServiceCategory(item);
-            }
-
-            split = calculateSplitFromRules(
-                    insurance,
-                    serviceCategory,
-                    serviceSource,
-                    normalizedNet
-            );
-        }
+        InsuranceSplit split = resolveCoverageSplit(
+                insurance,
+                item,
+                serviceCategory,
+                serviceSource,
+                normalizedNet
+        );
 
         VisitMaxLimitTracker tracker =
                 visitMaxLimitTracker != null
                         ? visitMaxLimitTracker
                         : trackerForEncounter(insurance, item);
 
-        InsuranceSplit capped = tracker.consume(split, normalizedNet);
+        BigDecimal billedNet = billedNetOf(split, normalizedNet);
+        InsuranceSplit capped = tracker.consume(split, billedNet);
         if (tracker.hasLimit()
                 && capped.patientShare().compareTo(split.patientShare()) != 0) {
             LOG.info(
@@ -199,12 +193,134 @@ public class InsurancePatientShareCalculator {
         );
     }
 
+    /** Why the whole net is on the patient; a manual coverage on the insurance overrides the contract. */
+    public String contractCashReason(PatientInsurance insurance, PatientServiceAndProduct item) {
+        boolean manualCoverage = item != null
+                && item.getBillingItemType() != null
+                && patientInsuranceCoverageRepository
+                        .findFirstByInsurance_IdAndItemType(insurance.getId(), item.getBillingItemType())
+                        .isPresent();
+        return manualCoverage
+                ? MANUAL_COVERAGE
+                : coverageContractShareService.contractCashReason(insurance, item);
+    }
+
+    public boolean usesNphiesContractRules(PatientInsurance insurance) {
+        return coverageContractShareService.usesNphiesApprovalCoverage(insurance);
+    }
+
     public boolean isLatestCoverageInForce(PatientInsurance insurance) {
+        if (insurance != null && usesNphiesContractRules(insurance)) {
+            boolean inForce = insurance.getExpirationDate() != null
+                    && !insurance.getExpirationDate().isBefore(LocalDate.now());
+            LOG.info(
+                    "[INSURANCE] NPHIES approval coverage uses the coverage contract on the visit "
+                            + "patientInsuranceId={} expirationInForce={}",
+                    insurance.getId(),
+                    inForce
+            );
+            return inForce;
+        }
+
         return insuranceBenefitRuleService.isLatestCoverageInForce(insurance);
     }
 
     private InsuranceSplit cashSplit(BigDecimal normalizedNet) {
         return new InsuranceSplit(normalizedNet, BigDecimal.ZERO);
+    }
+
+    private InsuranceSplit resolveCoverageSplit(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            String serviceCategory,
+            ServiceSource serviceSource,
+            BigDecimal normalizedNet
+    ) {
+        InsuranceSplit manualOverride =
+                resolveManualCoverageOverride(
+                        insurance,
+                        item,
+                        normalizedNet
+                );
+        if (manualOverride != null) {
+            return manualOverride;
+        }
+
+        if (item != null && serviceCategory == null) {
+            serviceCategory = resolveServiceCategory(item);
+        }
+
+        boolean nphiesContractRules =
+                coverageContractShareService.usesNphiesApprovalCoverage(insurance, item);
+
+        if (isWaseelCoverage(insurance) && !nphiesContractRules) {
+            InsuranceSplit waseelSplit = calculateSplitFromRules(
+                    insurance,
+                    serviceCategory,
+                    serviceSource,
+                    normalizedNet
+            );
+            return coverageContractShareService.capWithCoverage(
+                    insurance,
+                    item,
+                    normalizedNet,
+                    waseelSplit
+            );
+        }
+
+        InsuranceSplit contractSplit =
+                coverageContractShareService
+                        .calculateSplit(
+                                insurance,
+                                item,
+                                normalizedNet
+                        )
+                        .orElse(null);
+        if (contractSplit != null) {
+            return contractSplit;
+        }
+
+        if (nphiesContractRules) {
+            LOG.info(
+                    "[INSURANCE] NPHIES coverage contract has no copayment or coverage reading "
+                            + "for this item. Wasel benefit rules are not used. patientInsuranceId={}",
+                    insurance.getId()
+            );
+            return coverageContractShareService.applyLimit(
+                    insurance,
+                    item,
+                    normalizedNet,
+                    new InsuranceSplit(
+                            normalizedNet,
+                            BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP)
+                    )
+            );
+        }
+
+        return coverageContractShareService.applyLimit(
+                insurance,
+                item,
+                normalizedNet,
+                calculateSplitFromRules(
+                        insurance,
+                        serviceCategory,
+                        serviceSource,
+                        normalizedNet
+                )
+        );
+    }
+
+    private BigDecimal billedNetOf(InsuranceSplit split, BigDecimal fallbackNet) {
+        if (split == null) {
+            return fallbackNet;
+        }
+
+        BigDecimal billedNet = money(split.patientShare().add(split.insuranceShare()));
+        if (billedNet.signum() <= 0) {
+            return fallbackNet;
+        }
+
+        return billedNet;
     }
 
     public InsuranceBenefitRule resolveApplicableRule(
@@ -458,6 +574,33 @@ public class InsurancePatientShareCalculator {
                     exception
             );
             return null;
+        }
+    }
+
+    public boolean isWaseelCoverage(PatientInsurance insurance) {
+        if (insurance == null
+                || (insurance.getPayorId() == null
+                && (insurance.getPayerNphiesId() == null || insurance.getPayerNphiesId().isBlank()))) {
+            return false;
+        }
+
+        try {
+            PayorDTO payor = payorHelper.findPayor(insurance.getPayorId(), insurance.getPayerNphiesId());
+            return payor != null && Boolean.TRUE.equals(payor.isWaseelEnabled());
+        } catch (FeignException exception) {
+            LOG.warn(
+                    "[INSURANCE] Unable to resolve payor waseel flag payorId={}. Keeping existing share calculation.",
+                    insurance.getPayorId(),
+                    exception
+            );
+            return true;
+        } catch (RuntimeException exception) {
+            LOG.warn(
+                    "[INSURANCE] Payor lookup failed payorId={}. Keeping existing share calculation.",
+                    insurance.getPayorId(),
+                    exception
+            );
+            return true;
         }
     }
 

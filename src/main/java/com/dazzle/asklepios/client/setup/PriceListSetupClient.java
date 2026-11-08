@@ -7,6 +7,8 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
 import java.time.LocalDate;
@@ -33,4 +35,7 @@ public interface PriceListSetupClient {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate pricingDate
     );
+
+    @PostMapping("/api/setup/price-list-setups/items/{itemId}/lock-visit-type")
+    Void lockVisitType(@PathVariable("itemId") Long itemId);
 }

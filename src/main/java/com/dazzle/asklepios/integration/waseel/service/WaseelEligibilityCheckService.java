@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
 import com.dazzle.asklepios.client.setup.dto.PayorDTO;
+import com.dazzle.asklepios.client.setup.dto.TpaResolutionDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
@@ -43,6 +44,8 @@ import java.util.Optional;
 public class WaseelEligibilityCheckService {
 
     private static final String ENTITY_NAME = "waseelEligibility";
+    /** Waseel placeholder for "no TPA". */
+    private static final String NO_TPA_MARKER = "-1";
 
     private final PatientRepository patientRepository;
     private final PatientInsuranceRepository patientInsuranceRepository;
@@ -75,12 +78,14 @@ public class WaseelEligibilityCheckService {
         validateBeforeWaseelCall(patient, insurance, request);
 
         LocalDate serviceDate = resolveServiceDate(request.serviceDate());
+        String tpaNphiesId = resolveTpaNphiesId(insurance);
 
         EligibilityRequest waseelRequest = buildWaseelEligibilityRequest(
                 patient,
                 insurance,
                 request,
-                serviceDate
+                serviceDate,
+                tpaNphiesId
         );
 
         System.out.println("WASEEL REQUEST JSON = " + toJson(waseelRequest));
@@ -89,7 +94,7 @@ public class WaseelEligibilityCheckService {
                 .patientId(patient.getId())
                 .patientInsuranceId(insurance.getId())
                 .providerId(properties.providerId())
-                .destinationId(resolveDestinationId(request.destinationId(), insurance))
+                .destinationId(waseelRequest.destinationId())
                 .serviceDate(serviceDate)
                 .benefits(Boolean.TRUE.equals(request.benefits()))
                 .discovery(Boolean.TRUE.equals(request.discovery()))
@@ -240,9 +245,10 @@ public class WaseelEligibilityCheckService {
             Patient patient,
             PatientInsurance insurance,
             EligibilityCheckRequest request,
-            LocalDate serviceDate
+            LocalDate serviceDate,
+            String tpaNphiesId
     ) {
-        EligibilityInsurancePlanDTO insurancePlan = buildInsurancePlan(insurance);
+        EligibilityInsurancePlanDTO insurancePlan = buildInsurancePlan(insurance, tpaNphiesId);
 
         EligibilityBeneficiaryDTO beneficiary = new EligibilityBeneficiaryDTO(
                 patient.getId(),
@@ -299,7 +305,7 @@ public class WaseelEligibilityCheckService {
                 Boolean.TRUE.equals(request.emergency()),
                 false,
                 null,
-                resolveDestinationId(request.destinationId(), insurance)
+                resolveDestinationId(request.destinationId(), insurance, tpaNphiesId)
         );
     }
 
@@ -366,9 +372,8 @@ public class WaseelEligibilityCheckService {
         }
     }
 
-    private EligibilityInsurancePlanDTO buildInsurancePlan(PatientInsurance insurance) {
+    private EligibilityInsurancePlanDTO buildInsurancePlan(PatientInsurance insurance, String tpaNphiesId) {
         String payerNphiesId = resolvePayerNphiesId(insurance);
-        String tpaNphiesId = resolveTpaNphiesId(insurance);
 
         return new EligibilityInsurancePlanDTO(
                 null,
@@ -406,27 +411,57 @@ public class WaseelEligibilityCheckService {
         );
     }
 
+    /**
+     * Stops the check when the TPA of a TPA-managed policy is unknown: sending it to the payer
+     * instead would route the request to the wrong destination.
+     */
     private String resolveTpaNphiesId(PatientInsurance insurance) {
         String stored = clean(insurance.getTpaNphiesId());
-        if (!isBlank(stored)) {
+        if (NO_TPA_MARKER.equals(stored)) {
+            stored = null;
+        }
+        if (stored != null && !isBlank(insurance.getTpaName())) {
             return stored;
         }
 
-        PayorDTO payor = payorHelper.findPayor(insurance.getPayorId(), insurance.getPayerNphiesId());
-        if (payor == null) {
-            return null;
+        TpaResolutionDTO tpa = payorHelper.resolveTpa(
+                resolvePayerNphiesId(insurance),
+                clean(insurance.getPolicyNumber()),
+                stored
+        );
+
+        if (TpaResolutionDTO.SELECTION_REQUIRED.equals(tpa.status())) {
+            throw new BadRequestAlertException(
+                    "This insurance company works with more than one TPA. "
+                            + "Edit the patient insurance and select the TPA before checking eligibility.",
+                    ENTITY_NAME,
+                    "tpa.selectionRequired"
+            );
         }
 
-        return clean(payor.tpaNphiesId());
+        if (TpaResolutionDTO.NPHIES_ID_MISSING.equals(tpa.status())) {
+            throw new BadRequestAlertException(
+                    "TPA \"" + tpa.tpaName() + "\" has no NPHIES ID. Add it in TPA setup before checking eligibility.",
+                    ENTITY_NAME,
+                    "tpa.nphiesIdMissing"
+            );
+        }
+
+        insurance.setTpaNphiesId(tpa.tpaNphiesId());
+        insurance.setTpaName(tpa.tpaName());
+        return tpa.tpaNphiesId();
     }
 
-    private String resolveDestinationId(String requestDestinationId, PatientInsurance insurance) {
+    private String resolveDestinationId(
+            String requestDestinationId,
+            PatientInsurance insurance,
+            String tpaNphiesId
+    ) {
         String destinationId = clean(requestDestinationId);
         if (destinationId != null) {
             return destinationId;
         }
 
-        String tpaNphiesId = resolveTpaNphiesId(insurance);
         if (tpaNphiesId != null) {
             return tpaNphiesId;
         }

@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.dto.PayorDTO;
+import com.dazzle.asklepios.client.setup.dto.TpaResolutionDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.repository.PatientInsuranceCoverageRepository;
@@ -8,6 +9,7 @@ import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.patientInsurance.PatientInsuranceCreateDTO;
 import com.dazzle.asklepios.service.dto.patientInsurance.PatientInsuranceUpdateDTO;
+import com.dazzle.asklepios.service.helper.InsuranceRegistrationGuard;
 import com.dazzle.asklepios.service.helper.NphiesPayerHelper;
 import com.dazzle.asklepios.service.helper.PayorHelper;
 import com.dazzle.asklepios.service.helper.PayorPlanHelper;
@@ -36,6 +38,7 @@ public class PatientInsuranceService {
     private final PayorHelper payorHelper;
     private final PayorPlanHelper payorPlanHelper;
     private final NphiesPayerHelper nphiesPayerHelper;
+    private final InsuranceRegistrationGuard insuranceRegistrationGuard;
 
     public PatientInsuranceService(
             PatientInsuranceRepository patientInsuranceRepository,
@@ -43,7 +46,9 @@ public class PatientInsuranceService {
             PatientRepository patientRepository,
             PayorHelper payorHelper,
             PayorPlanHelper payorPlanHelper,
-            NphiesPayerHelper nphiesPayerHelper) {
+            NphiesPayerHelper nphiesPayerHelper,
+            InsuranceRegistrationGuard insuranceRegistrationGuard) {
+        this.insuranceRegistrationGuard = insuranceRegistrationGuard;
         this.patientInsuranceRepository = patientInsuranceRepository;
         this.patientInsuranceCoverageRepository = patientInsuranceCoverageRepository;
         this.patientRepository = patientRepository;
@@ -78,7 +83,8 @@ public class PatientInsuranceService {
                 payor == null ? null : payor.nphiesId(),
                 payor == null ? null : payor.waseelPayerId()
         );
-        String tpaNphiesId = payor == null ? null : clean(payor.tpaNphiesId());
+        insuranceRegistrationGuard.requireRegistrable(payerNphiesId, dto.policyNumber(), dto.policyClassName());
+        TpaResolutionDTO tpa = payorHelper.resolveTpa(payerNphiesId, dto.policyNumber(), dto.tpaNphiesId());
         String payerName = nphiesPayerHelper.resolvePayerDisplayName(payerNphiesId, null);
         if (payerName == null && payor != null) {
             payerName = payor.name();
@@ -107,7 +113,8 @@ public class PatientInsuranceService {
 
                 .memberCardId(dto.memberCardId())
                 .payerNphiesId(payerNphiesId)
-                .tpaNphiesId(tpaNphiesId)
+                .tpaNphiesId(tpa.tpaNphiesId())
+                .tpaName(tpa.tpaName())
                 .payerName(payerName)
                 .networkId(dto.networkId())
                 .sponsorNumber(dto.sponsorNumber())
@@ -147,8 +154,18 @@ public class PatientInsuranceService {
                         "notfound"
                 ));
 
+        String previousPayerNphiesId = existing.getPayerNphiesId();
+
         existing.setPatient(refPatient(dto.patientId()));
-        existing.setPayorId(dto.payorId());
+        Long payorId = payorHelper.resolvePayorId(dto.payorId(), dto.payerNphiesId());
+        if (payorId == null) {
+            throw new BadRequestAlertException(
+                    "Payor could not be resolved from the provided payor or payer NPHIES ID.",
+                    "patientInsurance",
+                    "payor.unresolved"
+            );
+        }
+        existing.setPayorId(payorId);
         existing.setPlanId(dto.planId());
 //        existing.setPolicyHolderId(dto.policyHolderId() == null ? null : refPatient(dto.policyHolderId()).getId());
         Patient policyHolder = dto.policyHolderId() == null ? null : refPatient(dto.policyHolderId());
@@ -166,13 +183,26 @@ public class PatientInsuranceService {
         existing.setRemainingDeductibles(dto.remainingDeductibles());
         existing.setMemberCardId(dto.memberCardId());
 
-        PayorDTO payor = payorHelper.findPayor(dto.payorId(), dto.payerNphiesId());
+        PayorDTO payor = payorHelper.findPayor(payorId, dto.payerNphiesId());
         existing.setPayerNphiesId(firstNonBlank(
                 dto.payerNphiesId(),
                 payor == null ? null : payor.nphiesId(),
                 payor == null ? null : payor.waseelPayerId()
         ));
-        existing.setTpaNphiesId(payor == null ? null : clean(payor.tpaNphiesId()));
+        insuranceRegistrationGuard.requireRegistrable(
+                existing.getPayerNphiesId(),
+                dto.policyNumber(),
+                dto.policyClassName()
+        );
+        boolean samePayer = existing.getPayerNphiesId() != null
+                && existing.getPayerNphiesId().equalsIgnoreCase(previousPayerNphiesId);
+        TpaResolutionDTO tpa = payorHelper.resolveTpa(
+                existing.getPayerNphiesId(),
+                dto.policyNumber(),
+                firstNonBlank(dto.tpaNphiesId(), samePayer ? existing.getTpaNphiesId() : null)
+        );
+        existing.setTpaNphiesId(tpa.tpaNphiesId());
+        existing.setTpaName(tpa.tpaName());
         existing.setPayerName(
                 nphiesPayerHelper.resolvePayerDisplayName(existing.getPayerNphiesId(), existing.getPayerName())
         );

@@ -22,14 +22,15 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 /**
- * Renders lab / radiology investigation results as a readable PDF attachment for Waseel claims.
+ * Renders lab / radiology investigation results as a readable PDF attachment for Waseel
+ * pre-authorizations and claims.
  * Layout: patient header, then per order an info strip (order / encounter / from department),
  * and per order test a titled section with its results table (lab) or report (radiology).
  */
 @Component
 public class InvestigationResultsPdfRenderer {
 
-    private final int maxPdfBytes = 1_000_000;
+    private final int maxPdfBytes = 10_000_000;
     private final int initialMaxPages = 200;
     private final String pdfFilename = "investigation-results.pdf";
     private final String pdfContentType = "application/pdf";
@@ -82,7 +83,7 @@ public class InvestigationResultsPdfRenderer {
     }
 
     /**
-     * Keeps a PDF at or under 1 MB as {@code application/pdf}. A larger PDF is sent as a zip
+     * Keeps a PDF at or under 10 MB as {@code application/pdf}. A larger PDF is sent as a zip
      * that contains the same file.
      */
     public Attachment attachmentFor(byte[] pdf) {

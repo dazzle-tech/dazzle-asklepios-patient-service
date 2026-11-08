@@ -57,6 +57,19 @@ public interface BillingChargeRepository
     );
 
     @Query("""
+            select c from BillingCharge c
+            join fetch c.encounter
+            where c.patient.id = :patientId
+              and c.status not in :excludedStatuses
+            order by c.id asc
+            """)
+    List<BillingCharge>
+    findAllByPatient_IdAndStatusNotInOrderByIdAsc(
+            @Param("patientId") Long patientId,
+            @Param("excludedStatuses") Collection<BillingChargeStatus> excludedStatuses
+    );
+
+    @Query("""
         select coalesce(sum(c.outstandingAmount), 0)
         from BillingCharge c
         where c.patient.id = :patientId

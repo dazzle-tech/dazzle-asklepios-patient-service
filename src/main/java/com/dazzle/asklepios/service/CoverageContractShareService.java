@@ -1,0 +1,1141 @@
+package com.dazzle.asklepios.service;
+
+import com.dazzle.asklepios.client.setup.CoverageContractClient;
+import com.dazzle.asklepios.client.setup.dto.CoverageContractResolveDtos;
+import com.dazzle.asklepios.client.setup.dto.PayorDTO;
+import com.dazzle.asklepios.service.helper.PayorHelper;
+import com.dazzle.asklepios.domain.BillingChargeLine;
+import com.dazzle.asklepios.domain.PatientDiagnosis;
+import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.PatientInsurance;
+import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
+import com.dazzle.asklepios.repository.BillingChargeLineRepository;
+import com.dazzle.asklepios.repository.PatientDiagnosisRepository;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.service.dto.InsuranceSplit;
+import feign.FeignException;
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+public class CoverageContractShareService {
+
+    private static final Logger LOG = LoggerFactory.getLogger(CoverageContractShareService.class);
+    private static final int MONEY_SCALE = 4;
+    private static final BigDecimal ONE_HUNDRED = new BigDecimal("100");
+    static final String CONTRACT_EXCLUSION = "CONTRACT_EXCLUSION";
+    static final String NOT_IN_COVERAGES = "NOT_IN_COVERAGES";
+    static final String NO_CONTRACT_COPAYMENT = "NO_CONTRACT_COPAYMENT";
+
+    private final CoverageContractClient coverageContractClient;
+    private final PayorHelper payorHelper;
+    private final InsuranceCalculationService insuranceCalculationService;
+    private final PatientEncounterRepository patientEncounterRepository;
+    private final PatientDiagnosisRepository patientDiagnosisRepository;
+    private final PatientServiceAndProductRepository patientServiceAndProductRepository;
+    private final BillingChargeLineRepository billingChargeLineRepository;
+
+    /**
+     * Non-Wasel path: Coverages first (insurance covered amount), then existing copayment
+     * math on the covered portion only. If Coverages are not configured, copayment still
+     * runs on the full net so current numbers stay unchanged.
+     */
+    public Optional<InsuranceSplit> calculateSplit(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            BigDecimal netAmount
+    ) {
+        BigDecimal normalizedNet = money(netAmount);
+        if (insurance == null || insurance.getId() == null || normalizedNet.signum() <= 0) {
+            return Optional.empty();
+        }
+
+        CoverageContractResolveDtos.Response resolved = resolve(insurance, item);
+        if (resolved == null || !resolved.matched()) {
+            rememberExclusion(item, false);
+            return Optional.empty();
+        }
+
+        boolean uncovered = Boolean.TRUE.equals(resolved.uncovered());
+        boolean excluded = isExcluded(resolved);
+        rememberExclusion(item, excluded);
+        boolean cashOut = uncovered || excluded;
+        BigDecimal billedNet = applyPriceDiscount(normalizedNet, resolved, cashOut, excluded);
+
+        if (cashOut) {
+            LOG.info(
+                    "[COVERAGE_CONTRACT] Item is cash-out patientInsuranceId={} contractId={} uncovered={} excluded={}",
+                    insurance.getId(),
+                    contractId(resolved),
+                    uncovered,
+                    excluded
+            );
+            InsuranceSplit cashSplit = new InsuranceSplit(
+                    billedNet,
+                    BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP)
+            );
+            return Optional.of(applyPeriodLimits(cashSplit, resolved, insurance, item, billedNet, true));
+        }
+
+        BigDecimal coveredAmount = coveredAmount(insurance, item, billedNet, resolved.coverage());
+        BigDecimal uncoveredAmount = money(billedNet.subtract(coveredAmount));
+        InsuranceSplit coveredSplit = splitCoveredAmount(coveredAmount, resolved.copayment());
+        if (coveredSplit == null) {
+            if (resolved.coverage() == null) {
+                return Optional.empty();
+            }
+            coveredSplit = new InsuranceSplit(
+                    BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP),
+                    coveredAmount
+            );
+        }
+
+        InsuranceSplit split = new InsuranceSplit(
+                money(uncoveredAmount.add(coveredSplit.patientShare())),
+                money(coveredSplit.insuranceShare())
+        );
+        LOG.info(
+                "[COVERAGE_CONTRACT] Applied Coverages then copayment patientInsuranceId={} contractId={} covered={} uncovered={} patientShare={} insuranceShare={}",
+                insurance.getId(),
+                contractId(resolved),
+                coveredAmount,
+                uncoveredAmount,
+                split.patientShare(),
+                split.insuranceShare()
+        );
+        return Optional.of(applyPeriodLimits(split, resolved, insurance, item, billedNet, false));
+    }
+
+    /**
+     * Wasel path: keep the existing Wasel/benefit-rule split, then cap insurance share
+     * to the Coverages amount when a reading matches. Unmatched Coverages do not cash-out Wasel.
+     */
+    public InsuranceSplit capWithCoverage(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            BigDecimal netAmount,
+            InsuranceSplit existingSplit
+    ) {
+        if (existingSplit == null) {
+            return existingSplit;
+        }
+        BigDecimal normalizedNet = money(netAmount);
+        CoverageContractResolveDtos.Response resolved = resolve(insurance, item);
+        if (resolved == null || !resolved.matched()) {
+            rememberExclusion(item, false);
+            return existingSplit;
+        }
+
+        boolean excluded = isExcluded(resolved);
+        rememberExclusion(item, excluded);
+        if (excluded) {
+            BigDecimal billedNet = applyPriceDiscount(normalizedNet, resolved, true, true);
+            InsuranceSplit cashSplit = new InsuranceSplit(
+                    billedNet,
+                    BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP)
+            );
+            LOG.info(
+                    "[COVERAGE_CONTRACT] Excluded Wasel item is cash patientInsuranceId={} billedNet={}",
+                    insurance.getId(),
+                    billedNet
+            );
+            return applyPeriodLimits(cashSplit, resolved, insurance, item, billedNet, true);
+        }
+
+        BigDecimal billedNet = applyPriceDiscount(normalizedNet, resolved, false, false);
+        InsuranceSplit split = scaleSplit(existingSplit, normalizedNet, billedNet);
+        if (resolved.coverage() != null) {
+            BigDecimal coveredAmount = coveredAmount(insurance, item, billedNet, resolved.coverage());
+            BigDecimal insuranceShare = money(split.insuranceShare()).min(coveredAmount);
+            split = new InsuranceSplit(
+                    money(billedNet.subtract(insuranceShare)),
+                    insuranceShare
+            );
+            LOG.info(
+                    "[COVERAGE_CONTRACT] Capped Wasel insurance share with Coverages patientInsuranceId={} contractId={} covered={} patientShare={} insuranceShare={}",
+                    insurance.getId(),
+                    contractId(resolved),
+                    coveredAmount,
+                    split.patientShare(),
+                    split.insuranceShare()
+            );
+        }
+        return applyPeriodLimits(split, resolved, insurance, item, billedNet, false);
+    }
+
+    /**
+     * Apply Coverage Limit then Cash Limit after the existing share math.
+     * If a period ceiling still has room, the numbers stay unchanged.
+     */
+    public InsuranceSplit applyLimit(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            BigDecimal netAmount,
+            InsuranceSplit existingSplit
+    ) {
+        if (existingSplit == null) {
+            return existingSplit;
+        }
+        CoverageContractResolveDtos.Response resolved = resolve(insurance, item);
+        boolean excluded = isExcluded(resolved);
+        rememberExclusion(item, excluded);
+        BigDecimal originalNet = money(netAmount);
+        if (excluded) {
+            BigDecimal billedNet = applyPriceDiscount(originalNet, resolved, true, true);
+            InsuranceSplit cashSplit = new InsuranceSplit(
+                    billedNet,
+                    BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP)
+            );
+            return applyPeriodLimits(cashSplit, resolved, insurance, item, billedNet, true);
+        }
+        BigDecimal billedNet = applyPriceDiscount(originalNet, resolved, false, false);
+        InsuranceSplit split = scaleSplit(existingSplit, originalNet, billedNet);
+        return applyPeriodLimits(split, resolved, insurance, item, billedNet, false);
+    }
+
+    /**
+     * Coverage Management with Approval Coverage Company = NPHIES is the visit rule.
+     * Wasel eligibility and benefit rules stay in place for every other contract.
+     */
+    public boolean usesNphiesApprovalCoverage(PatientInsurance insurance) {
+        return usesNphiesApprovalCoverage(insurance, null);
+    }
+
+    public boolean usesNphiesApprovalCoverage(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item
+    ) {
+        if (insurance == null || insurance.getId() == null) {
+            return false;
+        }
+
+        CoverageContractResolveDtos.Response resolved = resolve(insurance, item);
+        if (resolved == null || !resolved.matched() || resolved.contract() == null) {
+            return false;
+        }
+
+        return "NPHIES".equalsIgnoreCase(resolved.contract().approvalCoverageCompany());
+    }
+
+    public boolean requiresPreApproval(PatientInsurance insurance, PatientServiceAndProduct item) {
+        if (insurance == null) {
+            return false;
+        }
+        CoverageContractResolveDtos.Response resolved = resolve(insurance, item);
+        if (resolved == null || !resolved.matched() || resolved.preApproval() == null) {
+            return false;
+        }
+        if (isExcluded(resolved)) {
+            LOG.info(
+                    "[COVERAGE_CONTRACT] Pre-approval skipped because item is excluded patientInsuranceId={}",
+                    insurance.getId()
+            );
+            return false;
+        }
+        if (resolved.preApproval().limitValue() != null) {
+            LOG.info(
+                    "[COVERAGE_CONTRACT] Pre-approval limit is applied when the visit is billed patientInsuranceId={} preApprovalId={} valueType={} limit={}",
+                    insurance.getId(),
+                    resolved.preApproval().preApprovalId(),
+                    resolved.preApproval().valueType(),
+                    resolved.preApproval().limitValue()
+            );
+            return false;
+        }
+        LOG.info(
+                "[COVERAGE_CONTRACT] Pre-approval required by contract terms patientInsuranceId={} contractId={} preApprovalId={}",
+                insurance.getId(),
+                contractId(resolved),
+                resolved.preApproval().preApprovalId()
+        );
+        return true;
+    }
+
+    /**
+     * NPHIES contracts: true when the visit has already used its Coverage Limit,
+     * or this line would take it past the limit, so the line needs pre-approval.
+     * Only a fixed ceiling is checked; a percentage limit is a share, not a ceiling.
+     */
+    public boolean exceedsCoverageLimit(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            CoverageContractResolveDtos.Response resolved,
+            BigDecimal netAmount
+    ) {
+        if (insurance == null || item == null || resolved == null || !resolved.matched()) {
+            return false;
+        }
+        CoverageContractResolveDtos.CoverageReadingSnapshot limit = resolved.limit();
+        if (limit == null || limit.limitValue() == null || !"FIXED".equalsIgnoreCase(limit.valueType())) {
+            return false;
+        }
+        if (isExcludedFromLimit(item, limit)) {
+            return false;
+        }
+        BigDecimal currentBasis = basisAmount(item, limit, netAmount);
+        if (currentBasis.signum() <= 0) {
+            return false;
+        }
+        // The limit is crossed by the visit total, whatever order its lines were billed in.
+        BigDecimal usedByOtherLines = basisOf(periodItems(item, insurance, limit, false), item, insurance, limit, false);
+        return usedByOtherLines.add(currentBasis).compareTo(money(limit.limitValue())) > 0;
+    }
+
+    /**
+     * True when the Coverage Limit rule excludes this line (category, subcategory or item):
+     * the line neither uses that limit nor is held for pre-approval because of it.
+     */
+    public boolean isExcludedFromCoverageLimit(
+            PatientServiceAndProduct item,
+            CoverageContractResolveDtos.Response resolved
+    ) {
+        return item != null
+                && resolved != null
+                && resolved.limit() != null
+                && isExcludedFromLimit(item, resolved.limit());
+    }
+
+    public CoverageContractResolveDtos.Response resolveVisitContract(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item
+    ) {
+        return resolve(insurance, item);
+    }
+
+    /**
+     * Why the contract bills this item fully to the patient, whatever the co-payment says:
+     * an active exclusion, Coverages rules on the class that do not match the item, or
+     * no co-payment or coverage reading for the item. Null when the contract covers it.
+     * When the contract cannot be read for the item, that is reported as no reading too.
+     */
+    public String contractCashReason(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item
+    ) {
+        CoverageContractResolveDtos.Response resolved = resolve(insurance, item);
+        if (resolved == null) {
+            return NO_CONTRACT_COPAYMENT;
+        }
+        if (!resolved.matched()) {
+            return null;
+        }
+        if (isExcluded(resolved)) {
+            return CONTRACT_EXCLUSION;
+        }
+        if (Boolean.TRUE.equals(resolved.uncovered())) {
+            return NOT_IN_COVERAGES;
+        }
+        return resolved.copayment() == null && resolved.coverage() == null ? NO_CONTRACT_COPAYMENT : null;
+    }
+
+    /**
+     * True when an active contract exclusion (Excluded Result = YES) matches the item.
+     * Excluded items are billed as self-pay: no coverage, limits or pre-approval.
+     */
+    public boolean isExcludedByContract(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item
+    ) {
+        if (insurance == null || insurance.getId() == null || item == null) {
+            return false;
+        }
+        return isExcluded(resolve(insurance, item));
+    }
+
+    private InsuranceSplit applyPeriodLimits(
+            InsuranceSplit split,
+            CoverageContractResolveDtos.Response resolved,
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            BigDecimal normalizedNet,
+            boolean uncovered
+    ) {
+        InsuranceSplit afterCoverageLimit = applyLimit(split, resolved, insurance, item, normalizedNet);
+        InsuranceSplit afterCashLimit = applyCashLimit(afterCoverageLimit, resolved, insurance, item, normalizedNet, uncovered);
+        return applyExceededCashDiscount(afterCashLimit, resolved, insurance, item, normalizedNet);
+    }
+
+    private InsuranceSplit applyLimit(
+            InsuranceSplit split,
+            CoverageContractResolveDtos.Response resolved,
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            BigDecimal normalizedNet
+    ) {
+        if (split == null || resolved == null || !resolved.matched() || resolved.limit() == null) {
+            return split;
+        }
+        if (resolved.limit().limitValue() == null || item == null) {
+            return split;
+        }
+        if (isApprovedLocally(item, resolved)) {
+            LOG.info(
+                    "[COVERAGE_CONTRACT] Coverage Limit not applied; the line has a local pre-approval decision patientInsuranceId={} pspId={} status={}",
+                    insurance.getId(),
+                    item.getId(),
+                    item.getPreAuthorizationStatus()
+            );
+            return split;
+        }
+
+        BigDecimal consumed = consumedBasis(item, insurance, resolved.limit(), false);
+        BigDecimal currentBasis = basisAmount(item, resolved.limit(), normalizedNet);
+        BigDecimal limitAmount = periodLimitAmount(resolved.limit(), consumed, currentBasis);
+        BigDecimal remaining = money(limitAmount.subtract(consumed));
+        if (remaining.signum() < 0) {
+            remaining = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        }
+
+        BigDecimal insuranceShare = money(split.insuranceShare());
+        if (insuranceShare.compareTo(remaining) <= 0) {
+            return split;
+        }
+
+        InsuranceSplit capped = new InsuranceSplit(
+                money(normalizedNet.subtract(remaining)),
+                remaining
+        );
+        LOG.info(
+                "[COVERAGE_CONTRACT] Capped insurance share with Coverage Limit patientInsuranceId={} contractId={} limit={} consumed={} remaining={} patientShare={} insuranceShare={}",
+                insurance.getId(),
+                contractId(resolved),
+                limitAmount,
+                consumed,
+                remaining,
+                capped.patientShare(),
+                capped.insuranceShare()
+        );
+        return capped;
+    }
+
+    /**
+     * NPHIES: a line that went to pre-approval (for example after the Coverage Limit
+     * was used) and was approved is billed with the contract split; the payer decision
+     * replaces the ceiling for that line.
+     */
+    private boolean isApprovedLocally(
+            PatientServiceAndProduct item,
+            CoverageContractResolveDtos.Response resolved
+    ) {
+        PreAuthorizationStatus status = item.getPreAuthorizationStatus();
+        return item.getPreAuthorizationRequestId() != null
+                && (status == PreAuthorizationStatus.APPROVED || status == PreAuthorizationStatus.PARTIAL)
+                && CoverageApprovalRoutingService.usesLocalApproval(resolved);
+    }
+
+    private InsuranceSplit applyCashLimit(
+            InsuranceSplit split,
+            CoverageContractResolveDtos.Response resolved,
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            BigDecimal normalizedNet,
+            boolean uncovered
+    ) {
+        if (split == null || resolved == null || !resolved.matched() || resolved.cashLimit() == null) {
+            return split;
+        }
+        if (resolved.cashLimit().limitValue() == null || item == null) {
+            return split;
+        }
+
+        BigDecimal remainingCash = remainingCashRoom(item, insurance, resolved.cashLimit(), normalizedNet);
+        BigDecimal patientShare = money(split.patientShare());
+        if (patientShare.compareTo(remainingCash) <= 0) {
+            return split;
+        }
+
+        if (uncovered) {
+            LOG.info(
+                    "[COVERAGE_CONTRACT] Cash Limit exceeded on uncovered item; extra cash kept patientInsuranceId={} remainingCash={}",
+                    insurance.getId(),
+                    remainingCash
+            );
+            return split;
+        }
+
+        BigDecimal maxInsurance = normalizedNet;
+        if (resolved.limit() != null && !isApprovedLocally(item, resolved)) {
+            BigDecimal coverageRemaining = remainingRoom(
+                    item,
+                    insurance,
+                    resolved.limit(),
+                    basisAmount(item, resolved.limit(), normalizedNet)
+            );
+            if (coverageRemaining != null) {
+                maxInsurance = coverageRemaining;
+            }
+        }
+
+        BigDecimal newPatientShare = remainingCash;
+        BigDecimal newInsuranceShare = money(normalizedNet.subtract(newPatientShare));
+        if (newInsuranceShare.compareTo(maxInsurance) > 0) {
+            newInsuranceShare = money(maxInsurance);
+            newPatientShare = money(normalizedNet.subtract(newInsuranceShare));
+        }
+
+        if (patientShare.compareTo(newPatientShare) == 0
+                && money(split.insuranceShare()).compareTo(newInsuranceShare) == 0) {
+            LOG.info(
+                    "[COVERAGE_CONTRACT] Cash Limit exceeded; extra cash kept because Coverage Limit cannot take the excess patientInsuranceId={} remainingCash={} maxInsurance={}",
+                    insurance.getId(),
+                    remainingCash,
+                    maxInsurance
+            );
+            return split;
+        }
+
+        if (resolved.copayment() != null && Boolean.TRUE.equals(resolved.copayment().discountOnExceededCash())) {
+            LOG.info(
+                    "[COVERAGE_CONTRACT] Cash Limit excess is eligible for discount-on-exceeded-cash; Discount terms are not applied yet patientInsuranceId={}",
+                    insurance.getId()
+            );
+        }
+
+        InsuranceSplit capped = new InsuranceSplit(newPatientShare, newInsuranceShare);
+        LOG.info(
+                "[COVERAGE_CONTRACT] Capped patient cash with Cash Limit patientInsuranceId={} contractId={} remainingCash={} patientShare={} insuranceShare={}",
+                insurance.getId(),
+                contractId(resolved),
+                remainingCash,
+                capped.patientShare(),
+                capped.insuranceShare()
+        );
+        return capped;
+    }
+
+    private BigDecimal applyPriceDiscount(
+            BigDecimal normalizedNet,
+            CoverageContractResolveDtos.Response resolved,
+            boolean cashOut,
+            boolean excluded
+    ) {
+        if (resolved == null || resolved.discount() == null || resolved.discount().discountValue() == null) {
+            return normalizedNet;
+        }
+        if (cashOut && !shouldDiscountCashItem(resolved, excluded)) {
+            return normalizedNet;
+        }
+        BigDecimal discount = discountAmount(normalizedNet, resolved.discount());
+        BigDecimal billedNet = money(normalizedNet.subtract(discount));
+        if (billedNet.signum() < 0) {
+            billedNet = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        }
+        if (billedNet.compareTo(normalizedNet) != 0) {
+            LOG.info(
+                    "[COVERAGE_CONTRACT] Applied Discount before share split contractId={} originalNet={} billedNet={} discount={}",
+                    contractId(resolved),
+                    normalizedNet,
+                    billedNet,
+                    discount
+            );
+        }
+        return billedNet;
+    }
+
+    private boolean shouldDiscountCashItem(CoverageContractResolveDtos.Response resolved, boolean excluded) {
+        if (resolved.copayment() == null) {
+            return false;
+        }
+        if (excluded) {
+            return Boolean.TRUE.equals(resolved.copayment().discountOnExcluded());
+        }
+        return Boolean.TRUE.equals(resolved.copayment().discountOnCash());
+    }
+
+    private boolean isExcluded(CoverageContractResolveDtos.Response resolved) {
+        return resolved != null
+                && resolved.exclusion() != null
+                && "YES".equalsIgnoreCase(resolved.exclusion().excludedResult());
+    }
+
+    private InsuranceSplit applyExceededCashDiscount(
+            InsuranceSplit split,
+            CoverageContractResolveDtos.Response resolved,
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            BigDecimal billedNet
+    ) {
+        if (split == null
+                || resolved == null
+                || resolved.discount() == null
+                || resolved.cashLimit() == null
+                || resolved.copayment() == null
+                || !Boolean.TRUE.equals(resolved.copayment().discountOnExceededCash())) {
+            return split;
+        }
+        BigDecimal remainingCash = remainingCashRoom(item, insurance, resolved.cashLimit(), billedNet);
+        BigDecimal patientShare = money(split.patientShare());
+        if (patientShare.compareTo(remainingCash) <= 0) {
+            return split;
+        }
+        BigDecimal extraCash = money(patientShare.subtract(remainingCash));
+        BigDecimal writeOff = discountAmount(extraCash, resolved.discount());
+        if (writeOff.signum() <= 0) {
+            return split;
+        }
+        BigDecimal newPatientShare = money(patientShare.subtract(writeOff));
+        if (newPatientShare.compareTo(remainingCash) < 0) {
+            newPatientShare = remainingCash;
+        }
+        LOG.info(
+                "[COVERAGE_CONTRACT] Applied discount on exceeded cash patientInsuranceId={} extraCash={} writeOff={} patientShare={}",
+                insurance.getId(),
+                extraCash,
+                writeOff,
+                newPatientShare
+        );
+        return new InsuranceSplit(newPatientShare, money(split.insuranceShare()));
+    }
+
+    private InsuranceSplit scaleSplit(InsuranceSplit split, BigDecimal originalNet, BigDecimal billedNet) {
+        if (split == null || billedNet.compareTo(originalNet) == 0) {
+            return split;
+        }
+        if (originalNet.signum() <= 0) {
+            return new InsuranceSplit(
+                    billedNet,
+                    BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP)
+            );
+        }
+        BigDecimal patientShare = money(
+                split.patientShare().multiply(billedNet).divide(originalNet, MONEY_SCALE, RoundingMode.HALF_UP)
+        );
+        if (patientShare.compareTo(billedNet) > 0) {
+            patientShare = billedNet;
+        }
+        return new InsuranceSplit(patientShare, money(billedNet.subtract(patientShare)));
+    }
+
+    private BigDecimal discountAmount(
+            BigDecimal amount,
+            CoverageContractResolveDtos.DiscountSnapshot discount
+    ) {
+        if (discount == null || discount.discountValue() == null) {
+            return BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        }
+        if ("FIXED_AMOUNT".equalsIgnoreCase(discount.discountType())
+                || "FIXED".equalsIgnoreCase(discount.discountType())) {
+            return money(discount.discountValue()).min(money(amount));
+        }
+        BigDecimal percent = money(discount.discountValue());
+        return money(amount.multiply(percent).divide(ONE_HUNDRED, MONEY_SCALE, RoundingMode.HALF_UP)).min(money(amount));
+    }
+
+    private BigDecimal remainingRoom(
+            PatientServiceAndProduct item,
+            PatientInsurance insurance,
+            CoverageContractResolveDtos.CoverageReadingSnapshot reading,
+            BigDecimal currentBasis
+    ) {
+        if (reading == null || reading.limitValue() == null || item == null) {
+            return null;
+        }
+        BigDecimal consumed = consumedBasis(item, insurance, reading, false);
+        BigDecimal limitAmount = periodLimitAmount(reading, consumed, currentBasis);
+        BigDecimal remaining = money(limitAmount.subtract(consumed));
+        if (remaining.signum() < 0) {
+            return BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        }
+        return remaining;
+    }
+
+    private BigDecimal remainingCashRoom(
+            PatientServiceAndProduct item,
+            PatientInsurance insurance,
+            CoverageContractResolveDtos.CoverageReadingSnapshot cashLimit,
+            BigDecimal normalizedNet
+    ) {
+        BigDecimal consumedCash = consumedCash(item, insurance, cashLimit);
+        BigDecimal currentBasis = basisAmount(item, cashLimit, normalizedNet);
+        BigDecimal consumedPeriodBasis = consumedBasis(item, insurance, cashLimit, true);
+        BigDecimal cap = periodLimitAmount(cashLimit, consumedPeriodBasis, currentBasis);
+        BigDecimal remaining = money(cap.subtract(consumedCash));
+        if (remaining.signum() < 0) {
+            return BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        }
+        return remaining;
+    }
+
+    private BigDecimal consumedCash(
+            PatientServiceAndProduct item,
+            PatientInsurance insurance,
+            CoverageContractResolveDtos.CoverageReadingSnapshot cashLimit
+    ) {
+        BigDecimal consumed = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        for (PatientServiceAndProduct previous : earlierLines(item, insurance, cashLimit, true)) {
+            if (!countsTowardCashLimit(previous, item, insurance, cashLimit)) {
+                continue;
+            }
+            consumed = consumed.add(money(previous.getPatientShareAmount()));
+        }
+        return money(consumed);
+    }
+
+    private BigDecimal consumedBasis(
+            PatientServiceAndProduct item,
+            PatientInsurance insurance,
+            CoverageContractResolveDtos.CoverageReadingSnapshot limit,
+            boolean cashPool
+    ) {
+        return basisOf(earlierLines(item, insurance, limit, cashPool), item, insurance, limit, cashPool);
+    }
+
+    private BigDecimal basisOf(
+            List<PatientServiceAndProduct> lines,
+            PatientServiceAndProduct item,
+            PatientInsurance insurance,
+            CoverageContractResolveDtos.CoverageReadingSnapshot limit,
+            boolean cashPool
+    ) {
+        BigDecimal consumed = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        for (PatientServiceAndProduct previous : lines) {
+            if (cashPool) {
+                if (!countsTowardCashLimit(previous, item, insurance, limit)) {
+                    continue;
+                }
+            } else if (!countsTowardLimit(previous, item, insurance, limit)) {
+                continue;
+            }
+            consumed = consumed.add(basisAmount(previous, limit, previous.getNetAmount()));
+        }
+        return money(consumed);
+    }
+
+    private List<PatientServiceAndProduct> periodItems(
+            PatientServiceAndProduct item,
+            PatientInsurance insurance,
+            CoverageContractResolveDtos.CoverageReadingSnapshot limit,
+            boolean cashPool
+    ) {
+        if ("PER_DAY".equalsIgnoreCase(limit.periodBasis())) {
+            LocalDate encounterDate = encounterDate(item);
+            if (item.getPatientId() == null || encounterDate == null) {
+                return List.of();
+            }
+            if (cashPool) {
+                return patientServiceAndProductRepository.findByPatientAndEncounterDate(
+                        item.getPatientId(),
+                        encounterDate
+                );
+            }
+            if (insurance.getId() == null) {
+                return List.of();
+            }
+            return patientServiceAndProductRepository.findByPatientInsuranceAndEncounterDate(
+                    item.getPatientId(),
+                    insurance.getId(),
+                    encounterDate
+            );
+        }
+        if (item.getEncounterId() == null) {
+            return List.of();
+        }
+        return patientServiceAndProductRepository.findByEncounterId(item.getEncounterId());
+    }
+
+    private LocalDate encounterDate(PatientServiceAndProduct item) {
+        if (item.getEncounterId() == null) {
+            return null;
+        }
+        return patientEncounterRepository.findById(item.getEncounterId())
+                .map(PatientEncounter::getEncounterDate)
+                .orElse(null);
+    }
+
+    private boolean countsTowardLimit(
+            PatientServiceAndProduct previous,
+            PatientServiceAndProduct current,
+            PatientInsurance insurance,
+            CoverageContractResolveDtos.CoverageReadingSnapshot limit
+    ) {
+        if (previous == null) {
+            return false;
+        }
+        if (isSameLine(previous, current)) {
+            return false;
+        }
+        if (previous.getPaymentStatus() == PaymentStatus.CANCELLED) {
+            return false;
+        }
+        if (PreAuthorizationResolutionService.isDeclinedByPayer(previous)) {
+            return false;
+        }
+        if (previous.isUncoveredCashItem() || isContractExclusion(previous)) {
+            return false;
+        }
+        if (previous.getPatientInsuranceId() == null) {
+            return false;
+        }
+        if (insurance.getId() != null && !insurance.getId().equals(previous.getPatientInsuranceId())) {
+            return false;
+        }
+        if (isExcludedFromLimit(previous, limit)) {
+            return false;
+        }
+        return matchesReading(previous, limit);
+    }
+
+    private boolean isSameLine(PatientServiceAndProduct previous, PatientServiceAndProduct current) {
+        return current.getId() != null && current.getId().equals(previous.getId());
+    }
+
+    /**
+     * A period limit is spent in billing order: a line uses what the lines billed before it left,
+     * so recalculating it must not count the lines billed after it. Lines of one order are not
+     * billed in id order, so the charge line decides. A line with no charge line yet (held for
+     * approval, or a preview) already claims its share of the limit.
+     */
+    private List<PatientServiceAndProduct> earlierLines(
+            PatientServiceAndProduct item,
+            PatientInsurance insurance,
+            CoverageContractResolveDtos.CoverageReadingSnapshot reading,
+            boolean cashPool
+    ) {
+        List<PatientServiceAndProduct> lines = periodItems(item, insurance, reading, cashPool).stream()
+                .filter(Objects::nonNull)
+                .toList();
+        Map<Long, Long> chargeLineIds = chargeLineIdsByItem(lines);
+        Long currentChargeLineId = chargeLineIds.get(item.getId());
+        return lines.stream()
+                .filter(line -> isBilledBefore(chargeLineIds.get(line.getId()), currentChargeLineId))
+                .toList();
+    }
+
+    private boolean isBilledBefore(Long chargeLineId, Long currentChargeLineId) {
+        return chargeLineId == null || currentChargeLineId == null || chargeLineId < currentChargeLineId;
+    }
+
+    private Map<Long, Long> chargeLineIdsByItem(List<PatientServiceAndProduct> lines) {
+        List<Long> itemIds = lines.stream()
+                .map(PatientServiceAndProduct::getId)
+                .filter(Objects::nonNull)
+                .toList();
+        if (itemIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return billingChargeLineRepository
+                .findAllByPatientServiceProduct_IdInAndStatusNotInOrderByIdAsc(
+                        itemIds,
+                        List.of(BillingChargeLineStatus.CANCELLED, BillingChargeLineStatus.REVERSED)
+                )
+                .stream()
+                .collect(Collectors.toMap(
+                        line -> line.getPatientServiceProduct().getId(),
+                        BillingChargeLine::getId,
+                        Math::max
+                ));
+    }
+
+    /**
+     * Items excluded on the Coverage Limit rule (category, subcategory or item)
+     * do not consume that limit.
+     */
+    private boolean isExcludedFromLimit(
+            PatientServiceAndProduct item,
+            CoverageContractResolveDtos.CoverageReadingSnapshot limit
+    ) {
+        if (limit.excludedItems().isEmpty() || item.getBillingItemType() == null) {
+            return false;
+        }
+        String billingItemType = item.getBillingItemType().name();
+        Long catalogItemId = catalogItemId(item);
+        for (CoverageContractResolveDtos.ExcludedItemSnapshot excluded : limit.excludedItems()) {
+            if (excluded == null || !billingItemType.equalsIgnoreCase(excluded.billingItemType())) {
+                continue;
+            }
+            if (excluded.catalogItemId() == null || excluded.catalogItemId().equals(catalogItemId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean countsTowardCashLimit(
+            PatientServiceAndProduct previous,
+            PatientServiceAndProduct current,
+            PatientInsurance insurance,
+            CoverageContractResolveDtos.CoverageReadingSnapshot cashLimit
+    ) {
+        if (previous == null) {
+            return false;
+        }
+        if (isSameLine(previous, current)) {
+            return false;
+        }
+        if (previous.getPaymentStatus() == PaymentStatus.CANCELLED) {
+            return false;
+        }
+        if (isContractExclusion(previous)) {
+            return false;
+        }
+        if (previous.getPatientInsuranceId() != null
+                && insurance.getId() != null
+                && !insurance.getId().equals(previous.getPatientInsuranceId())
+                && !previous.isUncoveredCashItem()) {
+            return false;
+        }
+        return matchesReading(previous, cashLimit);
+    }
+
+    private void rememberExclusion(PatientServiceAndProduct item, boolean excluded) {
+        if (item == null) {
+            return;
+        }
+        if (excluded) {
+            item.setNotCoveredReason(CONTRACT_EXCLUSION);
+            return;
+        }
+        if (CONTRACT_EXCLUSION.equals(item.getNotCoveredReason())) {
+            item.setNotCoveredReason(null);
+        }
+    }
+
+    private boolean isContractExclusion(PatientServiceAndProduct item) {
+        return item != null && CONTRACT_EXCLUSION.equals(item.getNotCoveredReason());
+    }
+
+    private boolean matchesReading(
+            PatientServiceAndProduct item,
+            CoverageContractResolveDtos.CoverageReadingSnapshot reading
+    ) {
+        if (reading.serviceId() != null) {
+            return reading.serviceId().equals(catalogItemId(item));
+        }
+        if (reading.billingItemType() != null && !reading.billingItemType().isBlank()) {
+            return item.getBillingItemType() != null
+                    && reading.billingItemType().equalsIgnoreCase(item.getBillingItemType().name());
+        }
+        return true;
+    }
+
+    private BigDecimal basisAmount(
+            PatientServiceAndProduct item,
+            CoverageContractResolveDtos.CoverageReadingSnapshot limit,
+            BigDecimal fallbackNet
+    ) {
+        if ("GROSS".equalsIgnoreCase(limit.coverageBasis())
+                && item.getGrossAmount() != null
+                && item.getGrossAmount().signum() > 0) {
+            return money(item.getGrossAmount());
+        }
+        return money(fallbackNet);
+    }
+
+    private BigDecimal periodLimitAmount(
+            CoverageContractResolveDtos.CoverageReadingSnapshot limit,
+            BigDecimal consumed,
+            BigDecimal currentBasis
+    ) {
+        if ("FIXED".equalsIgnoreCase(limit.valueType())) {
+            return money(limit.limitValue());
+        }
+        BigDecimal percent = money(limit.limitValue());
+        return money(consumed.add(currentBasis).multiply(percent).divide(ONE_HUNDRED, MONEY_SCALE, RoundingMode.HALF_UP));
+    }
+
+    private InsuranceSplit splitCoveredAmount(
+            BigDecimal coveredAmount,
+            CoverageContractResolveDtos.CopaymentSnapshot copayment
+    ) {
+        if (coveredAmount.signum() <= 0) {
+            return new InsuranceSplit(
+                    BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP),
+                    BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP)
+            );
+        }
+        if (copayment == null || copayment.valueAmount() == null) {
+            return null;
+        }
+        return applyCopayment(coveredAmount, copayment);
+    }
+
+    private CoverageContractResolveDtos.Response resolve(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item
+    ) {
+        try {
+            return coverageContractClient.resolve(toRequest(insurance, item));
+        } catch (FeignException exception) {
+            LOG.warn(
+                    "[COVERAGE_CONTRACT] Unable to resolve coverage contract patientInsuranceId={}",
+                    insurance.getId(),
+                    exception
+            );
+            return null;
+        } catch (RuntimeException exception) {
+            LOG.warn(
+                    "[COVERAGE_CONTRACT] Coverage contract resolution failed patientInsuranceId={}",
+                    insurance.getId(),
+                    exception
+            );
+            return null;
+        }
+    }
+
+    private CoverageContractResolveDtos.Request toRequest(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item
+    ) {
+        PatientEncounter encounter = item == null || item.getEncounterId() == null
+                ? null
+                : patientEncounterRepository.findById(item.getEncounterId()).orElse(null);
+        List<Long> diagnosisIds = item == null || item.getEncounterId() == null
+                ? List.of()
+                : patientDiagnosisRepository.findByEncounterId(item.getEncounterId()).stream()
+                        .map(PatientDiagnosis::getDiagnosisId)
+                        .filter(java.util.Objects::nonNull)
+                        .toList();
+
+        return new CoverageContractResolveDtos.Request(
+                null,
+                resolvePayerNphiesId(insurance),
+                null,
+                firstNonBlank(insurance.getTpaName()),
+                firstNonBlank(insurance.getPolicyNumber()),
+                firstNonBlank(insurance.getPolicyClassName()),
+                encounter == null || encounter.getEncounterType() == null
+                        ? null
+                        : encounter.getEncounterType().name(),
+                LocalDate.now(),
+                encounter == null ? null : encounter.getFacilityId(),
+                encounter == null ? null : encounter.getDepartmentId(),
+                diagnosisIds,
+                item == null || item.getBillingItemType() == null ? null : item.getBillingItemType().name(),
+                catalogItemId(item)
+        );
+    }
+
+    private Long catalogItemId(PatientServiceAndProduct item) {
+        if (item == null || item.getBillingItemType() == null) {
+            return null;
+        }
+        BillingItemTypes type = item.getBillingItemType();
+        if (type == BillingItemTypes.MEDICATION) {
+            return item.getBrandMedicationId();
+        }
+        if (type == BillingItemTypes.LABORATORY
+                || type == BillingItemTypes.RADIOLOGY
+                || type == BillingItemTypes.PATHOLOGY) {
+            return item.getDiagnosticTestId();
+        }
+        if (type == BillingItemTypes.PROCEDURE) {
+            return item.getProcedureId();
+        }
+        return item.getServiceId();
+    }
+
+    private String resolvePayerNphiesId(PatientInsurance insurance) {
+        String nphiesId = firstNonBlank(insurance.getPayerNphiesId());
+        if (nphiesId != null || insurance.getPayorId() == null) {
+            return nphiesId;
+        }
+        try {
+            PayorDTO payor = payorHelper.findPayor(insurance.getPayorId(), insurance.getPayerNphiesId());
+            return payor == null ? null : firstNonBlank(payor.nphiesId());
+        } catch (RuntimeException exception) {
+            LOG.warn(
+                    "[COVERAGE_CONTRACT] Unable to resolve payer NPHIES id payorId={}",
+                    insurance.getPayorId(),
+                    exception
+            );
+            return null;
+        }
+    }
+
+    private BigDecimal coveredAmount(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            BigDecimal normalizedNet,
+            CoverageContractResolveDtos.CoverageReadingSnapshot coverage
+    ) {
+        if (coverage == null || coverage.limitValue() == null) {
+            return normalizedNet;
+        }
+        if (!"FIXED".equalsIgnoreCase(coverage.valueType())) {
+            BigDecimal percent = money(coverage.limitValue());
+            return money(normalizedNet.multiply(percent).divide(ONE_HUNDRED, MONEY_SCALE, RoundingMode.HALF_UP))
+                    .min(normalizedNet);
+        }
+        BigDecimal remaining = money(coverage.limitValue()).subtract(consumedFixedCoverage(insurance, item, coverage));
+        if (remaining.signum() < 0) {
+            remaining = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        }
+        return remaining.min(normalizedNet);
+    }
+
+    /**
+     * A fixed coverage amount is one pool at the selected scope: the service,
+     * the category, or the rule. It is not reopened for every charge line.
+     */
+    private BigDecimal consumedFixedCoverage(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            CoverageContractResolveDtos.CoverageReadingSnapshot coverage
+    ) {
+        if (item == null || insurance == null) {
+            return BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        }
+        BigDecimal consumed = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        for (PatientServiceAndProduct previous : earlierLines(item, insurance, coverage, false)) {
+            if (!countsTowardLimit(previous, item, insurance, coverage)) {
+                continue;
+            }
+            consumed = consumed.add(money(previous.getNetAmount()));
+        }
+        return money(consumed).min(money(coverage.limitValue()));
+    }
+
+    private InsuranceSplit applyCopayment(
+            BigDecimal normalizedNet,
+            CoverageContractResolveDtos.CopaymentSnapshot copayment
+    ) {
+        if ("FIXED".equalsIgnoreCase(copayment.valueType())) {
+            BigDecimal patientShare = money(copayment.valueAmount()).min(normalizedNet);
+            return new InsuranceSplit(patientShare, money(normalizedNet.subtract(patientShare)));
+        }
+
+        return insuranceCalculationService.calculateSplit(
+                normalizedNet,
+                copayment.valueAmount(),
+                BigDecimal.ZERO
+        );
+    }
+
+    private Long contractId(CoverageContractResolveDtos.Response resolved) {
+        return resolved.contract() == null ? null : resolved.contract().id();
+    }
+
+    private String firstNonBlank(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private BigDecimal money(BigDecimal value) {
+        if (value == null) {
+            return BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        }
+        return value.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+    }
+}

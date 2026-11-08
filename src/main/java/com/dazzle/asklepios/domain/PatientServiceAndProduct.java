@@ -15,6 +15,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -216,6 +217,20 @@ public class PatientServiceAndProduct extends AbstractAuditingEntity<Long> imple
 
     @Column(name = "pre_authorization_reference_no", length = 100)
     private String preAuthorizationReferenceNo;
+
+    /**
+     * Clinical/fulfillment status of the source order (lab, radiology, procedure, ...).
+     * Populated only on list responses. Not persisted and not used in billing.
+     */
+    @Transient
+    private String clinicalStatus;
+
+    /**
+     * Why a local (NPHIES) pre-approval holds this line, e.g. "Coverage limit exceeded".
+     * Populated only on list responses. Java {@code transient}, not JPA {@code @Transient}:
+     * the Hibernate Jackson module drops {@code @Transient} fields from the JSON.
+     */
+    private transient String preAuthorizationReason;
 
     /**
      * Insurance visit item that is not on the insurance price list and was

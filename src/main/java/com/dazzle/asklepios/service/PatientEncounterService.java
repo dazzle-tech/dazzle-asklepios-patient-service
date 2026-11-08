@@ -36,12 +36,14 @@ import com.dazzle.asklepios.repository.UserRepository;
 import com.dazzle.asklepios.repository.VitalSignsRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.billing.EncounterHasInvoiceResponse;
+import com.dazzle.asklepios.service.dto.patientEncounter.EncounterPreAuthorizationLockResponse;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterDischargeDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterUpdateDTO;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
+import com.dazzle.asklepios.service.helper.InsuranceRegistrationGuard;
 import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -144,11 +146,13 @@ public class PatientEncounterService {
     private final EncounterDischargeLogRepository encounterDischargeLogRepository;
     private final PatientEncounterFieldAuditRepository auditRepository;
     private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
+    private final EncounterPreAuthorizationGuardService encounterPreAuthorizationGuardService;
     private final ReopenSessionAuditContext reopenSessionAuditContext;
     private final EncounterReopenGuard encounterReopenGuard;
     private final EncounterAmendmentService encounterAmendmentService;
     private final InsuranceCheckoutDiagnosticApprovalService insuranceCheckoutDiagnosticApprovalService;
     private final PatientActivityService patientActivityService;
+    private final InsuranceRegistrationGuard insuranceRegistrationGuard;
 
     public PatientEncounterService(
             PatientEncounterRepository patientEncounterRepository,
@@ -180,11 +184,14 @@ public class PatientEncounterService {
             @Lazy BillingEngineService billingEngineService,
             NotificationHelper notificationHelper, InvoiceGenerationService invoiceGenerationService, UserRepository userRepository, EncounterDischargeLogRepository encounterDischargeLogRepository, PatientEncounterFieldAuditRepository auditRepository,
             FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy,
+            EncounterPreAuthorizationGuardService encounterPreAuthorizationGuardService,
             ReopenSessionAuditContext reopenSessionAuditContext,
             EncounterReopenGuard encounterReopenGuard,
             EncounterAmendmentService encounterAmendmentService,
             InsuranceCheckoutDiagnosticApprovalService insuranceCheckoutDiagnosticApprovalService,
-            @Lazy PatientActivityService patientActivityService) {
+            @Lazy PatientActivityService patientActivityService,
+            InsuranceRegistrationGuard insuranceRegistrationGuard) {
+        this.insuranceRegistrationGuard = insuranceRegistrationGuard;
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientRepository = patientRepository;
         this.entityManager = entityManager;
@@ -222,6 +229,7 @@ public class PatientEncounterService {
         this.encounterDischargeLogRepository = encounterDischargeLogRepository;
         this.auditRepository = auditRepository;
         this.followUpReviewDefaultServicePolicy = followUpReviewDefaultServicePolicy;
+        this.encounterPreAuthorizationGuardService = encounterPreAuthorizationGuardService;
         this.reopenSessionAuditContext = reopenSessionAuditContext;
         this.encounterReopenGuard = encounterReopenGuard;
         this.encounterAmendmentService = encounterAmendmentService;
@@ -321,6 +329,7 @@ public class PatientEncounterService {
         followUpReviewDefaultServicePolicy
                 .coverageMatchingCompletedVisit(encounter)
                 .ifPresent(inherited -> {
+                    insuranceRegistrationGuard.requireRegistrable(inherited.patientInsuranceId());
                     encounter.setCoverageType(inherited.coverageType());
                     encounter.setPatientInsuranceId(inherited.patientInsuranceId());
                     LOG.info(
@@ -450,6 +459,7 @@ public class PatientEncounterService {
                     "Triage can only be started when status is WAITING_TRIAGE."
             );
         }
+        encounterPreAuthorizationGuardService.requireNoPendingPreAuthorization(patientEncounterId);
         existingPatientEncounter.setStatus(TreatmentStatus.TRIAGE_STARTED);
 
 
@@ -856,6 +866,11 @@ public class PatientEncounterService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public EncounterPreAuthorizationLockResponse getPreAuthorizationLock(Long encounterId) {
+        return encounterPreAuthorizationGuardService.lockStatus(encounterId);
+    }
+
     public PatientEncounter startEncounter(Long encounterId) {
         LOG.info("[START] PatientEncounter id={}", encounterId);
 
@@ -876,6 +891,7 @@ public class PatientEncounterService {
 
         String username = currentUsername();
         validateStartedByIsDoctor(username);
+        encounterPreAuthorizationGuardService.requireNoPendingPreAuthorization(encounterId);
         encounter.setStatus(TreatmentStatus.ONGOING);
         encounter.setStartedBy(currentUsername());
         encounter.setStartedDate(Instant.now());

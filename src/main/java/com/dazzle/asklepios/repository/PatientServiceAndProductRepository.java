@@ -9,8 +9,11 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -70,6 +73,11 @@ public interface PatientServiceAndProductRepository
             BillingItemTypes billingItemType
     );
 
+    List<PatientServiceAndProduct> findByServiceSourceInAndSourceIdIn(
+            Collection<ServiceSource> serviceSources,
+            Collection<Long> sourceIds
+    );
+
     List<PatientServiceAndProduct> findByEncounterId(Long encounterId);
 
     List<PatientServiceAndProduct> findByEncounterIdIn(Collection<Long> encounterIds);
@@ -112,6 +120,12 @@ public interface PatientServiceAndProductRepository
 
     boolean existsByEncounterIdAndPatientInsuranceIdIsNotNull(Long encounterId);
 
+    boolean existsByEncounterIdAndPatientInsuranceIdIsNotNullAndPreAuthorizationStatusInAndPaymentStatusNot(
+            Long encounterId,
+            Collection<PreAuthorizationStatus> preAuthorizationStatuses,
+            PaymentStatus paymentStatus
+    );
+
     Optional<PatientServiceAndProduct> findFirstByEncounterIdAndPatientInsuranceIdIsNotNullOrderByIdDesc(
             Long encounterId
     );
@@ -146,4 +160,38 @@ public interface PatientServiceAndProductRepository
     );
 
     List<PatientServiceAndProduct> findByPreAuthorizationRequestId(Long preAuthorizationRequestId);
+
+    @Query("""
+            select item
+            from PatientServiceAndProduct item
+            where item.patientId = :patientId
+              and item.patientInsuranceId = :patientInsuranceId
+              and exists (
+                  select 1
+                  from PatientEncounter encounter
+                  where encounter.id = item.encounterId
+                    and encounter.encounterDate = :encounterDate
+              )
+            """)
+    List<PatientServiceAndProduct> findByPatientInsuranceAndEncounterDate(
+            @Param("patientId") Long patientId,
+            @Param("patientInsuranceId") Long patientInsuranceId,
+            @Param("encounterDate") LocalDate encounterDate
+    );
+
+    @Query("""
+            select item
+            from PatientServiceAndProduct item
+            where item.patientId = :patientId
+              and exists (
+                  select 1
+                  from PatientEncounter encounter
+                  where encounter.id = item.encounterId
+                    and encounter.encounterDate = :encounterDate
+              )
+            """)
+    List<PatientServiceAndProduct> findByPatientAndEncounterDate(
+            @Param("patientId") Long patientId,
+            @Param("encounterDate") LocalDate encounterDate
+    );
 }

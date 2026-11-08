@@ -63,6 +63,8 @@ public record EncounterBillingItemSummary(
 
         List<BillingResponsibilitySummary> responsibilities,
 
+        String clinicalStatus,
+
         BigDecimal taxRate,
 
         String discountType,
@@ -149,6 +151,7 @@ public record EncounterBillingItemSummary(
                 status,
                 chargedAt,
                 responsibilities,
+                null,
                 taxRate,
                 discountType,
                 discountRate,
@@ -156,6 +159,51 @@ public record EncounterBillingItemSummary(
                 discountReason,
                 null,
                 null
+        );
+    }
+
+    public EncounterBillingItemSummary withClinicalStatus(String nextClinicalStatus) {
+        if ((clinicalStatus == null && nextClinicalStatus == null)
+                || (clinicalStatus != null && clinicalStatus.equals(nextClinicalStatus))) {
+            return this;
+        }
+
+        return new EncounterBillingItemSummary(
+                patientServiceProductId,
+                chargeLineId,
+                billingItemType,
+                sourceId,
+                itemCode,
+                itemName,
+                quantity,
+                unitPrice,
+                setupUnitPrice,
+                priceSource,
+                priceListItemCode,
+                grossAmount,
+                discountAmount,
+                exemptionAmount,
+                taxAmount,
+                netAmount,
+                patientResponsibilityAmount,
+                insuranceResponsibilityAmount,
+                otherPayerResponsibilityAmount,
+                reservedAmount,
+                allocatedAmount,
+                outstandingAmount,
+                exempted,
+                currency,
+                status,
+                chargedAt,
+                responsibilities,
+                nextClinicalStatus,
+                taxRate,
+                discountType,
+                discountRate,
+                discountSource,
+                discountReason,
+                patientTaxAmount,
+                insuranceTaxAmount
         );
     }
 }

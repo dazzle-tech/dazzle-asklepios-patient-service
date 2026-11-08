@@ -1,11 +1,14 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.integration.waseel.event.EligibilityCheckSucceededEvent;
 import com.dazzle.asklepios.integration.waseel.event.EncounterPreAuthorizationSyncEvent;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.service.CoverageApprovalRoutingService;
+import com.dazzle.asklepios.service.CoveragePreApprovalLimitService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -34,6 +37,8 @@ public class EncounterPreAuthorizationSyncService {
     private final PreAuthorizationResolutionService preAuthorizationResolutionService;
     private final PreAuthorizationSubmissionService preAuthorizationSubmissionService;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final CoverageApprovalRoutingService coverageApprovalRoutingService;
+    private final CoveragePreApprovalLimitService coveragePreApprovalLimitService;
     private final EncounterPreAuthorizationSyncService self;
 
     public EncounterPreAuthorizationSyncService(
@@ -42,6 +47,8 @@ public class EncounterPreAuthorizationSyncService {
             PreAuthorizationResolutionService preAuthorizationResolutionService,
             PreAuthorizationSubmissionService preAuthorizationSubmissionService,
             ApplicationEventPublisher applicationEventPublisher,
+            CoverageApprovalRoutingService coverageApprovalRoutingService,
+            CoveragePreApprovalLimitService coveragePreApprovalLimitService,
             @Lazy EncounterPreAuthorizationSyncService self
     ) {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
@@ -49,6 +56,8 @@ public class EncounterPreAuthorizationSyncService {
         this.preAuthorizationResolutionService = preAuthorizationResolutionService;
         this.preAuthorizationSubmissionService = preAuthorizationSubmissionService;
         this.applicationEventPublisher = applicationEventPublisher;
+        this.coverageApprovalRoutingService = coverageApprovalRoutingService;
+        this.coveragePreApprovalLimitService = coveragePreApprovalLimitService;
         this.self = self;
     }
 
@@ -84,6 +93,8 @@ public class EncounterPreAuthorizationSyncService {
                                 encounterId
                         );
 
+        boolean localApproval = coverageApprovalRoutingService.encounterUsesLocalApproval(encounterId);
+
         List<PatientServiceAndProduct> items =
                 patientServiceAndProductRepository.findByEncounterId(encounterId);
 
@@ -100,6 +111,11 @@ public class EncounterPreAuthorizationSyncService {
             }
 
             if (item.isUncoveredCashItem()) {
+                continue;
+            }
+
+            // NPHIES contract: a line that already has a local request keeps its hold.
+            if (localApproval && item.getPreAuthorizationRequestId() != null) {
                 continue;
             }
 
@@ -151,6 +167,11 @@ public class EncounterPreAuthorizationSyncService {
             return;
         }
 
+        if (localApproval) {
+            openLocalRequests(encounterId);
+            return;
+        }
+
         submitPendingPreAuthorization(encounterId);
     }
 
@@ -165,6 +186,13 @@ public class EncounterPreAuthorizationSyncService {
         );
 
         try {
+            if (coverageApprovalRoutingService.encounterUsesLocalApproval(encounterId)) {
+                openLocalRequests(encounterId);
+                return;
+            }
+            if (!hasItemsWaitingForWaseel(encounterId)) {
+                return;
+            }
             preAuthorizationSubmissionService.submitIfRequired(encounterId);
         } catch (RuntimeException ex) {
             LOG.warn(
@@ -190,7 +218,50 @@ public class EncounterPreAuthorizationSyncService {
                 encounterId
         );
 
+        if (coverageApprovalRoutingService.encounterUsesLocalApproval(encounterId)) {
+            openLocalRequests(encounterId);
+            return;
+        }
+
+        if (!hasItemsWaitingForWaseel(encounterId)) {
+            LOG.info(
+                    "[PREAUTH_SYNC] No items waiting for Waseel for encounterId={}. "
+                            + "Local coverage pre-approval holds already have their own request.",
+                    encounterId
+            );
+            return;
+        }
+
         preAuthorizationSubmissionService.submitIfRequiredJoiningTransaction(encounterId);
+    }
+
+    /**
+     * NPHIES contract: no Waseel submission and no eligibility check.
+     * Pending lines get a local pre-approval request instead.
+     */
+    private void openLocalRequests(Long encounterId) {
+        int opened = coveragePreApprovalLimitService.openLocalRequestsForEncounter(encounterId);
+        LOG.info(
+                "[PREAUTH_SYNC] NPHIES contract, Waseel skipped. encounterId={} localRequestsOpened={}",
+                encounterId,
+                opened
+        );
+    }
+
+    /**
+     * Items held by the coverage-contract pre-approval limit already carry a local
+     * request id, so they are not sent to Waseel and need no eligibility check.
+     * Only items still waiting for a Waseel request continue to submission.
+     */
+    private boolean hasItemsWaitingForWaseel(Long encounterId) {
+        return patientServiceAndProductRepository
+                .findByEncounterIdAndPreAuthorizationStatusAndPreAuthorizationRequestIdIsNull(
+                        encounterId,
+                        PreAuthorizationStatus.PENDING_APPROVAL
+                )
+                .stream()
+                .anyMatch(item -> Boolean.FALSE.equals(item.getIsBilled())
+                        && item.getPaymentStatus() != PaymentStatus.CANCELLED);
     }
 
     /**

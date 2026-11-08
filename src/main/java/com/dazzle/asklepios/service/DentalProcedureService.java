@@ -11,6 +11,7 @@ import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.ToothNumber;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
@@ -171,7 +172,9 @@ public class DentalProcedureService {
             PatientServiceAndProduct serviceBilling =
                     createServiceBillingItemIfExists(saved, setupService, dto.notes(), dto.surface());
 
-            completeDentalBillingFlow(encounter, procedureBilling, serviceBilling);
+            saved.setPreAuthorizationPending(
+                    completeDentalBillingFlow(encounter, procedureBilling, serviceBilling)
+            );
 
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException e) {
@@ -243,7 +246,9 @@ public class DentalProcedureService {
             PatientServiceAndProduct serviceBilling =
                     createServiceBillingItemIfExists(updated, setupService, dto.notes(), dto.surface());
 
-            completeDentalBillingFlow(updated.getEncounter(), procedureBilling, serviceBilling);
+            updated.setPreAuthorizationPending(
+                    completeDentalBillingFlow(updated.getEncounter(), procedureBilling, serviceBilling)
+            );
 
             return updated;
         } catch (DataIntegrityViolationException | JpaSystemException e) {
@@ -725,7 +730,10 @@ public class DentalProcedureService {
         );
     }
 
-    private void completeDentalBillingFlow(
+    /**
+     * @return true when a billing line waits for pre-authorization
+     */
+    private boolean completeDentalBillingFlow(
             PatientEncounter encounter,
             PatientServiceAndProduct procedureBilling,
             PatientServiceAndProduct serviceBilling
@@ -754,12 +762,21 @@ public class DentalProcedureService {
             } catch (BadRequestAlertException ex) {
                 throw mapPreAuthorizationFailure(ex);
             }
-            return;
+            return true;
         }
 
         for (PatientServiceAndProduct item : items) {
             billDentalItem(item, encounter);
         }
+
+        // Billing can hold a line for pre-approval (coverage contract limit).
+        return items.stream().anyMatch(this::isHeldForPreAuthorization);
+    }
+
+    private boolean isHeldForPreAuthorization(PatientServiceAndProduct item) {
+        return patientServiceAndProductRepository.findById(item.getId())
+                .map(saved -> saved.getPaymentStatus() == PaymentStatus.SKIPPED_PENDING_PRE_AUTH)
+                .orElse(false);
     }
 
     private void billDentalItem(

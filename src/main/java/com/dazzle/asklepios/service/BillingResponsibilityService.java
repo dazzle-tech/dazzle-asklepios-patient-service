@@ -7,7 +7,9 @@ import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.BillingChargeResponsibility;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.PreAuthorizationItem;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
@@ -19,6 +21,7 @@ import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.repository.PreAuthorizationItemRepository;
 import com.dazzle.asklepios.service.dto.InsuranceSplit;
 import com.dazzle.asklepios.service.dto.billing.BillingPricingInput;
 import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
@@ -81,6 +84,8 @@ public class BillingResponsibilityService {
     private final ServiceClient serviceClient;
 
     private final PreAuthorizationResolutionService preAuthorizationResolutionService;
+
+    private final PreAuthorizationItemRepository preAuthorizationItemRepository;
 
     private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
 
@@ -176,7 +181,10 @@ public class BillingResponsibilityService {
             return;
         }
 
-        if (item.getPatientInsuranceId() == null || item.isUncoveredCashItem()) {
+        boolean contractOverridesPriceListCash =
+                item.isUncoveredCashItem() && nphiesContractOverridesPriceListCash(item);
+        if (item.getPatientInsuranceId() == null
+                || (item.isUncoveredCashItem() && !contractOverridesPriceListCash)) {
             applyCashResponsibility(
                     context,
                     item,
@@ -187,7 +195,12 @@ public class BillingResponsibilityService {
             return;
         }
 
-        if (item.getPreAuthorizationStatus() == PreAuthorizationStatus.REJECTED) {
+        if (contractOverridesPriceListCash) {
+            item.setCoverageStatus(CoverageStatus.COVERED);
+            item.setNotCoveredReason(null);
+        }
+
+        if (PreAuthorizationResolutionService.isDeclinedByPayer(item)) {
             applyCashResponsibility(
                     context,
                     item,
@@ -234,6 +247,8 @@ public class BillingResponsibilityService {
             PatientServiceAndProduct item,
             BillingChargeLine chargeLine
     ) {
+        applyContractDiscount(context, item, chargeLine, BigDecimal.ZERO);
+
         applyTaxDistribution(
                 context,
                 item,
@@ -319,6 +334,8 @@ public class BillingResponsibilityService {
             BillingChargeLine chargeLine,
             BigDecimal calculatedNetAmount
     ) {
+        applyContractDiscount(context, item, chargeLine, BigDecimal.ZERO);
+
         /*
          * Self-pay: the patient carries the whole item, so only the
          * Patient Copayment toggle decides the tax. Claim Share is ignored
@@ -441,23 +458,34 @@ public class BillingResponsibilityService {
             PatientInsurance insurance,
             BigDecimal calculatedNetAmount
     ) {
-        BigDecimal patientShare =
-                calculatePatientInsuranceShare(
+        InsuranceSplit split =
+                calculateInsuranceSplit(
                         context,
                         insurance,
                         item,
                         calculatedNetAmount
                 );
 
+        /*
+         * The split is on the net after the coverage contract discount. What it
+         * leaves out is a price reduction: nobody owes it, so it never reaches
+         * the claim.
+         */
+        applyContractDiscount(
+                context,
+                item,
+                chargeLine,
+                calculatedNetAmount
+                        .subtract(split.patientShare())
+                        .subtract(split.insuranceShare())
+                        .max(BigDecimal.ZERO)
+        );
+
         PartyTaxDistribution taxDistribution =
                 distributeTax(
                         context,
-                        patientShare,
-                        money(
-                                calculatedNetAmount.subtract(
-                                        patientShare
-                                )
-                        )
+                        split.patientShare(),
+                        split.insuranceShare()
                 );
 
         BigDecimal netAmount =
@@ -960,7 +988,37 @@ public class BillingResponsibilityService {
         return !Boolean.FALSE.equals(toggle);
     }
 
-    private BigDecimal calculatePatientInsuranceShare(
+    private void applyContractDiscount(
+            BillingProcessingContext context,
+            PatientServiceAndProduct item,
+            BillingChargeLine chargeLine,
+            BigDecimal contractDiscount
+    ) {
+        PriceCalculationResult pricing =
+                context.getPricingResult();
+
+        BigDecimal discount =
+                money(pricing.discountAmount()).add(money(contractDiscount));
+
+        chargeLine.setContractDiscountAmount(money(contractDiscount));
+        chargeLine.setDiscountAmount(discount);
+        item.setDiscountAmount(discount);
+
+        context.setPricingResult(
+                new PriceCalculationResult(
+                        pricing.quantity(),
+                        pricing.unitPrice(),
+                        pricing.grossAmount(),
+                        discount,
+                        pricing.exemptionAmount(),
+                        pricing.taxableAmount(),
+                        pricing.taxAmount(),
+                        pricing.netAmount()
+                )
+        );
+    }
+
+    private InsuranceSplit calculateInsuranceSplit(
             BillingProcessingContext context,
             PatientInsurance insurance,
             PatientServiceAndProduct item,
@@ -974,7 +1032,44 @@ public class BillingResponsibilityService {
                         context.getVisitMaxLimitTracker()
                 );
 
-        return money(split.patientShare());
+        BigDecimal patientShare = money(split.patientShare());
+        BigDecimal billedNet = patientShare.add(money(split.insuranceShare()));
+
+        /*
+         * Partial approval (NPHIES contract): insurance covers at most the approved
+         * amount; the patient pays the rest of the net amount.
+         */
+        BigDecimal approvedInsuranceAmount = partiallyApprovedInsuranceAmount(item);
+        if (approvedInsuranceAmount != null) {
+            patientShare = patientShare.max(money(billedNet.subtract(approvedInsuranceAmount)));
+            LOG.info(
+                    "[CALCULATE] Partial pre-approval applied pspId={} approvedInsurance={} patientShare={}",
+                    item.getId(),
+                    approvedInsuranceAmount,
+                    patientShare
+            );
+        }
+
+        return new InsuranceSplit(patientShare, money(billedNet.subtract(patientShare)));
+    }
+
+    /**
+     * Insurance amount approved on a local partial pre-approval, stored as the payer share
+     * of the request line; {@code null} when the line is not partially approved.
+     */
+    private BigDecimal partiallyApprovedInsuranceAmount(PatientServiceAndProduct item) {
+        if (!PreAuthorizationResolutionService.isPartiallyApprovedLocally(item)
+                || item.getPreAuthorizationRequestId() == null) {
+            return null;
+        }
+
+        return preAuthorizationItemRepository
+                .findByPreAuthorizationIdOrderBySequenceAsc(item.getPreAuthorizationRequestId())
+                .stream()
+                .findFirst()
+                .map(PreAuthorizationItem::getPayerShare)
+                .map(this::money)
+                .orElse(null);
     }
 
     private String resolveServiceCategory(
@@ -1005,6 +1100,24 @@ public class BillingResponsibilityService {
         }
     }
 
+    private boolean nphiesContractOverridesPriceListCash(PatientServiceAndProduct item) {
+        if (item == null || item.getPatientInsuranceId() == null || item.getPatientId() == null) {
+            return false;
+        }
+
+        String reason = item.getNotCoveredReason();
+        if (!InsurancePriceListCoverageService.ELIGIBILITY_NOT_IN_FORCE.equals(reason)
+                && !InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST.equals(reason)) {
+            return false;
+        }
+
+        return patientInsuranceRepository
+                .findByIdAndPatient_Id(item.getPatientInsuranceId(), item.getPatientId())
+                .filter(insurancePatientShareCalculator::usesNphiesContractRules)
+                .filter(insurancePatientShareCalculator::isLatestCoverageInForce)
+                .isPresent();
+    }
+
     private PatientInsurance loadAndValidateInsurance(
             PatientServiceAndProduct item
     ) {
@@ -1029,6 +1142,10 @@ public class BillingResponsibilityService {
                     ENTITY_NAME,
                     "patientInsurance.expired"
             );
+        }
+
+        if (!insurancePatientShareCalculator.isWaseelCoverage(insurance)) {
+            return insurance;
         }
 
         if (insurance.getPayerNphiesId() == null
@@ -1512,7 +1629,8 @@ public class BillingResponsibilityService {
     ) {
         /*
          * Rebuild the amounts as they were before the party toggles removed
-         * any tax, so the new split starts from the full item again.
+         * any tax and before the coverage contract discount, so the new split
+         * starts from the full item again.
          * Lines billed before the toggles existed have no calculated tax and
          * carried the whole tax already.
          */
@@ -1523,16 +1641,19 @@ public class BillingResponsibilityService {
                         ? appliedTax
                         : money(chargeLine.getCalculatedTaxAmount());
 
+        BigDecimal contractDiscount = money(chargeLine.getContractDiscountAmount());
+
         BigDecimal netAmount =
                 money(chargeLine.getNetAmount())
-                        .add(calculatedTax.subtract(appliedTax));
+                        .add(calculatedTax.subtract(appliedTax))
+                        .add(contractDiscount);
 
         PriceCalculationResult pricingResult =
                 new PriceCalculationResult(
                         money(chargeLine.getQuantity()),
                         money(chargeLine.getUnitPrice()),
                         money(chargeLine.getGrossAmount()),
-                        money(chargeLine.getDiscountAmount()),
+                        money(chargeLine.getDiscountAmount()).subtract(contractDiscount),
                         money(chargeLine.getExemptionAmount()),
                         BigDecimal.ZERO,
                         calculatedTax,

@@ -1,0 +1,575 @@
+package com.dazzle.asklepios.service;
+
+import com.dazzle.asklepios.client.setup.dto.CoverageContractResolveDtos;
+import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.PatientInsurance;
+import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.PreAuthorizationItem;
+import com.dazzle.asklepios.domain.PreAuthorizationRequest;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
+import com.dazzle.asklepios.integration.waseel.service.EncounterInsuranceEligibilityService;
+import com.dazzle.asklepios.repository.PatientEncounterRepository;
+import com.dazzle.asklepios.repository.PatientInsuranceRepository;
+import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.repository.PreAuthorizationItemRepository;
+import com.dazzle.asklepios.repository.PreAuthorizationRequestRepository;
+import com.dazzle.asklepios.service.dto.billing.BillingPricingInput;
+import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
+import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/**
+ * Opens a local pre-approval request when a visit line needs coverage pre-approval.
+ * No payer API is called; the charge stays off the patient ledger until an approval
+ * decision exists.
+ *
+ * Every contract: a line that crosses the contract pre-approval limit is held.
+ * NPHIES contracts (local approval flow) also hold a line when the contract
+ * pre-approval has no limit, so it never waits for a Waseel submission.
+ *
+ * NPHIES contracts: once a visit crosses its per-visit Coverage Limit, the whole
+ * visit needs pre-approval, so every other line of the visit gets a request too.
+ */
+@Service
+public class CoveragePreApprovalLimitService {
+
+    static final String REQUEST_STATUS = "Pending Approval";
+    static final String REASON_LIMIT = "Coverage pre-approval limit exceeded";
+    static final String REASON_CONTRACT = "Coverage contract requires pre-approval";
+    static final String REASON_COVERAGE_LIMIT = "Coverage limit exceeded";
+
+    private static final Logger LOG = LoggerFactory.getLogger(CoveragePreApprovalLimitService.class);
+    private static final int MONEY_SCALE = 2;
+    private static final String PER_ENCOUNTER = "PER_ENCOUNTER";
+
+    private final CoverageContractShareService coverageContractShareService;
+    private final PatientEncounterRepository patientEncounterRepository;
+    private final PatientInsuranceRepository patientInsuranceRepository;
+    private final PatientServiceAndProductRepository patientServiceAndProductRepository;
+    private final PreAuthorizationRequestRepository preAuthorizationRequestRepository;
+    private final PreAuthorizationItemRepository preAuthorizationItemRepository;
+    private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
+
+    public CoveragePreApprovalLimitService(
+            CoverageContractShareService coverageContractShareService,
+            PatientEncounterRepository patientEncounterRepository,
+            PatientInsuranceRepository patientInsuranceRepository,
+            PatientServiceAndProductRepository patientServiceAndProductRepository,
+            PreAuthorizationRequestRepository preAuthorizationRequestRepository,
+            PreAuthorizationItemRepository preAuthorizationItemRepository,
+            EncounterInsuranceEligibilityService encounterInsuranceEligibilityService
+    ) {
+        this.coverageContractShareService = coverageContractShareService;
+        this.patientEncounterRepository = patientEncounterRepository;
+        this.patientInsuranceRepository = patientInsuranceRepository;
+        this.patientServiceAndProductRepository = patientServiceAndProductRepository;
+        this.preAuthorizationRequestRepository = preAuthorizationRequestRepository;
+        this.preAuthorizationItemRepository = preAuthorizationItemRepository;
+        this.encounterInsuranceEligibilityService = encounterInsuranceEligibilityService;
+    }
+
+    public void applyIfExceeded(BillingProcessingContext context) {
+        if (context == null || context.getPatientServiceProduct() == null) {
+            return;
+        }
+        PatientServiceAndProduct item = context.getPatientServiceProduct();
+        if (!canEvaluate(item)) {
+            return;
+        }
+
+        BigDecimal current = money(context.getNetAmount());
+
+        PatientEncounter encounter = patientEncounterRepository.findById(item.getEncounterId()).orElse(null);
+        if (encounter == null || encounter.getPatient() == null) {
+            return;
+        }
+
+        Long insuranceId = item.getPatientInsuranceId() != null
+                ? item.getPatientInsuranceId()
+                : encounter.getPatientInsuranceId();
+        if (insuranceId == null) {
+            return;
+        }
+        PatientInsurance insurance = patientInsuranceRepository.findById(insuranceId).orElse(null);
+        if (insurance == null) {
+            return;
+        }
+
+        CoverageContractResolveDtos.Response resolved = resolveQuietly(insurance, item);
+        boolean alreadyPending = item.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL;
+        if (alreadyPending && !CoverageApprovalRoutingService.usesLocalApproval(resolved)) {
+            // Waseel contract: the Waseel flow submits this item. Unchanged.
+            return;
+        }
+
+        String reason = holdReason(insurance, item, resolved, current);
+        if (reason == null) {
+            LOG.info(
+                    "[PREAUTH_LIMIT] No pre-approval hold. encounterId={} pspId={} amount={}",
+                    encounter.getId(),
+                    item.getId(),
+                    current
+            );
+            return;
+        }
+
+        holdForApproval(context, encounter, insurance, item, current, reason);
+        if (REASON_COVERAGE_LIMIT.equals(reason) && isPerVisitLimit(resolved)) {
+            requestApprovalForWholeVisit(encounter, insurance, item);
+        }
+    }
+
+    /**
+     * Pricing preview: true when billing this line would hold it for pre-approval,
+     * so nothing is collected from the patient before the payer decision.
+     * Uses the same rule as {@link #applyIfExceeded(BillingProcessingContext)}.
+     */
+    public boolean requiresApproval(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            BigDecimal netAmount
+    ) {
+        if (insurance == null || item == null) {
+            return false;
+        }
+        return holdReason(insurance, item, resolveQuietly(insurance, item), money(netAmount)) != null;
+    }
+
+    /**
+     * Why the line must wait for pre-approval, or {@code null} when it can be billed.
+     * Every contract holds a line that reaches its pre-approval limit; NPHIES contracts
+     * also hold once the visit Coverage Limit is used, and on a contract pre-approval
+     * that has no limit.
+     */
+    private String holdReason(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            CoverageContractResolveDtos.Response resolved,
+            BigDecimal netAmount
+    ) {
+        if (resolved == null || !resolved.matched() || isExcluded(resolved)) {
+            return null;
+        }
+
+        if (CoverageApprovalRoutingService.usesLocalApproval(resolved)
+                && coverageContractShareService.exceedsCoverageLimit(insurance, item, resolved, netAmount)) {
+            return REASON_COVERAGE_LIMIT;
+        }
+
+        if (resolved.preApproval() == null) {
+            return null;
+        }
+
+        CoverageContractResolveDtos.PreApprovalSnapshot preApproval = resolved.preApproval();
+        if (preApproval.preApprovalId() == null) {
+            return null;
+        }
+
+        if (preApproval.limitValue() == null) {
+            return CoverageApprovalRoutingService.usesLocalApproval(resolved) ? REASON_CONTRACT : null;
+        }
+
+        if (netAmount.signum() <= 0) {
+            return null;
+        }
+
+        return PreApprovalLimitEvaluator.exceeds(
+                preApproval.valueType(),
+                preApproval.limitValue(),
+                netAmount,
+                percentageBase(resolved.limit())
+        ) ? REASON_LIMIT : null;
+    }
+
+    /**
+     * NPHIES contracts: opens a local request for every line already marked
+     * PENDING_APPROVAL that has no request yet. Used instead of the Waseel
+     * submission, so no eligibility request is needed.
+     */
+    public int openLocalRequestsForEncounter(Long encounterId) {
+        if (encounterId == null) {
+            return 0;
+        }
+        PatientEncounter encounter = patientEncounterRepository.findById(encounterId).orElse(null);
+        if (encounter == null || encounter.getPatient() == null) {
+            return 0;
+        }
+        List<PatientServiceAndProduct> items = patientServiceAndProductRepository
+                .findByEncounterIdAndPreAuthorizationStatusAndPreAuthorizationRequestIdIsNull(
+                        encounterId,
+                        PreAuthorizationStatus.PENDING_APPROVAL
+                )
+                .stream()
+                .filter(item -> !Boolean.TRUE.equals(item.getIsBilled()))
+                .filter(item -> item.getPaymentStatus() != PaymentStatus.CANCELLED)
+                .filter(item -> !item.isUncoveredCashItem())
+                .toList();
+
+        int opened = 0;
+        for (PatientServiceAndProduct item : items) {
+            Long insuranceId = item.getPatientInsuranceId() != null
+                    ? item.getPatientInsuranceId()
+                    : encounterInsuranceEligibilityService.resolveEncounterPatientInsuranceId(encounterId);
+            PatientInsurance insurance = insuranceId == null
+                    ? null
+                    : patientInsuranceRepository.findById(insuranceId).orElse(null);
+            if (insurance == null) {
+                LOG.warn(
+                        "[PREAUTH_LIMIT] No insurance for pending item, request not opened. encounterId={} pspId={}",
+                        encounterId,
+                        item.getId()
+                );
+                continue;
+            }
+            holdForApproval(null, encounter, insurance, item, itemNet(item), REASON_CONTRACT);
+            opened++;
+        }
+        return opened;
+    }
+
+    private boolean canEvaluate(PatientServiceAndProduct item) {
+        if (item.getId() == null || item.getEncounterId() == null || item.isUncoveredCashItem()) {
+            return false;
+        }
+        if (Boolean.TRUE.equals(item.getIsExempted()) || item.getPaymentStatus() == PaymentStatus.CANCELLED) {
+            return false;
+        }
+        if (item.getPreAuthorizationRequestId() != null) {
+            return false;
+        }
+        PreAuthorizationStatus status = item.getPreAuthorizationStatus();
+        return status == null
+                || status == PreAuthorizationStatus.NOT_REQUIRED
+                || status == PreAuthorizationStatus.PENDING_APPROVAL;
+    }
+
+    /**
+     * The visit crossed its per-visit Coverage Limit, so the whole visit needs pre-approval:
+     * every other line gets its own request, including lines approved before and lines already
+     * posted. Posted lines stay on the patient account and are only marked as waiting for approval.
+     * A line is sent once for the coverage limit, so later lines do not resend the visit.
+     */
+    private void requestApprovalForWholeVisit(
+            PatientEncounter encounter,
+            PatientInsurance insurance,
+            PatientServiceAndProduct trigger
+    ) {
+        List<PatientServiceAndProduct> visitLines = patientServiceAndProductRepository.findByEncounterId(encounter.getId());
+        Set<Long> coverageLimitRequestIds = coverageLimitRequestIds(visitLines);
+
+        int requested = 0;
+        for (PatientServiceAndProduct line : visitLines) {
+            if (!needsVisitLimitApproval(line, trigger, insurance, coverageLimitRequestIds)) {
+                continue;
+            }
+            if (Boolean.TRUE.equals(line.getIsBilled())) {
+                flagPostedLineForApproval(encounter, insurance, line);
+            } else {
+                holdForApproval(null, encounter, insurance, line, itemNet(line), REASON_COVERAGE_LIMIT);
+            }
+            requested++;
+        }
+
+        LOG.info(
+                "[PREAUTH_LIMIT] Visit coverage limit exceeded, whole visit sent for pre-approval. encounterId={} triggerPspId={} otherLines={}",
+                encounter.getId(),
+                trigger.getId(),
+                requested
+        );
+    }
+
+    private boolean needsVisitLimitApproval(
+            PatientServiceAndProduct line,
+            PatientServiceAndProduct trigger,
+            PatientInsurance insurance,
+            Set<Long> coverageLimitRequestIds
+    ) {
+        if (line.getId() == null || Objects.equals(line.getId(), trigger.getId())) {
+            return false;
+        }
+        if (line.isUncoveredCashItem()
+                || Boolean.TRUE.equals(line.getIsExempted())
+                || line.getPaymentStatus() == PaymentStatus.CANCELLED) {
+            return false;
+        }
+        if (line.getPatientInsuranceId() != null && !line.getPatientInsuranceId().equals(insurance.getId())) {
+            return false;
+        }
+        if (line.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL
+                || coverageLimitRequestIds.contains(line.getPreAuthorizationRequestId())) {
+            return false;
+        }
+        // Lines excluded on the Exclusions tab or on the Coverage Limit rule are outside the limit;
+        // an excluded line gets no limit reading at all.
+        CoverageContractResolveDtos.Response resolved = resolveQuietly(insurance, line);
+        return resolved != null
+                && resolved.matched()
+                && resolved.limit() != null
+                && !isExcluded(resolved)
+                && !coverageContractShareService.isExcludedFromCoverageLimit(line, resolved);
+    }
+
+    /** Requests of the visit that were opened because of the coverage limit. */
+    private Set<Long> coverageLimitRequestIds(List<PatientServiceAndProduct> lines) {
+        Set<Long> requestIds = lines.stream()
+                .map(PatientServiceAndProduct::getPreAuthorizationRequestId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (requestIds.isEmpty()) {
+            return Set.of();
+        }
+        return preAuthorizationRequestRepository.findAllById(requestIds).stream()
+                .filter(request -> REASON_COVERAGE_LIMIT.equals(request.getStatusReason()))
+                .map(PreAuthorizationRequest::getId)
+                .collect(Collectors.toSet());
+    }
+
+    private static boolean isPerVisitLimit(CoverageContractResolveDtos.Response resolved) {
+        return resolved != null
+                && resolved.limit() != null
+                && PER_ENCOUNTER.equalsIgnoreCase(resolved.limit().periodBasis());
+    }
+
+    private void holdForApproval(
+            BillingProcessingContext context,
+            PatientEncounter encounter,
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            BigDecimal net,
+            String reason
+    ) {
+        PreAuthorizationRequest request = openRequest(context, encounter, insurance, item, net, reason);
+        markPendingApproval(item, request);
+        item.setPaymentStatus(PaymentStatus.SKIPPED_PENDING_PRE_AUTH);
+        claimLimitWhileHeld(context, insurance, item);
+        patientServiceAndProductRepository.save(item);
+
+        LOG.info(
+                "[PREAUTH_LIMIT] Opened local pre-approval request. encounterId={} pspId={} requestId={} net={}",
+                encounter.getId(),
+                item.getId(),
+                request.getId(),
+                net
+        );
+    }
+
+    /**
+     * A held line has no charge line yet, but its price already counts toward the visit limit,
+     * so the lines billed after it see the real visit total.
+     */
+    private static void claimLimitWhileHeld(
+            BillingProcessingContext context,
+            PatientInsurance insurance,
+            PatientServiceAndProduct item
+    ) {
+        if (context == null || context.getPricingResult() == null) {
+            return;
+        }
+        item.setGrossAmount(context.getPricingResult().grossAmount());
+        item.setNetAmount(context.getPricingResult().netAmount());
+        if (item.getPatientInsuranceId() == null) {
+            item.setPatientInsuranceId(insurance.getId());
+        }
+    }
+
+    /** A posted line keeps its posting and payment status; it only waits for the approval decision. */
+    private void flagPostedLineForApproval(
+            PatientEncounter encounter,
+            PatientInsurance insurance,
+            PatientServiceAndProduct item
+    ) {
+        PreAuthorizationRequest request =
+                openRequest(null, encounter, insurance, item, itemNet(item), REASON_COVERAGE_LIMIT);
+        markPendingApproval(item, request);
+        patientServiceAndProductRepository.save(item);
+
+        LOG.info(
+                "[PREAUTH_LIMIT] Posted line sent for visit coverage limit approval. encounterId={} pspId={} requestId={}",
+                encounter.getId(),
+                item.getId(),
+                request.getId()
+        );
+    }
+
+    private static void markPendingApproval(PatientServiceAndProduct item, PreAuthorizationRequest request) {
+        item.setPreAuthorizationStatus(PreAuthorizationStatus.PENDING_APPROVAL);
+        item.setPreAuthorizationRequired(true);
+        item.setPreAuthorizationRequestId(request.getId());
+    }
+
+    private PreAuthorizationRequest openRequest(
+            BillingProcessingContext context,
+            PatientEncounter encounter,
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            BigDecimal net,
+            String reason
+    ) {
+        PreAuthorizationRequest request = preAuthorizationRequestRepository.save(PreAuthorizationRequest.builder()
+                .patientId(encounter.getPatient().getId())
+                .encounterId(encounter.getId())
+                .patientInsuranceId(insurance.getId())
+                .payorId(insurance.getPayorId())
+                .providerId(String.valueOf(encounter.getFacilityId()))
+                .dateOrdered(LocalDate.now())
+                .payeeId(encounter.getFacilityId())
+                .payeeType("provider")
+                .preauthType("professional")
+                .preauthSubType("op")
+                .transfer(false)
+                .isNewBorn(false)
+                .isCancelled(false)
+                .totalNet(net.setScale(MONEY_SCALE, RoundingMode.HALF_UP))
+                .status(REQUEST_STATUS)
+                .statusReason(reason)
+                .message(holdMessage(reason))
+                .build());
+
+        preAuthorizationItemRepository.save(lineItem(context, request.getId(), item, net));
+        return request;
+    }
+
+    private static String holdMessage(String reason) {
+        if (REASON_COVERAGE_LIMIT.equals(reason)) {
+            return "The patient exceeded the visit coverage limit, so every service of the visit needs pre-approval. "
+                    + "Services not yet posted wait off the patient account until the decision.";
+        }
+        return "This request is waiting for pre-approval. It is not posted to the patient account.";
+    }
+
+    /**
+     * List responses: puts the local pre-approval reason on held lines, so the ledger
+     * can show why a line waits (for example, coverage limit exceeded).
+     * Waseel requests are left as they are.
+     */
+    public void attachHoldReasons(List<PatientServiceAndProduct> items) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        Set<Long> requestIds = items.stream()
+                .map(PatientServiceAndProduct::getPreAuthorizationRequestId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (requestIds.isEmpty()) {
+            return;
+        }
+        Map<Long, String> reasons = new HashMap<>();
+        for (PreAuthorizationRequest request : preAuthorizationRequestRepository.findAllById(requestIds)) {
+            if (request.getApprovalRequestId() == null && request.getStatusReason() != null) {
+                reasons.put(request.getId(), request.getStatusReason());
+            }
+        }
+        for (PatientServiceAndProduct item : items) {
+            item.setPreAuthorizationReason(reasons.get(item.getPreAuthorizationRequestId()));
+        }
+    }
+
+    private PreAuthorizationItem lineItem(
+            BillingProcessingContext context,
+            Long requestId,
+            PatientServiceAndProduct item,
+            BigDecimal net
+    ) {
+        PriceCalculationResult pricing = context == null ? null : context.getPricingResult();
+        BillingPricingInput input = context == null ? null : context.getPricingInput();
+        BigDecimal quantity = pricing != null && pricing.quantity() != null
+                ? pricing.quantity()
+                : (item.getQuantity() == null ? BigDecimal.ONE : BigDecimal.valueOf(item.getQuantity()));
+        BigDecimal unitPrice = pricing != null && pricing.unitPrice() != null
+                ? pricing.unitPrice()
+                : money(item.getUnitPrice());
+        BigDecimal discount = pricing != null && pricing.discountAmount() != null
+                ? pricing.discountAmount()
+                : money(item.getDiscountAmount());
+        String code = input != null && input.itemCode() != null && !input.itemCode().isBlank()
+                ? input.itemCode()
+                : (item.getBillingItemType() == null ? "ITEM-" : item.getBillingItemType().name() + "-") + item.getId();
+        String name = input != null ? input.itemName() : null;
+
+        return PreAuthorizationItem.builder()
+                .preAuthorizationId(requestId)
+                .sequence(1)
+                .itemType(item.getBillingItemType() == null ? "SERVICE" : item.getBillingItemType().name())
+                .itemCode(trim(code, 100))
+                .itemDescription(trim(name, 500))
+                .isPackage(false)
+                .isMaternity(false)
+                .quantity(quantity.setScale(4, RoundingMode.HALF_UP))
+                .unitPrice(unitPrice.setScale(MONEY_SCALE, RoundingMode.HALF_UP))
+                .discount(discount.setScale(MONEY_SCALE, RoundingMode.HALF_UP))
+                .factor(BigDecimal.ONE.setScale(4, RoundingMode.HALF_UP))
+                .tax(money(pricing == null ? item.getTaxAmount() : pricing.taxAmount()).setScale(MONEY_SCALE, RoundingMode.HALF_UP))
+                .patientShare(BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP))
+                .payerShare(BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP))
+                .net(net.setScale(MONEY_SCALE, RoundingMode.HALF_UP))
+                .serviceId(item.getServiceId())
+                .procedureId(item.getProcedureId())
+                .diagnosticTestId(item.getDiagnosticTestId())
+                .brandMedicationId(item.getBrandMedicationId())
+                .itemDecision("pended")
+                .build();
+    }
+
+    private BigDecimal itemNet(PatientServiceAndProduct item) {
+        BigDecimal net = money(item.getNetAmount());
+        if (net.signum() > 0) {
+            return net;
+        }
+        BigDecimal quantity = item.getQuantity() == null ? BigDecimal.ONE : BigDecimal.valueOf(item.getQuantity());
+        return money(money(item.getUnitPrice()).multiply(quantity)
+                .subtract(money(item.getDiscountAmount()))
+                .add(money(item.getTaxAmount())));
+    }
+
+    private CoverageContractResolveDtos.Response resolveQuietly(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item
+    ) {
+        try {
+            return coverageContractShareService.resolveVisitContract(insurance, item);
+        } catch (RuntimeException exception) {
+            LOG.warn(
+                    "[PREAUTH_LIMIT] Coverage contract could not be read for pspId={}",
+                    item == null ? null : item.getId(),
+                    exception
+            );
+            return null;
+        }
+    }
+
+    private boolean isExcluded(CoverageContractResolveDtos.Response resolved) {
+        return resolved.exclusion() != null && "YES".equalsIgnoreCase(resolved.exclusion().excludedResult());
+    }
+
+    private BigDecimal percentageBase(CoverageContractResolveDtos.CoverageReadingSnapshot limit) {
+        if (limit == null || limit.limitValue() == null || !"FIXED".equalsIgnoreCase(limit.valueType())) {
+            return null;
+        }
+        return limit.limitValue();
+    }
+
+    private BigDecimal money(BigDecimal value) {
+        return (value == null ? BigDecimal.ZERO : value).setScale(4, RoundingMode.HALF_UP);
+    }
+
+    private String trim(String value, int max) {
+        if (value == null || value.isBlank()) {
+            return value;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() <= max ? trimmed : trimmed.substring(0, max);
+    }
+}

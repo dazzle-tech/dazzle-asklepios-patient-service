@@ -122,6 +122,8 @@ public class EncounterBillingSummaryService {
     private final BillingEngineService
             billingEngineService;
 
+    private final ClinicalFulfillmentStatusResolver
+            clinicalFulfillmentStatusResolver;
     private final DiagnosticChargeTimingService
             diagnosticChargeTimingService;
 
@@ -167,9 +169,12 @@ public class EncounterBillingSummaryService {
 
             return emptySummary(
                     encounter,
-                    buildUnbilledItemSummaries(
-                            encounter,
-                            List.of()
+                    clinicalFulfillmentStatusResolver.attachToSummaries(
+                            buildUnbilledItemSummaries(
+                                    encounter,
+                                    List.of()
+                            ),
+                            encounter.getId()
                     ),
                     invoiceBalance
             );
@@ -276,6 +281,13 @@ public class EncounterBillingSummaryService {
                     invoiceBalance.invoiceId()
             );
         }
+
+        items = new ArrayList<>(
+                clinicalFulfillmentStatusResolver.attachToSummaries(
+                        items,
+                        encounter.getId()
+                )
+        );
 
         BigDecimal walletSettledAmount =
                 settlementTotals.walletSettledAmount();
@@ -427,6 +439,7 @@ public class EncounterBillingSummaryService {
                 responsibilities.stream()
                         .map(this::buildResponsibilitySummary)
                         .toList(),
+                null,
                 pricingDisplay.taxRate(),
                 pricingDisplay.discountType(),
                 pricingDisplay.discountRate(),
@@ -577,8 +590,7 @@ public class EncounterBillingSummaryService {
 
         PaymentStatus paymentStatus = item.getPaymentStatus();
         if (paymentStatus == PaymentStatus.CANCELLED
-                || paymentStatus == PaymentStatus.EXEMPTED
-                || paymentStatus == PaymentStatus.SKIPPED_PENDING_PRE_AUTH) {
+                || paymentStatus == PaymentStatus.EXEMPTED) {
             return false;
         }
 
@@ -880,11 +892,14 @@ public class EncounterBillingSummaryService {
                 item.status(),
                 item.chargedAt(),
                 item.responsibilities(),
+                item.clinicalStatus(),
                 item.taxRate(),
                 item.discountType(),
                 item.discountRate(),
                 item.discountSource(),
-                item.discountReason()
+                item.discountReason(),
+                item.patientTaxAmount(),
+                item.insuranceTaxAmount()
         );
     }
 

@@ -14,6 +14,7 @@ import com.dazzle.asklepios.service.PatientActivityService;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
 import com.dazzle.asklepios.integration.waseel.event.PreAuthorizationApprovedEvent;
+import com.dazzle.asklepios.integration.waseel.event.PreAuthorizationDecisionCommittedEvent;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalResponse;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalCareTeam;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalDiagnosis;
@@ -645,6 +646,14 @@ public class PreAuthorizationSubmissionService {
                 item.setPreAuthorizationRequired(false);
                 item.setPaymentStatus(PaymentStatus.PENDING);
             }
+
+            // Same as a rejection read by a refresh: the patient pays as cash or cancels.
+            if (status == PreAuthorizationStatus.REJECTED) {
+                item.setPreAuthorizationRequired(false);
+                if (!Boolean.TRUE.equals(item.getIsBilled())) {
+                    item.setPaymentStatus(PaymentStatus.PENDING);
+                }
+            }
         }
 
         patientServiceAndProductRepository.saveAll(pendingItems);
@@ -663,6 +672,12 @@ public class PreAuthorizationSubmissionService {
                     )
             );
         }
+
+        if (status == PreAuthorizationStatus.REJECTED && !pendingItems.isEmpty()) {
+            applicationEventPublisher.publishEvent(
+                    new PreAuthorizationDecisionCommittedEvent(pendingItems.get(0).getEncounterId())
+            );
+        }
     }
 
     private PreAuthorizationStatus mapResponseStatus(ApprovalResponse response) {
@@ -670,24 +685,7 @@ public class PreAuthorizationSubmissionService {
             return PreAuthorizationStatus.PENDING_APPROVAL;
         }
 
-        String status = response.status() == null ? "" : response.status().toLowerCase();
-        String outcome = response.outcome() == null ? "" : response.outcome().toLowerCase();
-
-        if (status.contains("approved")
-                || outcome.contains("approved")
-                || outcome.contains("complete")) {
-            return PreAuthorizationStatus.APPROVED;
-        }
-
-        if (status.contains("rejected")
-                || status.contains("denied")
-                || outcome.contains("rejected")
-                || outcome.contains("denied")
-                || outcome.contains("error")) {
-            return PreAuthorizationStatus.REJECTED;
-        }
-
-        return PreAuthorizationStatus.PENDING_APPROVAL;
+        return PreAuthorizationWaseelStatusMapper.mapStatusAndOutcome(response.status(), response.outcome());
     }
 
     private String toJson(Object value) {

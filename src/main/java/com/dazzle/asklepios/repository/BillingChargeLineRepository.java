@@ -3,6 +3,8 @@ package com.dazzle.asklepios.repository;
 import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -74,6 +76,14 @@ public interface BillingChargeLineRepository
             @Param("excludedStatuses")
             Collection<BillingChargeLineStatus> excludedStatuses
     );
+
+    Page<BillingChargeLine>
+    findAllByEncounter_IdAndStatusNotInOrderByIdAsc(
+            Long encounterId,
+            Collection<BillingChargeLineStatus> excludedStatuses,
+            Pageable pageable
+    );
+
 
     List<BillingChargeLine>
     findAllByPatientServiceProduct_IdInAndStatusNotInOrderByIdAsc(

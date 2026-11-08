@@ -86,7 +86,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestContextHolder;
 
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -176,8 +175,8 @@ public class ApprovalSupportingInfoMapper {
     }
 
     /**
-     * Same as {@link #toSupportingInfo(PatientEncounter)}, but history and the investigation-result
-     * attachment are read from the claim encounter copy when one exists for the encounter.
+     * Same as {@link #toSupportingInfo(PatientEncounter)}, but clinical text, history and
+     * investigation results are read from the claim encounter copy when one exists for the encounter.
      */
     public List<WaseelApprovalSupportingInfo> toClaimSupportingInfo(PatientEncounter encounter) {
         return toClaimSupportingInfo(encounter, null);
@@ -196,7 +195,7 @@ public class ApprovalSupportingInfoMapper {
 
     private List<WaseelApprovalSupportingInfo> toSupportingInfo(
             PatientEncounter encounter,
-            boolean attachPdfReport,
+            boolean useClaimCopy,
             Map<Integer, LabTestSource> labTestSources
     ) {
         if (encounter == null || encounter.getId() == null) {
@@ -208,7 +207,7 @@ public class ApprovalSupportingInfoMapper {
 
         Long encounterId = encounter.getId();
         Long patientId = encounter.getPatient() == null ? null : encounter.getPatient().getId();
-        ClaimEncounterCopy claimCopy = attachPdfReport
+        ClaimEncounterCopy claimCopy = useClaimCopy
                 ? claimEncounterCopyRepository.findByEncounterId(encounterId).orElse(null)
                 : null;
 
@@ -216,7 +215,7 @@ public class ApprovalSupportingInfoMapper {
                 ? chiefComplainRepository.findTopByEncounter_IdOrderByIdDesc(encounterId).orElse(null)
                 : null;
 
-        addClinicalTextIfExists(result, sequence, encounter, chief, encounterId, patientId, attachPdfReport, claimCopy);
+        addClinicalTextIfExists(result, sequence, encounter, chief, encounterId, patientId, claimCopy);
         if (claimCopy != null) {
             addClaimCopyMeasurements(result, sequence, encounter, claimCopy);
         } else {
@@ -251,11 +250,10 @@ public class ApprovalSupportingInfoMapper {
             ChiefComplain chief,
             Long encounterId,
             Long patientId,
-            boolean attachPdfReport,
             ClaimEncounterCopy claimCopy
     ) {
         if (claimCopy != null) {
-            addClaimCopyClinicalText(result, sequence, encounter, claimCopy, attachPdfReport);
+            addClaimCopyClinicalText(result, sequence, encounter, claimCopy);
             return;
         }
 
@@ -338,7 +336,7 @@ public class ApprovalSupportingInfoMapper {
                 )
         );
 
-        addInvestigationResult(result, sequence, encounter, attachPdfReport, null);
+        addInvestigationResult(result, sequence, encounter, null);
 
         addTextIfExists(
                 result,
@@ -359,8 +357,7 @@ public class ApprovalSupportingInfoMapper {
             List<WaseelApprovalSupportingInfo> result,
             AtomicInteger sequence,
             PatientEncounter encounter,
-            ClaimEncounterCopy claimCopy,
-            boolean attachPdfReport
+            ClaimEncounterCopy claimCopy
     ) {
         Long claimCopyId = claimCopy.getId();
         String progressNotes = copyProgressNotes(claimCopyId);
@@ -393,7 +390,7 @@ public class ApprovalSupportingInfoMapper {
                 joinDistinctNonBlank("; ", clean(claimCopy.getPhysicalExamination()), clean(claimCopy.getAssessment()))
         );
 
-        addInvestigationResult(result, sequence, encounter, attachPdfReport, claimCopyId);
+        addInvestigationResult(result, sequence, encounter, claimCopyId);
 
         addTextIfExists(
                 result,
@@ -431,24 +428,26 @@ public class ApprovalSupportingInfoMapper {
         );
     }
 
+    /**
+     * Pre-authorization and claim send the same investigation-result row: a PDF report when there
+     * are results. NPHIES accepts pdf and jpeg attachments only, so a plain-text file is never sent.
+     * If the report cannot be produced, the results stay in the value of an "IRP" row.
+     */
     private void addInvestigationResult(
             List<WaseelApprovalSupportingInfo> result,
             AtomicInteger sequence,
             PatientEncounter encounter,
-            boolean attachPdfReport,
             Long claimCopyId
     ) {
         Long encounterId = encounter == null ? null : encounter.getId();
         List<DiagnosticOrderTest> tests = findActiveInvestigationTests(encounterId);
         ServiceProductInvestigations serviceProductTests = findServiceProductInvestigations(claimCopyId);
 
-        if (attachPdfReport) {
-            WaseelApprovalSupportingInfo pdfInfo = investigationResultPdfAttached(
-                    sequence, encounter, tests, claimCopyId, serviceProductTests);
-            if (pdfInfo != null) {
-                result.add(pdfInfo);
-                return;
-            }
+        WaseelApprovalSupportingInfo pdfInfo = investigationResultPdfAttached(
+                sequence, encounter, tests, claimCopyId, serviceProductTests);
+        if (pdfInfo != null) {
+            result.add(pdfInfo);
+            return;
         }
 
         String investigationValue = Stream.of(
@@ -459,7 +458,7 @@ public class ApprovalSupportingInfoMapper {
                 .collect(Collectors.joining("; "));
 
         if (isNotBlank(investigationValue)) {
-            result.add(investigationResultAttached(sequence, investigationValue, resolveDate(encounter)));
+            result.add(investigationResultPending(sequence, investigationValue));
             return;
         }
 
@@ -471,35 +470,30 @@ public class ApprovalSupportingInfoMapper {
         result.add(codeInfo(sequence, INVESTIGATION_RESULT, INVESTIGATION_RESULTS_PENDING));
     }
 
-    private WaseelApprovalSupportingInfo investigationResultAttached(
+    private WaseelApprovalSupportingInfo investigationResultPending(
             AtomicInteger sequence,
-            String investigationValue,
-            LocalDate attachmentDate
+            String investigationValue
     ) {
-        String attachment = Base64.getEncoder().encodeToString(
-                investigationValue.getBytes(StandardCharsets.UTF_8)
-        );
-
         return new WaseelApprovalSupportingInfo(
                 sequence.getAndIncrement(),
                 INVESTIGATION_RESULT,
-                INVESTIGATION_RESULTS_ATTACHED,
+                INVESTIGATION_RESULTS_PENDING,
                 null,
                 null,
                 clean(investigationValue),
                 null,
-                attachment,
-                "lab-investigation-results.txt",
-                "text/plain",
                 null,
-                attachmentDate == null ? LocalDate.now().toString() : attachmentDate.toString()
+                null,
+                null,
+                null,
+                null
         );
     }
 
     /**
      * Returns {@code null} when there are no results to report or the PDF cannot be produced,
      * so the caller keeps the existing investigation-result behaviour.
-     * A PDF larger than 1 MB is attached as a zip of the same file.
+     * A PDF larger than 10 MB is attached as a zip of the same file.
      */
     private WaseelApprovalSupportingInfo investigationResultPdfAttached(
             AtomicInteger sequence,
@@ -527,7 +521,7 @@ public class ApprovalSupportingInfoMapper {
             byte[] pdf = investigationResultsPdfRenderer.render(report);
             InvestigationResultsPdfRenderer.Attachment attachment = investigationResultsPdfRenderer.attachmentFor(pdf);
             if (!investigationResultsPdfRenderer.withinSizeLimit(pdf)) {
-                log.info("Investigation results PDF exceeds 1MB and will be sent as a zip. encounterId={} pdfBytes={} zipBytes={}",
+                log.info("Investigation results PDF exceeds 10MB and will be sent as a zip. encounterId={} pdfBytes={} zipBytes={}",
                         encounter.getId(), pdf.length, attachment.content().length);
             }
 

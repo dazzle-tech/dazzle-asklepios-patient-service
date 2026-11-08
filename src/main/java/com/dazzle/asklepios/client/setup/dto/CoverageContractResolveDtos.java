@@ -1,0 +1,383 @@
+package com.dazzle.asklepios.client.setup.dto;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+
+public final class CoverageContractResolveDtos {
+
+    private CoverageContractResolveDtos() {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Request(
+            Long insurancePayerId,
+            String payerNphiesId,
+            Long tpaId,
+            String tpaName,
+            String policyNumber,
+            String className,
+            String encounterType,
+            LocalDate asOfDate,
+            Long facilityId,
+            Long departmentId,
+            List<Long> diagnosisIds,
+            String billingItemType,
+            Long catalogItemId
+    ) {
+        public Request(
+                Long insurancePayerId,
+                String payerNphiesId,
+                Long tpaId,
+                String tpaName,
+                String policyNumber,
+                String className,
+                String encounterType,
+                LocalDate asOfDate
+        ) {
+            this(
+                    insurancePayerId,
+                    payerNphiesId,
+                    tpaId,
+                    tpaName,
+                    policyNumber,
+                    className,
+                    encounterType,
+                    asOfDate,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null
+            );
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Response(
+            boolean matched,
+            String matchReason,
+            ContractSnapshot contract,
+            CopaymentSnapshot copayment,
+            Boolean coverageConfigured,
+            Boolean uncovered,
+            CoverageReadingSnapshot coverage,
+            CoverageReadingSnapshot limit,
+            CoverageReadingSnapshot cashLimit,
+            DiscountSnapshot discount,
+            ExclusionSnapshot exclusion,
+            PreApprovalSnapshot preApproval,
+            List<PreApprovalSnapshot> preApprovals
+    ) {
+        public Response {
+            if (preApprovals == null) {
+                preApprovals = List.of();
+            }
+        }
+
+        public List<PreApprovalSnapshot> applicablePreApprovals() {
+            if (preApprovals != null && !preApprovals.isEmpty()) {
+                return preApprovals;
+            }
+            return preApproval == null ? List.of() : List.of(preApproval);
+        }
+        public Response(
+                boolean matched,
+                String matchReason,
+                ContractSnapshot contract,
+                CopaymentSnapshot copayment
+        ) {
+            this(matched, matchReason, contract, copayment, false, false, null, null, null, null, null, null, null);
+        }
+
+        public Response(
+                boolean matched,
+                String matchReason,
+                ContractSnapshot contract,
+                CopaymentSnapshot copayment,
+                Boolean coverageConfigured,
+                Boolean uncovered,
+                CoverageReadingSnapshot coverage
+        ) {
+            this(matched, matchReason, contract, copayment, coverageConfigured, uncovered, coverage, null, null, null, null, null, null);
+        }
+
+        public Response(
+                boolean matched,
+                String matchReason,
+                ContractSnapshot contract,
+                CopaymentSnapshot copayment,
+                Boolean coverageConfigured,
+                Boolean uncovered,
+                CoverageReadingSnapshot coverage,
+                CoverageReadingSnapshot limit
+        ) {
+            this(matched, matchReason, contract, copayment, coverageConfigured, uncovered, coverage, limit, null, null, null, null, null);
+        }
+
+        public Response(
+                boolean matched,
+                String matchReason,
+                ContractSnapshot contract,
+                CopaymentSnapshot copayment,
+                Boolean coverageConfigured,
+                Boolean uncovered,
+                CoverageReadingSnapshot coverage,
+                CoverageReadingSnapshot limit,
+                CoverageReadingSnapshot cashLimit
+        ) {
+            this(matched, matchReason, contract, copayment, coverageConfigured, uncovered, coverage, limit, cashLimit, null, null, null, null);
+        }
+
+        public Response(
+                boolean matched,
+                String matchReason,
+                ContractSnapshot contract,
+                CopaymentSnapshot copayment,
+                Boolean coverageConfigured,
+                Boolean uncovered,
+                CoverageReadingSnapshot coverage,
+                CoverageReadingSnapshot limit,
+                CoverageReadingSnapshot cashLimit,
+                DiscountSnapshot discount
+        ) {
+            this(matched, matchReason, contract, copayment, coverageConfigured, uncovered, coverage, limit, cashLimit, discount, null, null, null);
+        }
+
+        public Response(
+                boolean matched,
+                String matchReason,
+                ContractSnapshot contract,
+                CopaymentSnapshot copayment,
+                Boolean coverageConfigured,
+                Boolean uncovered,
+                CoverageReadingSnapshot coverage,
+                CoverageReadingSnapshot limit,
+                CoverageReadingSnapshot cashLimit,
+                DiscountSnapshot discount,
+                ExclusionSnapshot exclusion
+        ) {
+            this(matched, matchReason, contract, copayment, coverageConfigured, uncovered, coverage, limit, cashLimit, discount, exclusion, null, null);
+        }
+
+        public Response(
+                boolean matched,
+                String matchReason,
+                ContractSnapshot contract,
+                CopaymentSnapshot copayment,
+                Boolean coverageConfigured,
+                Boolean uncovered,
+                CoverageReadingSnapshot coverage,
+                CoverageReadingSnapshot limit,
+                CoverageReadingSnapshot cashLimit,
+                DiscountSnapshot discount,
+                ExclusionSnapshot exclusion,
+                PreApprovalSnapshot preApproval
+        ) {
+            this(matched, matchReason, contract, copayment, coverageConfigured, uncovered, coverage, limit, cashLimit, discount, exclusion, preApproval, null);
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record ContractSnapshot(
+            Long id,
+            String guarantorType,
+            Long companyId,
+            String companyName,
+            String code,
+            String policyNumber,
+            String coverageBasis,
+            Long insurancePayerId,
+            String insurancePayerName,
+            Long priceListSetupId,
+            String priceListName,
+            LocalDate startDate,
+            LocalDate endDate,
+            Long classId,
+            String className,
+            Boolean isActive,
+            String approvalCoverageCompany
+    ) {
+        @JsonIgnore
+        public ContractSnapshot(
+                Long id,
+                String guarantorType,
+                Long companyId,
+                String companyName,
+                String code,
+                String policyNumber,
+                String coverageBasis,
+                Long insurancePayerId,
+                String insurancePayerName,
+                Long priceListSetupId,
+                String priceListName,
+                LocalDate startDate,
+                LocalDate endDate,
+                Long classId,
+                String className,
+                Boolean isActive
+        ) {
+            this(
+                    id,
+                    guarantorType,
+                    companyId,
+                    companyName,
+                    code,
+                    policyNumber,
+                    coverageBasis,
+                    insurancePayerId,
+                    insurancePayerName,
+                    priceListSetupId,
+                    priceListName,
+                    startDate,
+                    endDate,
+                    classId,
+                    className,
+                    isActive,
+                    null
+            );
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record CopaymentSnapshot(
+            Long id,
+            String encounterType,
+            String valueType,
+            BigDecimal valueAmount,
+            Boolean discountOnExcluded,
+            Boolean discountOnCash,
+            Boolean discountOnExceededCash
+    ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record CoverageReadingSnapshot(
+            Long termId,
+            Long itemId,
+            String categoryScope,
+            String billingItemType,
+            Long serviceId,
+            String valueType,
+            BigDecimal limitValue,
+            String periodBasis,
+            String coverageBasis,
+            List<ExcludedItemSnapshot> excludedItems
+    ) {
+        public CoverageReadingSnapshot {
+            excludedItems = excludedItems == null ? List.of() : List.copyOf(excludedItems);
+        }
+
+        public CoverageReadingSnapshot(
+                Long termId,
+                Long itemId,
+                String categoryScope,
+                String billingItemType,
+                Long serviceId,
+                String valueType,
+                BigDecimal limitValue,
+                String periodBasis,
+                String coverageBasis
+        ) {
+            this(termId, itemId, categoryScope, billingItemType, serviceId, valueType, limitValue, periodBasis, coverageBasis, List.of());
+        }
+
+        public CoverageReadingSnapshot(
+                Long termId,
+                Long itemId,
+                String categoryScope,
+                String billingItemType,
+                Long serviceId,
+                String valueType,
+                BigDecimal limitValue
+        ) {
+            this(termId, itemId, categoryScope, billingItemType, serviceId, valueType, limitValue, null, null, List.of());
+        }
+    }
+
+    /**
+     * Item a Coverage Limit rule does not apply to. A null catalog item id
+     * means the whole category is excluded.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record ExcludedItemSnapshot(
+            String billingItemType,
+            Long catalogItemId
+    ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record DiscountSnapshot(
+            Long id,
+            String targetType,
+            String billingItemType,
+            Long serviceId,
+            String encounterType,
+            String discountType,
+            BigDecimal discountValue
+    ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record ExclusionSnapshot(
+            Long id,
+            String exclusionType,
+            String billingItemType,
+            Long serviceId,
+            Boolean allDiagnoses,
+            Long diagnosisId,
+            String encounterType,
+            String excludedResult
+    ) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record PreApprovalSnapshot(
+            Long preApprovalId,
+            Long itemId,
+            String approvalScope,
+            Long facilityId,
+            Long departmentId,
+            String encounterType,
+            String itemType,
+            String serviceCategory,
+            Long serviceId,
+            Boolean allDiagnoses,
+            Long diagnosisId,
+            String valueType,
+            BigDecimal limitValue
+    ) {
+        @JsonCreator
+        public PreApprovalSnapshot {
+        }
+
+        public PreApprovalSnapshot(
+                Long preApprovalId,
+                Long itemId,
+                String approvalScope,
+                Long facilityId,
+                Long departmentId,
+                String encounterType,
+                String itemType,
+                String serviceCategory,
+                Long serviceId,
+                Boolean allDiagnoses,
+                Long diagnosisId
+        ) {
+            this(
+                    preApprovalId,
+                    itemId,
+                    approvalScope,
+                    facilityId,
+                    departmentId,
+                    encounterType,
+                    itemType,
+                    serviceCategory,
+                    serviceId,
+                    allDiagnoses,
+                    diagnosisId,
+                    null,
+                    null
+            );
+        }
+    }
+}

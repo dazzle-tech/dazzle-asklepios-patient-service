@@ -38,6 +38,11 @@ public interface BillingPaymentTransactionRepository
     );
 
     List<BillingPaymentTransaction>
+    findAllByPayment_IdInOrderByTransactionDateAscIdAsc(
+            List<Long> paymentIds
+    );
+
+    List<BillingPaymentTransaction>
     findAllByPayment_IdAndTransactionTypeAndStatusOrderByTransactionDateAscIdAsc(
             Long paymentId,
             BillingPaymentTransactionType transactionType,

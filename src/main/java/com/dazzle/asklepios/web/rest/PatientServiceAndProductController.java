@@ -3,6 +3,8 @@ package com.dazzle.asklepios.web.rest;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
+import com.dazzle.asklepios.service.ClinicalFulfillmentStatusResolver;
+import com.dazzle.asklepios.service.CoveragePreApprovalLimitService;
 import com.dazzle.asklepios.service.EncounterReopenGuard;
 import com.dazzle.asklepios.service.PatientServiceAndProductService;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
@@ -40,13 +42,19 @@ public class PatientServiceAndProductController {
     private static final Logger LOG = LoggerFactory.getLogger(PatientServiceAndProductController.class);
 
     private final PatientServiceAndProductService patientServiceAndProductService;
+    private final ClinicalFulfillmentStatusResolver clinicalFulfillmentStatusResolver;
+    private final CoveragePreApprovalLimitService coveragePreApprovalLimitService;
     private final EncounterReopenGuard encounterReopenGuard;
 
     public PatientServiceAndProductController(
             PatientServiceAndProductService patientServiceAndProductService,
+            ClinicalFulfillmentStatusResolver clinicalFulfillmentStatusResolver,
+            CoveragePreApprovalLimitService coveragePreApprovalLimitService,
             EncounterReopenGuard encounterReopenGuard
     ) {
         this.patientServiceAndProductService = patientServiceAndProductService;
+        this.clinicalFulfillmentStatusResolver = clinicalFulfillmentStatusResolver;
+        this.coveragePreApprovalLimitService = coveragePreApprovalLimitService;
         this.encounterReopenGuard = encounterReopenGuard;
     }
 
@@ -87,6 +95,8 @@ public class PatientServiceAndProductController {
 
         Page<PatientServiceAndProduct> page =
                 patientServiceAndProductService.findAllServicesAndProductsByEncounterId(pageable, encounterId);
+        clinicalFulfillmentStatusResolver.attachToItems(page.getContent());
+        coveragePreApprovalLimitService.attachHoldReasons(page.getContent());
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
@@ -106,7 +116,7 @@ public class PatientServiceAndProductController {
         Page<PatientServiceAndProduct> page =
                 patientServiceAndProductService
                         .findAllServicesAndProductsByPatientId(pageable, patientId);
-
+        clinicalFulfillmentStatusResolver.attachToItems(page.getContent());
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
@@ -214,6 +224,7 @@ public class PatientServiceAndProductController {
                                 source,
                                 sourceId
                         );
+        clinicalFulfillmentStatusResolver.attachToItems(page.getContent());
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page

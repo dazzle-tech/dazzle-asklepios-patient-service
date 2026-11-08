@@ -16,6 +16,9 @@ import java.util.Set;
 /**
  * Blocks insurance visit confirmation unless Waseel eligibility was checked
  * within the last 24 hours and the stored coverage is in force.
+ *
+ * NPHIES contracts are not checked against Waseel: the visit only needs an
+ * insurance that has not expired.
  */
 @Service
 @RequiredArgsConstructor
@@ -49,6 +52,7 @@ public class InsuranceVisitEligibilityGuard {
     );
 
     private final WaseelEligibilityRequestRepository eligibilityRequestRepository;
+    private final CoverageContractShareService coverageContractShareService;
 
     public void requireFreshInForce(PatientInsurance insurance, Long patientId) {
         if (insurance == null || insurance.getId() == null) {
@@ -57,6 +61,11 @@ public class InsuranceVisitEligibilityGuard {
                     ENTITY_NAME,
                     "patientInsurance.required"
             );
+        }
+
+        if (coverageContractShareService.usesNphiesApprovalCoverage(insurance)) {
+            requireNotExpired(insurance);
+            return;
         }
 
         Instant checkedAt = resolveCheckedAt(insurance, patientId);
@@ -81,6 +90,16 @@ public class InsuranceVisitEligibilityGuard {
                     "This insurance is not in force. Check eligibility again or change the coverage type before confirming.",
                     ENTITY_NAME,
                     "eligibility.notInForce"
+            );
+        }
+    }
+
+    private void requireNotExpired(PatientInsurance insurance) {
+        if (isExpired(insurance)) {
+            throw new BadRequestAlertException(
+                    "This insurance is expired. Renew it or change the coverage type before confirming.",
+                    ENTITY_NAME,
+                    "eligibility.expired"
             );
         }
     }

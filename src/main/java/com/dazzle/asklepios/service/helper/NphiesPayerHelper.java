@@ -72,11 +72,16 @@ public class NphiesPayerHelper {
         }
 
         NphiesPayerDTO nphiesPayer = findByNphiesId(nphiesId);
-        if (nphiesPayer == null || nphiesPayer.id() == null || nphiesPayer.id() <= 0) {
-            return null;
+        if (nphiesPayer != null && nphiesPayer.id() != null && nphiesPayer.id() > 0) {
+            return nphiesPayer.id();
         }
 
-        return nphiesPayer.id();
+        NphiesPayerDTO byRowId = findById(payorId);
+        if (byRowId != null && byRowId.id() != null && byRowId.id() > 0) {
+            return byRowId.id();
+        }
+
+        return null;
     }
 
     public String resolvePayerDisplayName(String payerNphiesId, String existingPayerName) {

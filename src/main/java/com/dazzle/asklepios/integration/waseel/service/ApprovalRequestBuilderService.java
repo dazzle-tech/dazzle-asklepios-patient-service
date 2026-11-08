@@ -12,6 +12,7 @@ import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
 import com.dazzle.asklepios.integration.waseel.dto.approval.ApprovalEncounterMapper;
+import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalDiagnosis;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalEligibilitySnapshot;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalEncounter;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalItem;
@@ -41,6 +42,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -109,6 +111,9 @@ public class ApprovalRequestBuilderService {
         String nphiesId = resolveNphiesId();
         String destinationId = resolveDestinationId(snapshot);
 
+        // Waseel: destinationId is required for a TPA, otherwise it stays null.
+        String tpaDestinationId = isBlank(snapshot.insurancePlan().tpaNphiesId()) ? null : destinationId;
+
         PatientEncounter encounter = encounterRepository.findById(encounterId)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "Encounter not found",
@@ -151,10 +156,13 @@ public class ApprovalRequestBuilderService {
 
         validateItems(pendingItems);
 
-        applyPriceListPricing(pendingItems, encounter);
+        Map<Long, BigDecimal> taxPercentByItem = applyPriceListPricing(pendingItems, encounter);
 
         WaseelApprovalEncounter waseelEncounter =
                 encounterMapper.toWaseelEncounter(encounter, nphiesId);
+
+        List<WaseelApprovalDiagnosis> visitDiagnoses = approvalDiagnosisMapper.toWaseelDiagnosisList(diagnoses);
+        List<WaseelApprovalDiagnosis> requestDiagnoses = ApprovalDiagnosisMapper.withSinglePrincipal(visitDiagnoses);
 
         Map<Integer, LabTestSource> labTestSources = new LinkedHashMap<>();
         var supportingInfo = approvalSupportingInfoMapper.toSupportingInfo(encounter, labTestSources);
@@ -168,7 +176,9 @@ public class ApprovalRequestBuilderService {
                         supportingInfo
                 ),
                 supportingInfo,
-                labTestSources
+                labTestSources,
+                diagnosisSequenceChanges(visitDiagnoses, requestDiagnoses),
+                taxPercentByItem
         );
 
         BigDecimal totalNet = calculateTotalNet(waseelItems);
@@ -178,7 +188,7 @@ public class ApprovalRequestBuilderService {
                 Boolean.TRUE.equals(snapshot.isNewBorn()),
                 snapshot.beneficiary(),
                 subscriber,
-                null,
+                tpaDestinationId,
                 snapshot.insurancePlan(),
                 preAuthorizationInfoMapper.toPreAuthorizationInfo(
                         snapshot,
@@ -186,7 +196,7 @@ public class ApprovalRequestBuilderService {
                         resolvePrescriptionReference(pendingItems)
                 ),
                 supportingInfo,
-                approvalDiagnosisMapper.toWaseelDiagnosisList(diagnoses),
+                requestDiagnoses,
                 approvalCareTeamMapper.toWaseelCareTeam(encounter),
                 null,
                 null,
@@ -202,7 +212,9 @@ public class ApprovalRequestBuilderService {
             List<PatientServiceAndProduct> products,
             List<WaseelApprovalItem> items,
             List<WaseelApprovalSupportingInfo> supportingInfo,
-            Map<Integer, LabTestSource> labTestSources
+            Map<Integer, LabTestSource> labTestSources,
+            Map<Integer, Integer> diagnosisSequenceChanges,
+            Map<Long, BigDecimal> taxPercentByItem
     ) {
         List<Integer> allSequences = supportingInfo == null
                 ? List.of()
@@ -250,14 +262,49 @@ public class ApprovalRequestBuilderService {
                         item.itemCode()
                 );
             }
-            linked.add(copyWithSupportingInfo(item, daysSupplyLink.sequences()));
+            linked.add(copyWithLinks(
+                    item,
+                    daysSupplyLink.sequences(),
+                    medicationItem
+                            ? item.diagnosisSequence().stream()
+                                    .map(sequence -> diagnosisSequenceChanges.getOrDefault(sequence, sequence))
+                                    .toList()
+                            : item.diagnosisSequence(),
+                    product == null
+                            ? item.taxPercent()
+                            : taxPercentByItem.getOrDefault(product.getId(), item.taxPercent())
+            ));
         }
         return linked;
     }
 
-    private WaseelApprovalItem copyWithSupportingInfo(
+    /**
+     * The principal diagnosis moves to sequence 1. A medication keeps pointing at its indication.
+     */
+    private Map<Integer, Integer> diagnosisSequenceChanges(
+            List<WaseelApprovalDiagnosis> visitDiagnoses,
+            List<WaseelApprovalDiagnosis> requestDiagnoses
+    ) {
+        Map<Integer, Integer> changes = new HashMap<>();
+        Set<Integer> usedSequences = new LinkedHashSet<>();
+        for (WaseelApprovalDiagnosis visitDiagnosis : visitDiagnoses) {
+            requestDiagnoses.stream()
+                    .filter(diagnosis -> Objects.equals(diagnosis.diagnosisCode(), visitDiagnosis.diagnosisCode()))
+                    .filter(diagnosis -> !usedSequences.contains(diagnosis.sequence()))
+                    .findFirst()
+                    .ifPresent(diagnosis -> {
+                        usedSequences.add(diagnosis.sequence());
+                        changes.put(visitDiagnosis.sequence(), diagnosis.sequence());
+                    });
+        }
+        return changes;
+    }
+
+    private WaseelApprovalItem copyWithLinks(
             WaseelApprovalItem item,
-            List<Integer> supportingInfoSequences
+            List<Integer> supportingInfoSequences,
+            List<Integer> diagnosisSequences,
+            BigDecimal taxPercent
     ) {
         return new WaseelApprovalItem(
                 item.sequence(),
@@ -275,7 +322,7 @@ public class ApprovalRequestBuilderService {
                 item.unitPrice(),
                 item.discount(),
                 item.factor(),
-                item.taxPercent(),
+                taxPercent,
                 item.patientSharePercent(),
                 item.net(),
                 item.tax(),
@@ -285,10 +332,14 @@ public class ApprovalRequestBuilderService {
                 item.endDate(),
                 supportingInfoSequences,
                 item.careTeamSequence(),
-                item.diagnosisSequence(),
+                diagnosisSequences,
                 item.invoiceNo(),
                 item.itemDetails()
         );
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private boolean isLaboratoryItem(String waseelType, PatientServiceAndProduct product) {
@@ -387,20 +438,26 @@ public class ApprovalRequestBuilderService {
         );
     }
 
-    private void applyPriceListPricing(
+    /**
+     * A held line has no charge line yet, so its tax rate comes from this pricing.
+     */
+    private Map<Long, BigDecimal> applyPriceListPricing(
             List<PatientServiceAndProduct> items,
             PatientEncounter encounter
     ) {
         if (items == null || items.isEmpty() || encounter == null) {
-            return;
+            return Map.of();
         }
 
         Long facilityId = encounter.getFacilityId();
+        Map<Long, BigDecimal> taxPercentByItem = new HashMap<>();
         for (PatientServiceAndProduct item : items) {
-            patientItemPricingApplicationService.applyToItem(item, facilityId);
+            BigDecimal taxPercent = patientItemPricingApplicationService.applyToItem(item, facilityId);
+            taxPercentByItem.put(item.getId(), taxPercent.setScale(2, RoundingMode.HALF_UP));
         }
 
         patientServiceAndProductRepository.saveAll(items);
+        return taxPercentByItem;
     }
 
     private void validateItems(List<PatientServiceAndProduct> items) {

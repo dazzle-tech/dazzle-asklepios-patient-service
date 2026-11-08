@@ -24,6 +24,10 @@ public interface ClaimRequestRepository
 
     List<ClaimRequest> findByEncounterIdOrderByIdDesc(Long encounterId);
 
+    List<ClaimRequest> findByPatientIdOrderByIdDesc(Long patientId);
+
+    List<ClaimRequest> findByEncounterIdIn(Collection<Long> encounterIds);
+
     Optional<ClaimRequest> findFirstByFinancialDocumentIdOrderByIdDesc(Long financialDocumentId);
 
     List<ClaimRequest> findByFinancialDocumentIdInAndStatusOrderByIdDesc(

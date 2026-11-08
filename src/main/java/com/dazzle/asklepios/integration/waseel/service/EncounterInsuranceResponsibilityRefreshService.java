@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
 import com.dazzle.asklepios.integration.waseel.event.EligibilityCheckSucceededEvent;
+import com.dazzle.asklepios.integration.waseel.event.PreAuthorizationDecisionCommittedEvent;
 import com.dazzle.asklepios.service.BillingResponsibilityService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -44,6 +45,22 @@ public class EncounterInsuranceResponsibilityRefreshService {
         );
 
         self.refreshEncounter(event.encounterId());
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onPreAuthorizationDecisionCommitted(PreAuthorizationDecisionCommittedEvent event) {
+        if (event == null || event.encounterId() == null) {
+            return;
+        }
+
+        int refreshedLines = self.refreshEncounter(event.encounterId());
+
+        LOG.info(
+                "[PREAUTH_REFRESH] Refreshed billing responsibilities "
+                        + "encounterId={} refreshedLines={}",
+                event.encounterId(),
+                refreshedLines
+        );
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)

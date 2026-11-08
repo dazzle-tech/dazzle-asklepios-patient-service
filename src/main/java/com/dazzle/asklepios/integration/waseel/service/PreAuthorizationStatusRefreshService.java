@@ -10,9 +10,11 @@ import com.dazzle.asklepios.integration.waseel.dto.EncounterPreAuthorizationRefr
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.response.PreAuthorizationSearchItem;
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.response.PreAuthorizationSearchResponse;
 import com.dazzle.asklepios.integration.waseel.event.PreAuthorizationApprovedEvent;
+import com.dazzle.asklepios.integration.waseel.event.PreAuthorizationDecisionCommittedEvent;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.repository.PreAuthorizationItemRepository;
 import com.dazzle.asklepios.repository.PreAuthorizationRequestRepository;
+import com.dazzle.asklepios.service.CoverageApprovalRoutingService;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -41,8 +43,7 @@ public class PreAuthorizationStatusRefreshService {
     private final PreAuthorizationItemRepository preAuthorizationItemRepository;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
-    private final EncounterInsuranceResponsibilityRefreshService
-            encounterInsuranceResponsibilityRefreshService;
+    private final CoverageApprovalRoutingService coverageApprovalRoutingService;
 
     @Transactional
     public EncounterPreAuthorizationRefreshResponse refreshEncounter(Long encounterId) {
@@ -62,10 +63,17 @@ public class PreAuthorizationStatusRefreshService {
             );
         }
 
+        /*
+         * NPHIES contracts keep their requests locally (no Waseel request id).
+         * Their decisions are read from the database instead of the Waseel search API.
+         */
+        boolean localApproval = coverageApprovalRoutingService.encounterUsesLocalApproval(encounterId);
+
         List<PreAuthorizationRequest> requests =
                 preAuthorizationRequestRepository.findByEncounterIdOrderByIdDesc(encounterId)
                         .stream()
-                        .filter(request -> request.getApprovalRequestId() != null)
+                        .filter(request -> request.getApprovalRequestId() != null
+                                || (localApproval && isActiveLocalRequest(request)))
                         .toList();
 
         if (requests.isEmpty()) {
@@ -83,16 +91,18 @@ public class PreAuthorizationStatusRefreshService {
         List<Long> approvedPatientItemIds = new ArrayList<>();
 
         for (PreAuthorizationRequest request : requests) {
-            PreAuthorizationSearchResponse searchResponse =
-                    waseelPreAuthorizationService.searchAndUpdate(
-                            request.getId(),
-                            request.getApprovalRequestId()
-                    );
-
             refreshedRequestCount++;
 
             PropagationResult propagationResult =
-                    propagateSearchResponse(request, searchResponse);
+                    request.getApprovalRequestId() == null
+                            ? propagateLocalRequest(request)
+                            : propagateSearchResponse(
+                                    request,
+                                    waseelPreAuthorizationService.searchAndUpdate(
+                                            request.getId(),
+                                            request.getApprovalRequestId()
+                                    )
+                            );
 
             approvedItemCount += propagationResult.approvedCount();
             rejectedItemCount += propagationResult.rejectedCount();
@@ -111,16 +121,8 @@ public class PreAuthorizationStatusRefreshService {
         }
 
         if (rejectedItemCount > 0 || approvedItemCount > 0) {
-            int refreshedLines =
-                    encounterInsuranceResponsibilityRefreshService.refreshEncounter(
-                            encounterId
-                    );
-
-            LOG.info(
-                    "[PREAUTH_REFRESH] Refreshed billing responsibilities "
-                            + "encounterId={} refreshedLines={}",
-                    encounterId,
-                    refreshedLines
+            applicationEventPublisher.publishEvent(
+                    new PreAuthorizationDecisionCommittedEvent(encounterId)
             );
         }
 
@@ -152,6 +154,47 @@ public class PreAuthorizationStatusRefreshService {
                 message,
                 refreshedItems
         );
+    }
+
+    /**
+     * Refresh of one request from the pre-authorization screen. The decision also reaches its
+     * billing lines, so a rejected line waits on the patient's choice as it does after the
+     * refresh in the patient account. A cancelled or replaced request no longer owns any line.
+     */
+    @Transactional
+    public PreAuthorizationSearchResponse refreshRequest(Long preAuthorizationId, Long requestId) {
+        PreAuthorizationSearchResponse searchResponse =
+                waseelPreAuthorizationService.searchAndUpdate(preAuthorizationId, requestId);
+
+        PreAuthorizationRequest request = (preAuthorizationId != null
+                ? preAuthorizationRequestRepository.findById(preAuthorizationId)
+                : preAuthorizationRequestRepository.findFirstByApprovalRequestIdOrderByIdDesc(requestId))
+                .orElse(null);
+
+        if (request == null
+                || Boolean.TRUE.equals(request.getIsCancelled())
+                || patientServiceAndProductRepository.findByPreAuthorizationRequestId(request.getId()).isEmpty()) {
+            return searchResponse;
+        }
+
+        PropagationResult propagationResult = propagateSearchResponse(request, searchResponse);
+
+        if (!propagationResult.approvedPatientItemIds().isEmpty()) {
+            applicationEventPublisher.publishEvent(
+                    new PreAuthorizationApprovedEvent(
+                            request.getEncounterId(),
+                            propagationResult.approvedPatientItemIds()
+                    )
+            );
+        }
+
+        if (propagationResult.rejectedCount() > 0 || propagationResult.approvedCount() > 0) {
+            applicationEventPublisher.publishEvent(
+                    new PreAuthorizationDecisionCommittedEvent(request.getEncounterId())
+            );
+        }
+
+        return searchResponse;
     }
 
     /**
@@ -239,6 +282,15 @@ public class PreAuthorizationStatusRefreshService {
         );
     }
 
+    /**
+     * A local request still linked to its billing line. A request replaced by a clone
+     * is skipped, so its old decision cannot overwrite the new request.
+     */
+    private boolean isActiveLocalRequest(PreAuthorizationRequest request) {
+        return isLocallyRefreshableRequest(request)
+                && !patientServiceAndProductRepository.findByPreAuthorizationRequestId(request.getId()).isEmpty();
+    }
+
     private boolean isLocallyRefreshableRequest(PreAuthorizationRequest request) {
         if (request == null) {
             return false;
@@ -262,8 +314,9 @@ public class PreAuthorizationStatusRefreshService {
                         request.getId()
                 );
 
-        PreAuthorizationStatus headerStatus = PreAuthorizationWaseelStatusMapper.mapStatusText(
-                firstNonBlank(request.getStatus(), request.getOutcome())
+        PreAuthorizationStatus headerStatus = PreAuthorizationWaseelStatusMapper.mapStatusAndOutcome(
+                request.getStatus(),
+                request.getOutcome()
         );
 
         String headerWaseelStatus = firstNonBlank(request.getStatus(), request.getOutcome());
@@ -559,19 +612,27 @@ public class PreAuthorizationStatusRefreshService {
         switch (status) {
             case APPROVED -> {
                 item.setPreAuthorizationRequired(false);
-                item.setPaymentStatus(PaymentStatus.PENDING);
+                updatePaymentStatus(item, PaymentStatus.PENDING);
             }
             case REJECTED -> {
                 item.setPreAuthorizationRequired(false);
-                item.setPaymentStatus(PaymentStatus.PENDING);
+                updatePaymentStatus(item, PaymentStatus.PENDING);
             }
             case PARTIAL -> {
-                item.setPreAuthorizationRequired(true);
-                item.setPaymentStatus(PaymentStatus.SKIPPED_PENDING_PRE_AUTH);
+                // A local (NPHIES contract) partial decision is final: the line is billed with
+                // the approved insurance amount. A Waseel partial stays held for communication.
+                boolean localDecision = request.getApprovalRequestId() == null;
+                item.setPreAuthorizationRequired(!localDecision);
+                updatePaymentStatus(
+                        item,
+                        localDecision
+                                ? PaymentStatus.PENDING
+                                : PaymentStatus.SKIPPED_PENDING_PRE_AUTH
+                );
             }
             default -> {
                 item.setPreAuthorizationRequired(true);
-                item.setPaymentStatus(PaymentStatus.SKIPPED_PENDING_PRE_AUTH);
+                updatePaymentStatus(item, PaymentStatus.SKIPPED_PENDING_PRE_AUTH);
             }
         }
 
@@ -586,14 +647,16 @@ public class PreAuthorizationStatusRefreshService {
                         status == PreAuthorizationStatus.REJECTED
                 );
 
-        boolean newlyApproved =
+        boolean billable =
                 status == PreAuthorizationStatus.APPROVED
-                        && previousStatus != PreAuthorizationStatus.APPROVED;
+                        || PreAuthorizationResolutionService.isPartiallyApprovedLocally(item);
+        boolean newlyApproved = billable && previousStatus != status;
 
         return new ItemRefreshOutcome(
                 newlyApproved,
                 status == PreAuthorizationStatus.REJECTED,
-                PreAuthorizationWaseelStatusMapper.isPendingStatus(status),
+                PreAuthorizationWaseelStatusMapper.isPendingStatus(status)
+                        && Boolean.TRUE.equals(item.getPreAuthorizationRequired()),
                 refreshedItem
         );
     }
@@ -626,6 +689,17 @@ public class PreAuthorizationStatusRefreshService {
         }
 
         return indexed;
+    }
+
+    /**
+     * A line already posted to the patient account (for example one sent for approval after the
+     * visit crossed its coverage limit) keeps its ledger payment status; the decision only updates
+     * its approval status and the responsibility refresh.
+     */
+    private static void updatePaymentStatus(PatientServiceAndProduct item, PaymentStatus paymentStatus) {
+        if (!Boolean.TRUE.equals(item.getIsBilled())) {
+            item.setPaymentStatus(paymentStatus);
+        }
     }
 
     private PreAuthorizationSearchItem findSearchItem(

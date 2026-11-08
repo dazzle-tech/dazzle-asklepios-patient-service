@@ -91,5 +91,13 @@ public class DentalProcedure extends AbstractAuditingEntity<Long> implements Ser
 
     @Column(name = "cancellation_reason", columnDefinition = "TEXT")
     private String cancellationReason;
+
+    /**
+     * Response only (not stored): true when a billing line of this procedure
+     * waits for pre-authorization, so the screen can show the alert.
+     * Java {@code transient}, not JPA {@code @Transient}: the Hibernate Jackson module
+     * drops {@code @Transient} fields from the JSON, so the screen would never see it.
+     */
+    private transient boolean preAuthorizationPending;
 }
 

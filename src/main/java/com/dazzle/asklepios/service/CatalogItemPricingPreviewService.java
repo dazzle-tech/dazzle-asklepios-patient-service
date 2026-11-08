@@ -71,6 +71,7 @@ public class CatalogItemPricingPreviewService {
     private final FinancialDocumentRepository financialDocumentRepository;
     private final FinancialDocumentItemRepository financialDocumentItemRepository;
     private final InvoiceItemPricingSnapshotService invoiceItemPricingSnapshotService;
+    private final CoverageContractShareService coverageContractShareService;
     private final UomPriceFactorHelper uomPriceFactorHelper;
 
     private static final int MONEY_SCALE = 4;
@@ -121,17 +122,30 @@ public class CatalogItemPricingPreviewService {
                         patientCitizen
                 );
 
+        boolean contractRulesCoverVisit =
+                insuranceVisit
+                        && eligibilityInForce
+                        && insurancePatientShareCalculator.usesNphiesContractRules(insurance);
+        boolean excludedByContract =
+                insuranceVisit
+                        && eligibilityInForce
+                        && coverageContractShareService.isExcludedByContract(insurance, previewItem);
         boolean coveredByInsurance =
                 insuranceVisit
                         && eligibilityInForce
-                        && resolvedPrice.resolvedFromPriceList();
+                        && !excludedByContract
+                        && (contractRulesCoverVisit || resolvedPrice.resolvedFromPriceList());
         boolean requiresCashConfirmation = insuranceVisit && !coveredByInsurance;
         String notCoveredReason = null;
 
         if (requiresCashConfirmation) {
-            notCoveredReason = eligibilityInForce
-                    ? InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST
-                    : InsurancePriceListCoverageService.ELIGIBILITY_NOT_IN_FORCE;
+            if (!eligibilityInForce) {
+                notCoveredReason = InsurancePriceListCoverageService.ELIGIBILITY_NOT_IN_FORCE;
+            } else if (excludedByContract) {
+                notCoveredReason = InsurancePriceListCoverageService.CONTRACT_EXCLUSION;
+            } else {
+                notCoveredReason = InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST;
+            }
 
             if (coverageType != BillingCoverageType.SELF_PAY) {
                 resolvedPrice = billingEngineService.resolvePricing(
@@ -206,6 +220,7 @@ public class CatalogItemPricingPreviewService {
 
         BigDecimal patientShareAmount = finalNet;
         BigDecimal insuranceShareAmount = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        BigDecimal contractDiscount = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
         if (insurance != null
                 && !requiresCashConfirmation
                 && !Boolean.TRUE.equals(previewItem.getIsExempted())) {
@@ -217,6 +232,10 @@ public class CatalogItemPricingPreviewService {
                     );
             patientShareAmount = money(split.patientShare());
             insuranceShareAmount = money(split.insuranceShare());
+            contractDiscount = finalNet
+                    .subtract(patientShareAmount)
+                    .subtract(insuranceShareAmount)
+                    .max(BigDecimal.ZERO);
         }
 
         LOG.info(
@@ -244,9 +263,9 @@ public class CatalogItemPricingPreviewService {
                         ? request.currency()
                         : resolvedPrice.currency(),
                 itemGross,
-                totalDiscount,
+                totalDiscount.add(contractDiscount),
                 totalTax,
-                finalNet,
+                finalNet.subtract(contractDiscount),
                 itemGross,
                 itemDiscount,
                 itemTax,
