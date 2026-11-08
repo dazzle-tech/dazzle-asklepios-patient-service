@@ -1,8 +1,10 @@
 package com.dazzle.asklepios.service.dto.patientProcedure;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.io.Serializable;
 import java.time.Instant;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record PatientProcedurePerformanceDTO(
         Instant actualStartTime,
         Instant actualEndTime,
@@ -14,9 +16,6 @@ public record PatientProcedurePerformanceDTO(
         Boolean timeOut,
         String procedureOutcome,
         String observations,
-        String complicationType,
-        String complicationSeverity,
-        String actionsTaken,
         String additionalNotes,
         String homeInstruction,
         String homeInstructionNotes

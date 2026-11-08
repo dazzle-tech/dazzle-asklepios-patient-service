@@ -1,8 +1,10 @@
 package com.dazzle.asklepios.service.dto.patientProcedure;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.io.Serializable;
 import java.math.BigDecimal;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record PatientProcedurePreAssessmentDTO(
         Boolean fastingRequired,
         Boolean patientPrepared,

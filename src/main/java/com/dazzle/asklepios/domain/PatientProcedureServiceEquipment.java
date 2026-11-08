@@ -32,8 +32,9 @@ public class PatientProcedureServiceEquipment extends AbstractAuditingEntity<Lon
     @JsonIgnore
     private PatientProcedure patientProcedure;
 
-    @Column(name = "service_id", nullable = false)
-    private Long serviceId;
+    /** The line in patient_services_and_products that was added from this procedure. */
+    @Column(name = "service_product_id", nullable = false)
+    private Long serviceProductId;
 
     @JsonProperty("patientProcedureId")
     public Long getPatientProcedureIdJson() {

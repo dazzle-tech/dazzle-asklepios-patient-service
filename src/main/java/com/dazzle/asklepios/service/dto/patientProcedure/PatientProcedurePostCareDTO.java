@@ -1,17 +1,20 @@
 package com.dazzle.asklepios.service.dto.patientProcedure;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.util.Set;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record PatientProcedurePostCareDTO(
-        Long diagnosisIcdId,
-        String diagnosisDescription,
+        Set<Long> diagnosisIcdIds,
         String patientCondition,
         BigDecimal bloodPressureSystolic,
         BigDecimal bloodPressureDiastolic,
         BigDecimal heartRate,
         BigDecimal temperature,
         BigDecimal oxygenSaturation,
+        String painAssessmentType,
         String painScore,
         String painDescription,
         String recoveryNotes,

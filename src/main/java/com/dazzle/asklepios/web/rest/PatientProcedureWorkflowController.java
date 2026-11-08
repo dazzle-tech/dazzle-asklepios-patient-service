@@ -1,21 +1,27 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.domain.PatientProcedure;
+import com.dazzle.asklepios.domain.PatientProcedureComplication;
 import com.dazzle.asklepios.domain.PatientProcedureMedication;
 import com.dazzle.asklepios.domain.PatientProcedurePerformance;
 import com.dazzle.asklepios.domain.PatientProcedurePostCare;
 import com.dazzle.asklepios.domain.PatientProcedurePreAssessment;
-import com.dazzle.asklepios.domain.PatientProcedureServiceEquipment;
+import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.PatientProcedureStaff;
+import com.dazzle.asklepios.domain.PatientProcedureVitalMonitoring;
+import com.dazzle.asklepios.domain.enumeration.Priority;
 import com.dazzle.asklepios.domain.enumeration.ProcStatus;
+import com.dazzle.asklepios.domain.enumeration.ProcedureLevel;
 import com.dazzle.asklepios.service.PatientProcedureWorkflowService;
+import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedureComplicationDTO;
 import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedureMedicationDTO;
 import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedurePerformanceDTO;
 import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedurePostCareDTO;
 import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedurePreAssessmentDTO;
 import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedureRegistrationDTO;
-import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedureServiceEquipmentDTO;
+import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
 import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedureStaffDTO;
+import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedureVitalMonitoringDTO;
 import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedureStatusDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import jakarta.validation.Valid;
@@ -55,13 +61,15 @@ public class PatientProcedureWorkflowController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant fromDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant toDate,
             @RequestParam(required = false) ProcStatus status,
+            @RequestParam(required = false) Priority priority,
+            @RequestParam(required = false) ProcedureLevel procedureLevel,
             @RequestParam(required = false) Long patientId,
             @RequestParam(required = false) Long procedureId,
             @RequestParam(defaultValue = "false") boolean includeCancelled,
             @ParameterObject Pageable pageable
     ) {
         Page<PatientProcedure> page = service.search(
-                fromDate, toDate, status, patientId, procedureId, includeCancelled, pageable);
+                fromDate, toDate, status, priority, procedureLevel, patientId, procedureId, includeCancelled, pageable);
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page);
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
@@ -184,22 +192,69 @@ public class PatientProcedureWorkflowController {
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/{id}/complications")
+    public ResponseEntity<List<PatientProcedureComplication>> findComplications(@PathVariable Long id) {
+        return ResponseEntity.ok(service.findComplications(id));
+    }
+
+    @PostMapping("/{id}/complications")
+    public ResponseEntity<PatientProcedureComplication> addComplication(
+            @PathVariable Long id,
+            @Valid @RequestBody PatientProcedureComplicationDTO dto
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.addComplication(id, dto));
+    }
+
+    @PutMapping("/{id}/complications/{complicationId}")
+    public ResponseEntity<PatientProcedureComplication> updateComplication(
+            @PathVariable Long id,
+            @PathVariable Long complicationId,
+            @Valid @RequestBody PatientProcedureComplicationDTO dto
+    ) {
+        return ResponseEntity.ok(service.updateComplication(id, complicationId, dto));
+    }
+
+    @DeleteMapping("/{id}/complications/{complicationId}")
+    public ResponseEntity<Void> deleteComplication(@PathVariable Long id, @PathVariable Long complicationId) {
+        service.deleteComplication(id, complicationId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{id}/vital-monitoring")
+    public ResponseEntity<List<PatientProcedureVitalMonitoring>> findVitalMonitoring(@PathVariable Long id) {
+        return ResponseEntity.ok(service.findVitalMonitoring(id));
+    }
+
+    @PostMapping("/{id}/vital-monitoring")
+    public ResponseEntity<PatientProcedureVitalMonitoring> addVitalMonitoring(
+            @PathVariable Long id,
+            @Valid @RequestBody PatientProcedureVitalMonitoringDTO dto
+    ) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(service.addVitalMonitoring(id, dto));
+    }
+
+    @DeleteMapping("/{id}/vital-monitoring/{readingId}")
+    public ResponseEntity<Void> deleteVitalMonitoring(@PathVariable Long id, @PathVariable Long readingId) {
+        service.deleteVitalMonitoring(id, readingId);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/{id}/service-equipment")
-    public ResponseEntity<List<PatientProcedureServiceEquipment>> findEquipment(@PathVariable Long id) {
+    public ResponseEntity<List<PatientServiceAndProduct>> findEquipment(@PathVariable Long id) {
         return ResponseEntity.ok(service.findEquipment(id));
     }
 
     @PostMapping("/{id}/service-equipment")
-    public ResponseEntity<PatientProcedureServiceEquipment> addEquipment(
+    public ResponseEntity<PatientServiceAndProduct> addEquipment(
             @PathVariable Long id,
-            @Valid @RequestBody PatientProcedureServiceEquipmentDTO dto
+            @Valid @RequestBody PatientServiceProductCreateDTO dto
     ) {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.addEquipment(id, dto));
     }
 
-    @DeleteMapping("/{id}/service-equipment/{equipmentId}")
-    public ResponseEntity<Void> deleteEquipment(@PathVariable Long id, @PathVariable Long equipmentId) {
-        service.deleteEquipment(id, equipmentId);
+    @DeleteMapping("/{id}/service-equipment/{serviceProductId}")
+    public ResponseEntity<Void> deleteEquipment(@PathVariable Long id, @PathVariable Long serviceProductId) {
+        service.deleteEquipment(id, serviceProductId);
         return ResponseEntity.noContent().build();
     }
 }

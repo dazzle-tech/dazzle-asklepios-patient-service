@@ -63,15 +63,6 @@ public class PatientProcedurePerformance extends AbstractAuditingEntity<Long> im
     @Column(name = "observations", columnDefinition = "text")
     private String observations;
 
-    @Column(name = "complication_type")
-    private String complicationType;
-
-    @Column(name = "complication_severity")
-    private String complicationSeverity;
-
-    @Column(name = "actions_taken", columnDefinition = "text")
-    private String actionsTaken;
-
     @Column(name = "additional_notes", columnDefinition = "text")
     private String additionalNotes;
 

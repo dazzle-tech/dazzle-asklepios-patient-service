@@ -1,29 +1,42 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.domain.PatientProcedure;
+import com.dazzle.asklepios.domain.PatientProcedureComplication;
 import com.dazzle.asklepios.domain.PatientProcedureMedication;
 import com.dazzle.asklepios.domain.PatientProcedurePerformance;
 import com.dazzle.asklepios.domain.PatientProcedurePostCare;
 import com.dazzle.asklepios.domain.PatientProcedurePreAssessment;
 import com.dazzle.asklepios.domain.PatientProcedureServiceEquipment;
+import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.PatientProcedureStaff;
+import com.dazzle.asklepios.domain.PatientProcedureVitalMonitoring;
+import com.dazzle.asklepios.domain.enumeration.Priority;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.ProcStatus;
+import com.dazzle.asklepios.domain.enumeration.ServiceSource;
+import com.dazzle.asklepios.domain.enumeration.ProcedureLevel;
+import com.dazzle.asklepios.repository.PatientProcedureComplicationRepository;
 import com.dazzle.asklepios.repository.PatientProcedureMedicationRepository;
 import com.dazzle.asklepios.repository.PatientProcedurePerformanceRepository;
 import com.dazzle.asklepios.repository.PatientProcedurePostCareRepository;
 import com.dazzle.asklepios.repository.PatientProcedurePreAssessmentRepository;
 import com.dazzle.asklepios.repository.PatientProcedureRepository;
 import com.dazzle.asklepios.repository.PatientProcedureServiceEquipmentRepository;
+import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.repository.PatientProcedureStaffRepository;
+import com.dazzle.asklepios.repository.PatientProcedureVitalMonitoringRepository;
+import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedureComplicationDTO;
 import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedureMedicationDTO;
 import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedurePerformanceDTO;
 import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedurePostCareDTO;
 import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedurePreAssessmentDTO;
 import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedureRegistrationDTO;
-import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedureServiceEquipmentDTO;
+import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
 import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedureStaffDTO;
+import com.dazzle.asklepios.service.dto.patientProcedure.PatientProcedureVitalMonitoringDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -60,9 +73,13 @@ public class PatientProcedureWorkflowService {
     private final PatientProcedurePreAssessmentRepository preAssessmentRepository;
     private final PatientProcedurePerformanceRepository performanceRepository;
     private final PatientProcedureMedicationRepository medicationRepository;
+    private final PatientProcedureComplicationRepository complicationRepository;
+    private final PatientProcedureVitalMonitoringRepository vitalMonitoringRepository;
     private final PatientProcedureServiceEquipmentRepository equipmentRepository;
     private final PatientProcedurePostCareRepository postCareRepository;
     private final EncounterReopenGuard encounterReopenGuard;
+    private final PatientServiceAndProductService serviceAndProductService;
+    private final PatientServiceAndProductRepository serviceAndProductRepository;
 
     public PatientProcedureWorkflowService(
             PatientProcedureRepository procedureRepository,
@@ -70,18 +87,26 @@ public class PatientProcedureWorkflowService {
             PatientProcedurePreAssessmentRepository preAssessmentRepository,
             PatientProcedurePerformanceRepository performanceRepository,
             PatientProcedureMedicationRepository medicationRepository,
+            PatientProcedureComplicationRepository complicationRepository,
+            PatientProcedureVitalMonitoringRepository vitalMonitoringRepository,
             PatientProcedureServiceEquipmentRepository equipmentRepository,
             PatientProcedurePostCareRepository postCareRepository,
-            EncounterReopenGuard encounterReopenGuard
+            EncounterReopenGuard encounterReopenGuard,
+            PatientServiceAndProductService serviceAndProductService,
+            PatientServiceAndProductRepository serviceAndProductRepository
     ) {
         this.procedureRepository = procedureRepository;
         this.staffRepository = staffRepository;
         this.preAssessmentRepository = preAssessmentRepository;
         this.performanceRepository = performanceRepository;
         this.medicationRepository = medicationRepository;
+        this.complicationRepository = complicationRepository;
+        this.vitalMonitoringRepository = vitalMonitoringRepository;
         this.equipmentRepository = equipmentRepository;
         this.postCareRepository = postCareRepository;
         this.encounterReopenGuard = encounterReopenGuard;
+        this.serviceAndProductService = serviceAndProductService;
+        this.serviceAndProductRepository = serviceAndProductRepository;
     }
 
     private PatientProcedure findProcedure(Long procedureId) {
@@ -130,6 +155,8 @@ public class PatientProcedureWorkflowService {
             Instant fromDate,
             Instant toDate,
             ProcStatus status,
+            Priority priority,
+            ProcedureLevel procedureLevel,
             Long patientId,
             Long procedureId,
             boolean includeCancelled,
@@ -137,16 +164,27 @@ public class PatientProcedureWorkflowService {
     ) {
         Specification<PatientProcedure> specification = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
+            // An unscheduled request is listed by the day it was created
+            Expression<Instant> listedDate = cb.coalesce(
+                    root.<Instant>get("scheduledDateTime"),
+                    root.<Instant>get("createdDate")
+            );
             if (fromDate != null) {
-                predicates.add(cb.greaterThanOrEqualTo(root.get("scheduledDateTime"), fromDate));
+                predicates.add(cb.greaterThanOrEqualTo(listedDate, fromDate));
             }
             if (toDate != null) {
-                predicates.add(cb.lessThanOrEqualTo(root.get("scheduledDateTime"), toDate));
+                predicates.add(cb.lessThanOrEqualTo(listedDate, toDate));
             }
             if (status != null) {
                 predicates.add(cb.equal(root.get("status"), status));
             } else if (!includeCancelled) {
                 predicates.add(cb.notEqual(root.get("status"), ProcStatus.CANCELLED));
+            }
+            if (priority != null) {
+                predicates.add(cb.equal(root.get("priority"), priority));
+            }
+            if (procedureLevel != null) {
+                predicates.add(cb.equal(root.get("procedureLevel"), procedureLevel));
             }
             if (patientId != null) {
                 predicates.add(cb.equal(root.get("patient").get("id"), patientId));
@@ -259,21 +297,106 @@ public class PatientProcedureWorkflowService {
     }
 
     @Transactional(readOnly = true)
-    public List<PatientProcedureServiceEquipment> findEquipment(Long procedureId) {
-        return equipmentRepository.findByPatientProcedure_IdOrderByIdAsc(procedureId);
+    public List<PatientProcedureComplication> findComplications(Long procedureId) {
+        return complicationRepository.findByPatientProcedure_IdOrderByIdAsc(procedureId);
     }
 
-    public PatientProcedureServiceEquipment addEquipment(Long procedureId, PatientProcedureServiceEquipmentDTO dto) {
-        PatientProcedureServiceEquipment equipment = new PatientProcedureServiceEquipment();
-        equipment.setPatientProcedure(findWritableProcedure(procedureId));
-        apply(equipment, dto);
-        return equipmentRepository.save(equipment);
+    public PatientProcedureComplication addComplication(Long procedureId, PatientProcedureComplicationDTO dto) {
+        PatientProcedureComplication complication = new PatientProcedureComplication();
+        complication.setPatientProcedure(findWritableProcedure(procedureId));
+        apply(complication, dto);
+        return complicationRepository.save(complication);
     }
 
-    public void deleteEquipment(Long procedureId, Long equipmentId) {
+    public PatientProcedureComplication updateComplication(
+            Long procedureId,
+            Long complicationId,
+            PatientProcedureComplicationDTO dto
+    ) {
         findWritableProcedure(procedureId);
-        equipmentRepository.delete(equipmentRepository.findByIdAndPatientProcedure_Id(equipmentId, procedureId)
+        PatientProcedureComplication complication = complicationRepository
+                .findByIdAndPatientProcedure_Id(complicationId, procedureId)
+                .orElseThrow(PatientProcedureWorkflowService::childNotFound);
+        apply(complication, dto);
+        return complicationRepository.save(complication);
+    }
+
+    public void deleteComplication(Long procedureId, Long complicationId) {
+        findWritableProcedure(procedureId);
+        complicationRepository.delete(complicationRepository.findByIdAndPatientProcedure_Id(complicationId, procedureId)
                 .orElseThrow(PatientProcedureWorkflowService::childNotFound));
+    }
+
+    @Transactional(readOnly = true)
+    public List<PatientProcedureVitalMonitoring> findVitalMonitoring(Long procedureId) {
+        return vitalMonitoringRepository.findByPatientProcedure_IdOrderByRecordedAtAscIdAsc(procedureId);
+    }
+
+    public PatientProcedureVitalMonitoring addVitalMonitoring(Long procedureId, PatientProcedureVitalMonitoringDTO dto) {
+        PatientProcedureVitalMonitoring reading = new PatientProcedureVitalMonitoring();
+        reading.setPatientProcedure(findWritableProcedure(procedureId));
+        apply(reading, dto);
+        return vitalMonitoringRepository.save(reading);
+    }
+
+    public void deleteVitalMonitoring(Long procedureId, Long readingId) {
+        findWritableProcedure(procedureId);
+        vitalMonitoringRepository.delete(vitalMonitoringRepository.findByIdAndPatientProcedure_Id(readingId, procedureId)
+                .orElseThrow(PatientProcedureWorkflowService::childNotFound));
+    }
+
+    /** The services and products added from this procedure, without cancelled ones. */
+    @Transactional(readOnly = true)
+    public List<PatientServiceAndProduct> findEquipment(Long procedureId) {
+        List<Long> itemIds = equipmentRepository.findByPatientProcedure_IdOrderByIdAsc(procedureId).stream()
+                .map(PatientProcedureServiceEquipment::getServiceProductId)
+                .toList();
+        return serviceAndProductRepository.findAllById(itemIds).stream()
+                .filter(item -> item.getPaymentStatus() != PaymentStatus.CANCELLED)
+                .sorted(java.util.Comparator.comparing(PatientServiceAndProduct::getId))
+                .toList();
+    }
+
+    /**
+     * Adds the item to the encounter's services and products, billed like one added from the
+     * encounter itself, and records that it came from this procedure.
+     */
+    public PatientServiceAndProduct addEquipment(Long procedureId, PatientServiceProductCreateDTO dto) {
+        PatientProcedure procedure = findWritableProcedure(procedureId);
+        PatientServiceAndProduct item = serviceAndProductService.create(new PatientServiceProductCreateDTO(
+                procedure.getPatient().getId(),
+                procedure.getEncounter().getId(),
+                dto.billingItemType(),
+                dto.brandMedicationId(),
+                dto.diagnosticTestId(),
+                dto.serviceId(),
+                dto.procedureId(),
+                dto.quantity(),
+                dto.unitPrice(),
+                dto.currency(),
+                ServiceSource.SERVICE_AND_PRODUCT,
+                null,
+                dto.notes(),
+                dto.acceptUncoveredAsCash(),
+                dto.uomGroupUnitId(),
+                dto.vaccineBrandId()
+        ));
+
+        PatientProcedureServiceEquipment link = new PatientProcedureServiceEquipment();
+        link.setPatientProcedure(procedure);
+        link.setServiceProductId(item.getId());
+        equipmentRepository.save(link);
+        return item;
+    }
+
+    /** Cancels the item the same way the encounter screen does, then forgets the link. */
+    public void deleteEquipment(Long procedureId, Long serviceProductId) {
+        findWritableProcedure(procedureId);
+        PatientProcedureServiceEquipment link = equipmentRepository
+                .findByPatientProcedure_IdAndServiceProductId(procedureId, serviceProductId)
+                .orElseThrow(PatientProcedureWorkflowService::childNotFound);
+        serviceAndProductService.remove(serviceProductId);
+        equipmentRepository.delete(link);
     }
 
     private static void apply(PatientProcedureStaff entity, PatientProcedureStaffDTO dto) {
@@ -312,9 +435,6 @@ public class PatientProcedureWorkflowService {
         entity.setTimeOut(Boolean.TRUE.equals(dto.timeOut()));
         entity.setProcedureOutcome(dto.procedureOutcome());
         entity.setObservations(dto.observations());
-        entity.setComplicationType(dto.complicationType());
-        entity.setComplicationSeverity(dto.complicationSeverity());
-        entity.setActionsTaken(dto.actionsTaken());
         entity.setAdditionalNotes(dto.additionalNotes());
         entity.setHomeInstruction(dto.homeInstruction());
         entity.setHomeInstructionNotes(dto.homeInstructionNotes());
@@ -326,19 +446,37 @@ public class PatientProcedureWorkflowService {
         entity.setUnit(dto.unit());
     }
 
-    private static void apply(PatientProcedureServiceEquipment entity, PatientProcedureServiceEquipmentDTO dto) {
-        entity.setServiceId(dto.serviceId());
+    private static void apply(PatientProcedureComplication entity, PatientProcedureComplicationDTO dto) {
+        entity.setComplicationType(dto.complicationType());
+        entity.setSeverity(dto.severity());
+        entity.setActionsTaken(dto.actionsTaken());
+    }
+
+    private static void apply(PatientProcedureVitalMonitoring entity, PatientProcedureVitalMonitoringDTO dto) {
+        entity.setRecordedAt(dto.recordedAt());
+        entity.setHeartRate(dto.heartRate());
+        entity.setOxygenSaturation(dto.oxygenSaturation());
+        entity.setBloodPressureSystolic(dto.bloodPressureSystolic());
+        entity.setBloodPressureDiastolic(dto.bloodPressureDiastolic());
+        entity.setRespiratoryRate(dto.respiratoryRate());
+        entity.setTemperature(dto.temperature());
+        entity.setEtco2(dto.etco2());
+        entity.setFluidsGiven(dto.fluidsGiven());
+        entity.setUrineOutput(dto.urineOutput());
     }
 
     private static void apply(PatientProcedurePostCare entity, PatientProcedurePostCareDTO dto) {
-        entity.setDiagnosisIcdId(dto.diagnosisIcdId());
-        entity.setDiagnosisDescription(dto.diagnosisDescription());
+        entity.getDiagnosisIcdIds().clear();
+        if (dto.diagnosisIcdIds() != null) {
+            entity.getDiagnosisIcdIds().addAll(dto.diagnosisIcdIds());
+        }
         entity.setPatientCondition(dto.patientCondition());
         entity.setBloodPressureSystolic(dto.bloodPressureSystolic());
         entity.setBloodPressureDiastolic(dto.bloodPressureDiastolic());
         entity.setHeartRate(dto.heartRate());
         entity.setTemperature(dto.temperature());
         entity.setOxygenSaturation(dto.oxygenSaturation());
+        entity.setPainAssessmentType(dto.painAssessmentType());
         entity.setPainScore(dto.painScore());
         entity.setPainDescription(dto.painDescription());
         entity.setRecoveryNotes(dto.recoveryNotes());

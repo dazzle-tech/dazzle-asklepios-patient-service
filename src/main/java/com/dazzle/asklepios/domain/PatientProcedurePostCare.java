@@ -2,7 +2,9 @@ package com.dazzle.asklepios.domain;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
@@ -13,6 +15,8 @@ import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import java.io.Serializable;
 import java.math.BigDecimal;
+import java.util.HashSet;
+import java.util.Set;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -33,11 +37,13 @@ public class PatientProcedurePostCare extends AbstractAuditingEntity<Long> imple
     @JsonIgnore
     private PatientProcedure patientProcedure;
 
-    @Column(name = "diagnosis_icd_id")
-    private Long diagnosisIcdId;
-
-    @Column(name = "diagnosis_description", length = 500)
-    private String diagnosisDescription;
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(
+            name = "patient_procedure_post_care_diagnosis",
+            joinColumns = @JoinColumn(name = "post_care_id")
+    )
+    @Column(name = "diagnosis_icd_id", nullable = false)
+    private Set<Long> diagnosisIcdIds = new HashSet<>();
 
     @Column(name = "patient_condition", columnDefinition = "text")
     private String patientCondition;
@@ -56,6 +62,9 @@ public class PatientProcedurePostCare extends AbstractAuditingEntity<Long> imple
 
     @Column(name = "oxygen_saturation")
     private BigDecimal oxygenSaturation;
+
+    @Column(name = "pain_assessment_type")
+    private String painAssessmentType;
 
     @Column(name = "pain_score")
     private String painScore;

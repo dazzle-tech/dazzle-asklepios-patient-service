@@ -13,4 +13,9 @@ public interface PatientProcedureServiceEquipmentRepository extends JpaRepositor
     List<PatientProcedureServiceEquipment> findByPatientProcedure_IdOrderByIdAsc(Long patientProcedureId);
 
     Optional<PatientProcedureServiceEquipment> findByIdAndPatientProcedure_Id(Long id, Long patientProcedureId);
+
+    Optional<PatientProcedureServiceEquipment> findByPatientProcedure_IdAndServiceProductId(
+            Long patientProcedureId,
+            Long serviceProductId
+    );
 }
