@@ -50,6 +50,7 @@ application:
       refund-endpoint: ${NAMI_REFUND_ENDPOINT:/api/payments/performTransaction}
       reversal-endpoint: ${NAMI_REVERSAL_ENDPOINT:/api/payments/performTransaction}
       register-endpoint: ${NAMI_REGISTER_ENDPOINT:/api/terminals/register}
+      terminal-by-serial-number-endpoint: ${NAMI_TERMINAL_BY_SERIAL_NUMBER_ENDPOINT:/api/terminals/terminalBySerialNo/{terminalSerialNumber}}
       webhook-generate-url-endpoint: ${NAMI_WEBHOOK_GENERATE_URL_ENDPOINT:/api/webhooks/generate-url}
       webhook-register-endpoint: ${NAMI_WEBHOOK_REGISTER_ENDPOINT:/api/webhooks/register}
       webhook-base-url: ${NAMI_WEBHOOK_BASE_URL:https://api-tst.onehealth.com.sa}
