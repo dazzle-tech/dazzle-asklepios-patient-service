@@ -220,6 +220,7 @@ public class CatalogItemPricingPreviewService {
 
         BigDecimal patientShareAmount = finalNet;
         BigDecimal insuranceShareAmount = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        BigDecimal contractDiscount = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
         if (insurance != null
                 && !requiresCashConfirmation
                 && !Boolean.TRUE.equals(previewItem.getIsExempted())) {
@@ -231,6 +232,10 @@ public class CatalogItemPricingPreviewService {
                     );
             patientShareAmount = money(split.patientShare());
             insuranceShareAmount = money(split.insuranceShare());
+            contractDiscount = finalNet
+                    .subtract(patientShareAmount)
+                    .subtract(insuranceShareAmount)
+                    .max(BigDecimal.ZERO);
         }
 
         LOG.info(
@@ -258,9 +263,9 @@ public class CatalogItemPricingPreviewService {
                         ? request.currency()
                         : resolvedPrice.currency(),
                 itemGross,
-                totalDiscount,
+                totalDiscount.add(contractDiscount),
                 totalTax,
-                finalNet,
+                finalNet.subtract(contractDiscount),
                 itemGross,
                 itemDiscount,
                 itemTax,

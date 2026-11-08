@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.dto.PayorDTO;
+import com.dazzle.asklepios.client.setup.dto.TpaResolutionDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.repository.PatientInsuranceCoverageRepository;
@@ -83,7 +84,7 @@ public class PatientInsuranceService {
                 payor == null ? null : payor.waseelPayerId()
         );
         insuranceRegistrationGuard.requireRegistrable(payerNphiesId, dto.policyNumber(), dto.policyClassName());
-        String tpaNphiesId = payor == null ? null : clean(payor.tpaNphiesId());
+        TpaResolutionDTO tpa = payorHelper.resolveTpa(payerNphiesId, dto.policyNumber(), dto.tpaNphiesId());
         String payerName = nphiesPayerHelper.resolvePayerDisplayName(payerNphiesId, null);
         if (payerName == null && payor != null) {
             payerName = payor.name();
@@ -112,7 +113,8 @@ public class PatientInsuranceService {
 
                 .memberCardId(dto.memberCardId())
                 .payerNphiesId(payerNphiesId)
-                .tpaNphiesId(tpaNphiesId)
+                .tpaNphiesId(tpa.tpaNphiesId())
+                .tpaName(tpa.tpaName())
                 .payerName(payerName)
                 .networkId(dto.networkId())
                 .sponsorNumber(dto.sponsorNumber())
@@ -152,6 +154,8 @@ public class PatientInsuranceService {
                         "notfound"
                 ));
 
+        String previousPayerNphiesId = existing.getPayerNphiesId();
+
         existing.setPatient(refPatient(dto.patientId()));
         Long payorId = payorHelper.resolvePayorId(dto.payorId(), dto.payerNphiesId());
         if (payorId == null) {
@@ -190,7 +194,15 @@ public class PatientInsuranceService {
                 dto.policyNumber(),
                 dto.policyClassName()
         );
-        existing.setTpaNphiesId(payor == null ? null : clean(payor.tpaNphiesId()));
+        boolean samePayer = existing.getPayerNphiesId() != null
+                && existing.getPayerNphiesId().equalsIgnoreCase(previousPayerNphiesId);
+        TpaResolutionDTO tpa = payorHelper.resolveTpa(
+                existing.getPayerNphiesId(),
+                dto.policyNumber(),
+                firstNonBlank(dto.tpaNphiesId(), samePayer ? existing.getTpaNphiesId() : null)
+        );
+        existing.setTpaNphiesId(tpa.tpaNphiesId());
+        existing.setTpaName(tpa.tpaName());
         existing.setPayerName(
                 nphiesPayerHelper.resolvePayerDisplayName(existing.getPayerNphiesId(), existing.getPayerName())
         );

@@ -4,6 +4,7 @@ import com.dazzle.asklepios.client.setup.NphiesPayerClient;
 import com.dazzle.asklepios.client.setup.PayorClient;
 import com.dazzle.asklepios.client.setup.dto.NphiesPayerDTO;
 import com.dazzle.asklepios.client.setup.dto.PayorDTO;
+import com.dazzle.asklepios.client.setup.dto.TpaResolutionDTO;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.springframework.stereotype.Service;
 
@@ -93,6 +94,10 @@ public class PayorHelper {
         }
 
         return ensurePayorFromNphiesId(nphiesId);
+    }
+
+    public TpaResolutionDTO resolveTpa(String payerNphiesId, String policyNumber, String preferredTpaNphiesId) {
+        return payorClient.resolveTpa(payerNphiesId, policyNumber, preferredTpaNphiesId);
     }
 
     private PayorDTO ensurePayorFromNphiesId(String payerNphiesId) {

@@ -10,6 +10,7 @@ import com.dazzle.asklepios.integration.waseel.dto.EncounterPreAuthorizationRefr
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.response.PreAuthorizationSearchItem;
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.response.PreAuthorizationSearchResponse;
 import com.dazzle.asklepios.integration.waseel.event.PreAuthorizationApprovedEvent;
+import com.dazzle.asklepios.integration.waseel.event.PreAuthorizationDecisionCommittedEvent;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.repository.PreAuthorizationItemRepository;
 import com.dazzle.asklepios.repository.PreAuthorizationRequestRepository;
@@ -42,8 +43,6 @@ public class PreAuthorizationStatusRefreshService {
     private final PreAuthorizationItemRepository preAuthorizationItemRepository;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
-    private final EncounterInsuranceResponsibilityRefreshService
-            encounterInsuranceResponsibilityRefreshService;
     private final CoverageApprovalRoutingService coverageApprovalRoutingService;
 
     @Transactional
@@ -122,16 +121,8 @@ public class PreAuthorizationStatusRefreshService {
         }
 
         if (rejectedItemCount > 0 || approvedItemCount > 0) {
-            int refreshedLines =
-                    encounterInsuranceResponsibilityRefreshService.refreshEncounter(
-                            encounterId
-                    );
-
-            LOG.info(
-                    "[PREAUTH_REFRESH] Refreshed billing responsibilities "
-                            + "encounterId={} refreshedLines={}",
-                    encounterId,
-                    refreshedLines
+            applicationEventPublisher.publishEvent(
+                    new PreAuthorizationDecisionCommittedEvent(encounterId)
             );
         }
 
@@ -163,6 +154,47 @@ public class PreAuthorizationStatusRefreshService {
                 message,
                 refreshedItems
         );
+    }
+
+    /**
+     * Refresh of one request from the pre-authorization screen. The decision also reaches its
+     * billing lines, so a rejected line waits on the patient's choice as it does after the
+     * refresh in the patient account. A cancelled or replaced request no longer owns any line.
+     */
+    @Transactional
+    public PreAuthorizationSearchResponse refreshRequest(Long preAuthorizationId, Long requestId) {
+        PreAuthorizationSearchResponse searchResponse =
+                waseelPreAuthorizationService.searchAndUpdate(preAuthorizationId, requestId);
+
+        PreAuthorizationRequest request = (preAuthorizationId != null
+                ? preAuthorizationRequestRepository.findById(preAuthorizationId)
+                : preAuthorizationRequestRepository.findFirstByApprovalRequestIdOrderByIdDesc(requestId))
+                .orElse(null);
+
+        if (request == null
+                || Boolean.TRUE.equals(request.getIsCancelled())
+                || patientServiceAndProductRepository.findByPreAuthorizationRequestId(request.getId()).isEmpty()) {
+            return searchResponse;
+        }
+
+        PropagationResult propagationResult = propagateSearchResponse(request, searchResponse);
+
+        if (!propagationResult.approvedPatientItemIds().isEmpty()) {
+            applicationEventPublisher.publishEvent(
+                    new PreAuthorizationApprovedEvent(
+                            request.getEncounterId(),
+                            propagationResult.approvedPatientItemIds()
+                    )
+            );
+        }
+
+        if (propagationResult.rejectedCount() > 0 || propagationResult.approvedCount() > 0) {
+            applicationEventPublisher.publishEvent(
+                    new PreAuthorizationDecisionCommittedEvent(request.getEncounterId())
+            );
+        }
+
+        return searchResponse;
     }
 
     /**
@@ -282,8 +314,9 @@ public class PreAuthorizationStatusRefreshService {
                         request.getId()
                 );
 
-        PreAuthorizationStatus headerStatus = PreAuthorizationWaseelStatusMapper.mapStatusText(
-                firstNonBlank(request.getStatus(), request.getOutcome())
+        PreAuthorizationStatus headerStatus = PreAuthorizationWaseelStatusMapper.mapStatusAndOutcome(
+                request.getStatus(),
+                request.getOutcome()
         );
 
         String headerWaseelStatus = firstNonBlank(request.getStatus(), request.getOutcome());

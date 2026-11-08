@@ -56,7 +56,7 @@ public class EncounterInsuranceEligibilityService {
                 insurance.getId(),
                 payment.getEncounter().getId(),
                 LocalDate.now(),
-                resolveDestinationId(insurance),
+                null,
                 true,
                 false,
                 true,
@@ -265,22 +265,6 @@ public class EncounterInsuranceEligibilityService {
                     "policyNumber.required"
             );
         }
-    }
-
-    private String resolveDestinationId(PatientInsurance insurance) {
-        if (insurance == null) {
-            return null;
-        }
-
-        if (!isBlank(insurance.getTpaNphiesId())) {
-            return insurance.getTpaNphiesId().trim();
-        }
-
-        if (!isBlank(insurance.getPayerNphiesId())) {
-            return insurance.getPayerNphiesId().trim();
-        }
-
-        return null;
     }
 
     private boolean isBlank(String value) {

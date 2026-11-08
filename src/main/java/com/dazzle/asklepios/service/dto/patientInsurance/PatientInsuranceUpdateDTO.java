@@ -34,6 +34,9 @@ public record PatientInsuranceUpdateDTO(
         String payerNphiesId,
 
         @Size(max = 100)
+        String tpaNphiesId,
+
+        @Size(max = 100)
         String networkId,
 
         @Size(max = 100)

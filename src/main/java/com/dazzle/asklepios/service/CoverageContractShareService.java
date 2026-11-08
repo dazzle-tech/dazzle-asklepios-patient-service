@@ -4,13 +4,17 @@ import com.dazzle.asklepios.client.setup.CoverageContractClient;
 import com.dazzle.asklepios.client.setup.dto.CoverageContractResolveDtos;
 import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.service.helper.PayorHelper;
+import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.PatientDiagnosis;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
+import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.PatientDiagnosisRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
@@ -24,9 +28,12 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -45,6 +52,7 @@ public class CoverageContractShareService {
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientDiagnosisRepository patientDiagnosisRepository;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
+    private final BillingChargeLineRepository billingChargeLineRepository;
 
     /**
      * Non-Wasel path: Coverages first (insurance covered amount), then existing copayment
@@ -287,8 +295,9 @@ public class CoverageContractShareService {
         if (currentBasis.signum() <= 0) {
             return false;
         }
-        BigDecimal remaining = remainingRoom(item, insurance, limit, currentBasis);
-        return remaining != null && remaining.compareTo(currentBasis) < 0;
+        // The limit is crossed by the visit total, whatever order its lines were billed in.
+        BigDecimal usedByOtherLines = basisOf(periodItems(item, insurance, limit, false), item, insurance, limit, false);
+        return usedByOtherLines.add(currentBasis).compareTo(money(limit.limitValue())) > 0;
     }
 
     /**
@@ -464,7 +473,7 @@ public class CoverageContractShareService {
         }
 
         BigDecimal maxInsurance = normalizedNet;
-        if (resolved.limit() != null) {
+        if (resolved.limit() != null && !isApprovedLocally(item, resolved)) {
             BigDecimal coverageRemaining = remainingRoom(
                     item,
                     insurance,
@@ -672,7 +681,7 @@ public class CoverageContractShareService {
             CoverageContractResolveDtos.CoverageReadingSnapshot cashLimit
     ) {
         BigDecimal consumed = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
-        for (PatientServiceAndProduct previous : periodItems(item, insurance, cashLimit, true)) {
+        for (PatientServiceAndProduct previous : earlierLines(item, insurance, cashLimit, true)) {
             if (!countsTowardCashLimit(previous, item, insurance, cashLimit)) {
                 continue;
             }
@@ -687,8 +696,18 @@ public class CoverageContractShareService {
             CoverageContractResolveDtos.CoverageReadingSnapshot limit,
             boolean cashPool
     ) {
+        return basisOf(earlierLines(item, insurance, limit, cashPool), item, insurance, limit, cashPool);
+    }
+
+    private BigDecimal basisOf(
+            List<PatientServiceAndProduct> lines,
+            PatientServiceAndProduct item,
+            PatientInsurance insurance,
+            CoverageContractResolveDtos.CoverageReadingSnapshot limit,
+            boolean cashPool
+    ) {
         BigDecimal consumed = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
-        for (PatientServiceAndProduct previous : periodItems(item, insurance, limit, cashPool)) {
+        for (PatientServiceAndProduct previous : lines) {
             if (cashPool) {
                 if (!countsTowardCashLimit(previous, item, insurance, limit)) {
                     continue;
@@ -751,10 +770,13 @@ public class CoverageContractShareService {
         if (previous == null) {
             return false;
         }
-        if (current.getId() != null && Objects.equals(previous.getId(), current.getId())) {
+        if (isSameLine(previous, current)) {
             return false;
         }
         if (previous.getPaymentStatus() == PaymentStatus.CANCELLED) {
+            return false;
+        }
+        if (PreAuthorizationResolutionService.isDeclinedByPayer(previous)) {
             return false;
         }
         if (previous.isUncoveredCashItem() || isContractExclusion(previous)) {
@@ -770,6 +792,57 @@ public class CoverageContractShareService {
             return false;
         }
         return matchesReading(previous, limit);
+    }
+
+    private boolean isSameLine(PatientServiceAndProduct previous, PatientServiceAndProduct current) {
+        return current.getId() != null && current.getId().equals(previous.getId());
+    }
+
+    /**
+     * A period limit is spent in billing order: a line uses what the lines billed before it left,
+     * so recalculating it must not count the lines billed after it. Lines of one order are not
+     * billed in id order, so the charge line decides. A line with no charge line yet (held for
+     * approval, or a preview) already claims its share of the limit.
+     */
+    private List<PatientServiceAndProduct> earlierLines(
+            PatientServiceAndProduct item,
+            PatientInsurance insurance,
+            CoverageContractResolveDtos.CoverageReadingSnapshot reading,
+            boolean cashPool
+    ) {
+        List<PatientServiceAndProduct> lines = periodItems(item, insurance, reading, cashPool).stream()
+                .filter(Objects::nonNull)
+                .toList();
+        Map<Long, Long> chargeLineIds = chargeLineIdsByItem(lines);
+        Long currentChargeLineId = chargeLineIds.get(item.getId());
+        return lines.stream()
+                .filter(line -> isBilledBefore(chargeLineIds.get(line.getId()), currentChargeLineId))
+                .toList();
+    }
+
+    private boolean isBilledBefore(Long chargeLineId, Long currentChargeLineId) {
+        return chargeLineId == null || currentChargeLineId == null || chargeLineId < currentChargeLineId;
+    }
+
+    private Map<Long, Long> chargeLineIdsByItem(List<PatientServiceAndProduct> lines) {
+        List<Long> itemIds = lines.stream()
+                .map(PatientServiceAndProduct::getId)
+                .filter(Objects::nonNull)
+                .toList();
+        if (itemIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return billingChargeLineRepository
+                .findAllByPatientServiceProduct_IdInAndStatusNotInOrderByIdAsc(
+                        itemIds,
+                        List.of(BillingChargeLineStatus.CANCELLED, BillingChargeLineStatus.REVERSED)
+                )
+                .stream()
+                .collect(Collectors.toMap(
+                        line -> line.getPatientServiceProduct().getId(),
+                        BillingChargeLine::getId,
+                        Math::max
+                ));
     }
 
     /**
@@ -805,7 +878,7 @@ public class CoverageContractShareService {
         if (previous == null) {
             return false;
         }
-        if (current.getId() != null && Objects.equals(previous.getId(), current.getId())) {
+        if (isSameLine(previous, current)) {
             return false;
         }
         if (previous.getPaymentStatus() == PaymentStatus.CANCELLED) {
@@ -1022,7 +1095,7 @@ public class CoverageContractShareService {
             return BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
         }
         BigDecimal consumed = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
-        for (PatientServiceAndProduct previous : periodItems(item, insurance, coverage, false)) {
+        for (PatientServiceAndProduct previous : earlierLines(item, insurance, coverage, false)) {
             if (!countsTowardLimit(previous, item, insurance, coverage)) {
                 continue;
             }

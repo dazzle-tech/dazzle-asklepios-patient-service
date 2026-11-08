@@ -3,10 +3,13 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.client.setup.CoverageContractClient;
 import com.dazzle.asklepios.client.setup.PayorClient;
 import com.dazzle.asklepios.client.setup.dto.CoverageContractResolveDtos;
+import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
+import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.PatientDiagnosisRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
@@ -47,6 +50,9 @@ class CoverageContractShareServiceTest {
 
     @Mock
     private PatientServiceAndProductRepository patientServiceAndProductRepository;
+
+    @Mock
+    private BillingChargeLineRepository billingChargeLineRepository;
 
     @InjectMocks
     private CoverageContractShareService coverageContractShareService;
@@ -1096,6 +1102,170 @@ class CoverageContractShareServiceTest {
                 null
         ));
         assertThat(coverageContractShareService.usesNphiesApprovalCoverage(insurance(), item())).isFalse();
+    }
+
+    @Test
+    void calculateSplit_approvedLinePaysOnlyTheCashLimitBeyondTheCoverageLimit() {
+        when(coverageContractClient.resolve(any())).thenReturn(limitAndCashLimit("NPHIES"));
+        when(insuranceCalculationService.calculateSplit(any(), any(), any()))
+                .thenReturn(new InsuranceSplit(new BigDecimal("200.0000"), new BigDecimal("800.0000")));
+        when(patientServiceAndProductRepository.findByEncounterId(12L)).thenReturn(List.of(previousItem("900")));
+        PatientServiceAndProduct approved = item();
+        approved.setPreAuthorizationRequestId(5L);
+        approved.setPreAuthorizationStatus(PreAuthorizationStatus.APPROVED);
+
+        Optional<InsuranceSplit> split =
+                coverageContractShareService.calculateSplit(insurance(), approved, new BigDecimal("1000"));
+
+        assertThat(split).isPresent();
+        assertThat(split.get().patientShare()).isEqualByComparingTo("50.0000");
+        assertThat(split.get().insuranceShare()).isEqualByComparingTo("950.0000");
+    }
+
+    @Test
+    void calculateSplit_unapprovedLineStaysUnderTheCoverageLimit() {
+        when(coverageContractClient.resolve(any())).thenReturn(limitAndCashLimit("NPHIES"));
+        when(insuranceCalculationService.calculateSplit(any(), any(), any()))
+                .thenReturn(new InsuranceSplit(new BigDecimal("200.0000"), new BigDecimal("800.0000")));
+        when(patientServiceAndProductRepository.findByEncounterId(12L)).thenReturn(List.of(previousItem("900")));
+
+        Optional<InsuranceSplit> split =
+                coverageContractShareService.calculateSplit(insurance(), item(), new BigDecimal("1000"));
+
+        assertThat(split).isPresent();
+        assertThat(split.get().patientShare()).isEqualByComparingTo("900.0000");
+        assertThat(split.get().insuranceShare()).isEqualByComparingTo("100.0000");
+    }
+
+    @Test
+    void calculateSplit_linesAddedLaterDoNotConsumeTheLimitOfAnEarlierLine() {
+        when(coverageContractClient.resolve(any())).thenReturn(coverageLimit());
+        when(insuranceCalculationService.calculateSplit(any(), any(), any()))
+                .thenReturn(new InsuranceSplit(new BigDecimal("160.0000"), new BigDecimal("640.0000")));
+        PatientServiceAndProduct laterLine = previousItem("900");
+        laterLine.setId(50L);
+        when(patientServiceAndProductRepository.findByEncounterId(12L)).thenReturn(List.of(laterLine));
+        chargeLines(chargeLine(1L, item()), chargeLine(2L, laterLine));
+
+        Optional<InsuranceSplit> split =
+                coverageContractShareService.calculateSplit(insurance(), item(), new BigDecimal("1000"));
+
+        assertThat(split).isPresent();
+        assertThat(split.get().patientShare()).isEqualByComparingTo("360.0000");
+        assertThat(split.get().insuranceShare()).isEqualByComparingTo("640.0000");
+    }
+
+    @Test
+    void calculateSplit_billingOrderDecidesNotTheLineId() {
+        when(coverageContractClient.resolve(any())).thenReturn(coverageLimit());
+        when(insuranceCalculationService.calculateSplit(any(), any(), any()))
+                .thenReturn(new InsuranceSplit(new BigDecimal("160.0000"), new BigDecimal("640.0000")));
+        PatientServiceAndProduct higherIdBilledFirst = previousItem("900");
+        higherIdBilledFirst.setId(50L);
+        when(patientServiceAndProductRepository.findByEncounterId(12L)).thenReturn(List.of(higherIdBilledFirst));
+        chargeLines(chargeLine(1L, higherIdBilledFirst), chargeLine(2L, item()));
+
+        Optional<InsuranceSplit> split =
+                coverageContractShareService.calculateSplit(insurance(), item(), new BigDecimal("1000"));
+
+        assertThat(split).isPresent();
+        assertThat(split.get().patientShare()).isEqualByComparingTo("900.0000");
+        assertThat(split.get().insuranceShare()).isEqualByComparingTo("100.0000");
+    }
+
+    @Test
+    void exceedsCoverageLimit_countsTheWholeVisitWhateverTheBillingOrder() {
+        PatientServiceAndProduct billedAfter = previousItem("455");
+        billedAfter.setId(50L);
+        when(patientServiceAndProductRepository.findByEncounterId(12L)).thenReturn(List.of(billedAfter));
+        chargeLines(chargeLine(1L, item()), chargeLine(2L, billedAfter));
+
+        boolean exceeded = coverageContractShareService.exceedsCoverageLimit(
+                insurance(), item(), limitOf("500"), new BigDecimal("105")
+        );
+
+        assertThat(exceeded).isTrue();
+    }
+
+    @Test
+    void exceedsCoverageLimit_ignoresALineThePayerRejected() {
+        PatientServiceAndProduct rejected = previousItem("455");
+        rejected.setPreAuthorizationStatus(PreAuthorizationStatus.REJECTED);
+        when(patientServiceAndProductRepository.findByEncounterId(12L)).thenReturn(List.of(rejected));
+
+        boolean exceeded = coverageContractShareService.exceedsCoverageLimit(
+                insurance(), item(), limitOf("500"), new BigDecimal("105")
+        );
+
+        assertThat(exceeded).isFalse();
+    }
+
+    @Test
+    void calculateSplit_previewLineComesAfterEverySavedLine() {
+        when(coverageContractClient.resolve(any())).thenReturn(coverageLimit());
+        when(insuranceCalculationService.calculateSplit(any(), any(), any()))
+                .thenReturn(new InsuranceSplit(new BigDecimal("200.0000"), new BigDecimal("800.0000")));
+        PatientServiceAndProduct savedLine = previousItem("900");
+        savedLine.setId(50L);
+        when(patientServiceAndProductRepository.findByEncounterId(12L)).thenReturn(List.of(savedLine));
+        PatientServiceAndProduct preview = item();
+        preview.setId(null);
+
+        Optional<InsuranceSplit> split =
+                coverageContractShareService.calculateSplit(insurance(), preview, new BigDecimal("1000"));
+
+        assertThat(split).isPresent();
+        assertThat(split.get().patientShare()).isEqualByComparingTo("900.0000");
+        assertThat(split.get().insuranceShare()).isEqualByComparingTo("100.0000");
+    }
+
+    private void chargeLines(BillingChargeLine... lines) {
+        when(billingChargeLineRepository.findAllByPatientServiceProduct_IdInAndStatusNotInOrderByIdAsc(any(), any()))
+                .thenReturn(List.of(lines));
+    }
+
+    private BillingChargeLine chargeLine(Long id, PatientServiceAndProduct item) {
+        return BillingChargeLine.builder().id(id).patientServiceProduct(item).build();
+    }
+
+    private CoverageContractResolveDtos.Response limitOf(String amount) {
+        return new CoverageContractResolveDtos.Response(
+                true,
+                "matched",
+                contract("NPHIES"),
+                copayment("PERCENTAGE", "20"),
+                true,
+                false,
+                coverage("PERCENTAGE", "80"),
+                limit("FIXED", amount)
+        );
+    }
+
+    private CoverageContractResolveDtos.Response coverageLimit() {
+        return new CoverageContractResolveDtos.Response(
+                true,
+                "matched",
+                contract(),
+                copayment("PERCENTAGE", "20"),
+                true,
+                false,
+                coverage("PERCENTAGE", "80"),
+                limit("FIXED", "1000")
+        );
+    }
+
+    private CoverageContractResolveDtos.Response limitAndCashLimit(String approvalCoverageCompany) {
+        return new CoverageContractResolveDtos.Response(
+                true,
+                "matched",
+                contract(approvalCoverageCompany),
+                copayment("PERCENTAGE", "20"),
+                true,
+                false,
+                coverage("PERCENTAGE", "80"),
+                limit("FIXED", "1000"),
+                cashLimit("FIXED", "50")
+        );
     }
 
     private PatientInsurance insurance() {

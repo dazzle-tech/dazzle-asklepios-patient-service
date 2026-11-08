@@ -380,6 +380,7 @@ public class DefaultServicePricingPreviewService {
 
         BigDecimal patientShareAmount = BigDecimal.ZERO;
         BigDecimal insuranceShareAmount = BigDecimal.ZERO;
+        BigDecimal contractDiscount = BigDecimal.ZERO;
         String contractCashReason = null;
 
         boolean preAuthorizationRequired =
@@ -410,6 +411,10 @@ public class DefaultServicePricingPreviewService {
                     );
             patientShareAmount = split.patientShare();
             insuranceShareAmount = split.insuranceShare();
+            contractDiscount = pricing.netAmount()
+                    .subtract(patientShareAmount)
+                    .subtract(insuranceShareAmount)
+                    .max(BigDecimal.ZERO);
             if (insuranceShareAmount.signum() == 0 && patientShareAmount.signum() > 0) {
                 contractCashReason = insurancePatientShareCalculator.contractCashReason(insurance, previewItem);
             }
@@ -441,9 +446,9 @@ public class DefaultServicePricingPreviewService {
                 resolvedPrice.setupUnitPrice(),
                 pricing.unitPrice(),
                 pricing.grossAmount(),
-                pricing.discountAmount(),
+                pricing.discountAmount().add(contractDiscount),
                 taxDistribution.appliedTaxAmount(),
-                pricing.netAmount().subtract(droppedTax),
+                pricing.netAmount().subtract(droppedTax).subtract(contractDiscount),
                 priceSource,
                 pricingInput.priceListItemCode(),
                 taxDistribution.patientAmount(),

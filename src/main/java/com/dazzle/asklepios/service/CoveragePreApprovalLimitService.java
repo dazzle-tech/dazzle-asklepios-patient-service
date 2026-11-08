@@ -312,10 +312,12 @@ public class CoveragePreApprovalLimitService {
                 || coverageLimitRequestIds.contains(line.getPreAuthorizationRequestId())) {
             return false;
         }
-        // Lines excluded on the Exclusions tab or on the Coverage Limit rule are outside the limit.
+        // Lines excluded on the Exclusions tab or on the Coverage Limit rule are outside the limit;
+        // an excluded line gets no limit reading at all.
         CoverageContractResolveDtos.Response resolved = resolveQuietly(insurance, line);
         return resolved != null
                 && resolved.matched()
+                && resolved.limit() != null
                 && !isExcluded(resolved)
                 && !coverageContractShareService.isExcludedFromCoverageLimit(line, resolved);
     }
@@ -352,6 +354,7 @@ public class CoveragePreApprovalLimitService {
         PreAuthorizationRequest request = openRequest(context, encounter, insurance, item, net, reason);
         markPendingApproval(item, request);
         item.setPaymentStatus(PaymentStatus.SKIPPED_PENDING_PRE_AUTH);
+        claimLimitWhileHeld(context, insurance, item);
         patientServiceAndProductRepository.save(item);
 
         LOG.info(
@@ -361,6 +364,25 @@ public class CoveragePreApprovalLimitService {
                 request.getId(),
                 net
         );
+    }
+
+    /**
+     * A held line has no charge line yet, but its price already counts toward the visit limit,
+     * so the lines billed after it see the real visit total.
+     */
+    private static void claimLimitWhileHeld(
+            BillingProcessingContext context,
+            PatientInsurance insurance,
+            PatientServiceAndProduct item
+    ) {
+        if (context == null || context.getPricingResult() == null) {
+            return;
+        }
+        item.setGrossAmount(context.getPricingResult().grossAmount());
+        item.setNetAmount(context.getPricingResult().netAmount());
+        if (item.getPatientInsuranceId() == null) {
+            item.setPatientInsuranceId(insurance.getId());
+        }
     }
 
     /** A posted line keeps its posting and payment status; it only waits for the approval decision. */

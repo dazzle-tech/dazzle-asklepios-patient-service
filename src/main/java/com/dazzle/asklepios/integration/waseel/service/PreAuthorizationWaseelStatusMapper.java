@@ -15,9 +15,25 @@ final class PreAuthorizationWaseelStatusMapper {
             return PreAuthorizationStatus.PENDING_APPROVAL;
         }
 
-        return mapStatusText(
-                firstNonBlank(response.status(), response.outcome())
-        );
+        return mapStatusAndOutcome(response.status(), response.outcome());
+    }
+
+    /**
+     * Outcome "error" is a validation failure of the message (for example NPHIES IB-xxxxx), not a
+     * payer decision: the line stays held and the request is resubmitted, so the patient is not
+     * asked to pay or cancel. Otherwise the status wins, because a rejected or partial response
+     * also has the outcome "Processing Complete".
+     */
+    static PreAuthorizationStatus mapStatusAndOutcome(String status, String outcome) {
+        if (isTechnicalError(status) || isTechnicalError(outcome)) {
+            return PreAuthorizationStatus.PENDING_APPROVAL;
+        }
+
+        return mapStatusText(firstNonBlank(status, outcome));
+    }
+
+    private static boolean isTechnicalError(String value) {
+        return value != null && value.toLowerCase(Locale.ROOT).contains("error");
     }
 
     static PreAuthorizationStatus mapItemStatus(PreAuthorizationSearchItem searchItem) {
@@ -65,8 +81,7 @@ final class PreAuthorizationWaseelStatusMapper {
         }
 
         if (normalized.contains("rejected")
-                || normalized.contains("denied")
-                || normalized.contains("error")) {
+                || normalized.contains("denied")) {
             return PreAuthorizationStatus.REJECTED;
         }
 

@@ -172,8 +172,8 @@ public class DiagnosticPreAuthorizationService {
     }
 
     /**
-     * Billing lines of NPHIES-contract visits that wait on the payer decision, or on the
-     * patient's choice after a rejection / partial approval (a declined line that has a
+     * Billing lines of NPHIES-contract visits that wait on the payer decision, and lines of any
+     * visit that wait on the patient's choice after a rejection (a declined line that has a
      * charge line was accepted by the patient as cash).
      */
     private Set<Long> blockedLineIds(Collection<PatientServiceAndProduct> lines) {
@@ -186,14 +186,12 @@ public class DiagnosticPreAuthorizationService {
 
         Set<Long> blocked = new HashSet<>();
         waitingByEncounter.forEach((encounterId, waiting) -> {
-            if (!coverageApprovalRoutingService.encounterUsesLocalApproval(encounterId)) {
-                return;
-            }
-
+            boolean localApproval = coverageApprovalRoutingService.encounterUsesLocalApproval(encounterId);
             Set<Long> chargedItemIds = activeChargedItemIds(encounterId);
             waiting.stream()
                     .filter(line -> line.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL
-                            || !chargedItemIds.contains(line.getId()))
+                            ? localApproval
+                            : !chargedItemIds.contains(line.getId()))
                     .forEach(line -> blocked.add(line.getId()));
         });
         return blocked;

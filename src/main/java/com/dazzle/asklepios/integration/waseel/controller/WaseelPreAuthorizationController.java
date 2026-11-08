@@ -70,7 +70,7 @@ public class WaseelPreAuthorizationController {
             @RequestParam(value = "preAuthorizationId", required = false) Long preAuthorizationId,
             @RequestParam("requestId") Long requestId
     ) {
-        return service.searchAndUpdate(preAuthorizationId, requestId);
+        return preAuthorizationStatusRefreshService.refreshRequest(preAuthorizationId, requestId);
     }
     @PostMapping("/internal/waseel/pre-authorizations/communication")
     public Object communicate(@RequestBody PreAuthorizationCommunicationRequest request) {

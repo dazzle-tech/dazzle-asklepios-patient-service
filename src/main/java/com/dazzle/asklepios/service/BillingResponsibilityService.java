@@ -247,6 +247,8 @@ public class BillingResponsibilityService {
             PatientServiceAndProduct item,
             BillingChargeLine chargeLine
     ) {
+        applyContractDiscount(context, item, chargeLine, BigDecimal.ZERO);
+
         applyTaxDistribution(
                 context,
                 item,
@@ -332,6 +334,8 @@ public class BillingResponsibilityService {
             BillingChargeLine chargeLine,
             BigDecimal calculatedNetAmount
     ) {
+        applyContractDiscount(context, item, chargeLine, BigDecimal.ZERO);
+
         /*
          * Self-pay: the patient carries the whole item, so only the
          * Patient Copayment toggle decides the tax. Claim Share is ignored
@@ -454,23 +458,34 @@ public class BillingResponsibilityService {
             PatientInsurance insurance,
             BigDecimal calculatedNetAmount
     ) {
-        BigDecimal patientShare =
-                calculatePatientInsuranceShare(
+        InsuranceSplit split =
+                calculateInsuranceSplit(
                         context,
                         insurance,
                         item,
                         calculatedNetAmount
                 );
 
+        /*
+         * The split is on the net after the coverage contract discount. What it
+         * leaves out is a price reduction: nobody owes it, so it never reaches
+         * the claim.
+         */
+        applyContractDiscount(
+                context,
+                item,
+                chargeLine,
+                calculatedNetAmount
+                        .subtract(split.patientShare())
+                        .subtract(split.insuranceShare())
+                        .max(BigDecimal.ZERO)
+        );
+
         PartyTaxDistribution taxDistribution =
                 distributeTax(
                         context,
-                        patientShare,
-                        money(
-                                calculatedNetAmount.subtract(
-                                        patientShare
-                                )
-                        )
+                        split.patientShare(),
+                        split.insuranceShare()
                 );
 
         BigDecimal netAmount =
@@ -973,7 +988,37 @@ public class BillingResponsibilityService {
         return !Boolean.FALSE.equals(toggle);
     }
 
-    private BigDecimal calculatePatientInsuranceShare(
+    private void applyContractDiscount(
+            BillingProcessingContext context,
+            PatientServiceAndProduct item,
+            BillingChargeLine chargeLine,
+            BigDecimal contractDiscount
+    ) {
+        PriceCalculationResult pricing =
+                context.getPricingResult();
+
+        BigDecimal discount =
+                money(pricing.discountAmount()).add(money(contractDiscount));
+
+        chargeLine.setContractDiscountAmount(money(contractDiscount));
+        chargeLine.setDiscountAmount(discount);
+        item.setDiscountAmount(discount);
+
+        context.setPricingResult(
+                new PriceCalculationResult(
+                        pricing.quantity(),
+                        pricing.unitPrice(),
+                        pricing.grossAmount(),
+                        discount,
+                        pricing.exemptionAmount(),
+                        pricing.taxableAmount(),
+                        pricing.taxAmount(),
+                        pricing.netAmount()
+                )
+        );
+    }
+
+    private InsuranceSplit calculateInsuranceSplit(
             BillingProcessingContext context,
             PatientInsurance insurance,
             PatientServiceAndProduct item,
@@ -988,6 +1033,7 @@ public class BillingResponsibilityService {
                 );
 
         BigDecimal patientShare = money(split.patientShare());
+        BigDecimal billedNet = patientShare.add(money(split.insuranceShare()));
 
         /*
          * Partial approval (NPHIES contract): insurance covers at most the approved
@@ -995,7 +1041,7 @@ public class BillingResponsibilityService {
          */
         BigDecimal approvedInsuranceAmount = partiallyApprovedInsuranceAmount(item);
         if (approvedInsuranceAmount != null) {
-            patientShare = patientShare.max(money(netAmount.subtract(approvedInsuranceAmount)));
+            patientShare = patientShare.max(money(billedNet.subtract(approvedInsuranceAmount)));
             LOG.info(
                     "[CALCULATE] Partial pre-approval applied pspId={} approvedInsurance={} patientShare={}",
                     item.getId(),
@@ -1004,7 +1050,7 @@ public class BillingResponsibilityService {
             );
         }
 
-        return patientShare;
+        return new InsuranceSplit(patientShare, money(billedNet.subtract(patientShare)));
     }
 
     /**
@@ -1583,7 +1629,8 @@ public class BillingResponsibilityService {
     ) {
         /*
          * Rebuild the amounts as they were before the party toggles removed
-         * any tax, so the new split starts from the full item again.
+         * any tax and before the coverage contract discount, so the new split
+         * starts from the full item again.
          * Lines billed before the toggles existed have no calculated tax and
          * carried the whole tax already.
          */
@@ -1594,16 +1641,19 @@ public class BillingResponsibilityService {
                         ? appliedTax
                         : money(chargeLine.getCalculatedTaxAmount());
 
+        BigDecimal contractDiscount = money(chargeLine.getContractDiscountAmount());
+
         BigDecimal netAmount =
                 money(chargeLine.getNetAmount())
-                        .add(calculatedTax.subtract(appliedTax));
+                        .add(calculatedTax.subtract(appliedTax))
+                        .add(contractDiscount);
 
         PriceCalculationResult pricingResult =
                 new PriceCalculationResult(
                         money(chargeLine.getQuantity()),
                         money(chargeLine.getUnitPrice()),
                         money(chargeLine.getGrossAmount()),
-                        money(chargeLine.getDiscountAmount()),
+                        money(chargeLine.getDiscountAmount()).subtract(contractDiscount),
                         money(chargeLine.getExemptionAmount()),
                         BigDecimal.ZERO,
                         calculatedTax,
