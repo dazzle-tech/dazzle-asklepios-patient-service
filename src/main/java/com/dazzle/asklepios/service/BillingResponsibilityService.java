@@ -336,6 +336,22 @@ public class BillingResponsibilityService {
                         )
                 );
 
+        /*
+         * Keep net = patient + insurance + other before the responsibility
+         * row flushes the line (ck_billing_charge_line_responsibility).
+         */
+        chargeLine.setPatientResponsibilityAmount(
+                netAmount
+        );
+
+        chargeLine.setInsuranceResponsibilityAmount(
+                BigDecimal.ZERO
+        );
+
+        chargeLine.setOtherPayerResponsibilityAmount(
+                BigDecimal.ZERO
+        );
+
         String idempotencyKey =
                 context.getIdempotencyKey()
                         + ":RESPONSIBILITY:PATIENT";
@@ -366,18 +382,6 @@ public class BillingResponsibilityService {
 
                         idempotencyKey
                 );
-
-        chargeLine.setPatientResponsibilityAmount(
-                netAmount
-        );
-
-        chargeLine.setInsuranceResponsibilityAmount(
-                BigDecimal.ZERO
-        );
-
-        chargeLine.setOtherPayerResponsibilityAmount(
-                BigDecimal.ZERO
-        );
 
         chargeLine.setOutstandingAmount(
                 netAmount
@@ -481,6 +485,26 @@ public class BillingResponsibilityService {
                 BigDecimal.ZERO
         );
 
+        /*
+         * Keep net = patient + insurance + other before the responsibility
+         * rows flush the line (ck_billing_charge_line_responsibility).
+         */
+        chargeLine.setPatientInsurance(
+                insurance
+        );
+
+        chargeLine.setPatientResponsibilityAmount(
+                patientAmount
+        );
+
+        chargeLine.setInsuranceResponsibilityAmount(
+                insuranceAmount
+        );
+
+        chargeLine.setOtherPayerResponsibilityAmount(
+                BigDecimal.ZERO
+        );
+
         BillingChargeResponsibility
                 patientResponsibility = null;
 
@@ -552,22 +576,6 @@ public class BillingResponsibilityService {
                                     + ":RESPONSIBILITY:INSURANCE"
                     );
         }
-
-        chargeLine.setPatientInsurance(
-                insurance
-        );
-
-        chargeLine.setPatientResponsibilityAmount(
-                patientAmount
-        );
-
-        chargeLine.setInsuranceResponsibilityAmount(
-                insuranceAmount
-        );
-
-        chargeLine.setOtherPayerResponsibilityAmount(
-                BigDecimal.ZERO
-        );
 
         chargeLine.setOutstandingAmount(
                 netAmount
@@ -971,7 +979,12 @@ public class BillingResponsibilityService {
                         insurance,
                         item,
                         netAmount,
-                        context.getVisitMaxLimitTracker()
+                        context.getVisitMaxLimitTracker(),
+                        billingPricingService.patientPayableRatio(
+                                context.getPricingResult().taxAmount(),
+                                netAmount,
+                                taxOnPatientCopayment(context)
+                        )
                 );
 
         return money(split.patientShare());
@@ -1506,9 +1519,54 @@ public class BillingResponsibilityService {
         return refreshedCount;
     }
 
+    /**
+     * Rebuilds the patient/insurance split of one charge line from its stored
+     * pricing, drawing the patient share from the supplied visit max-limit
+     * pool. The line must not hold allocations.
+     */
+    @Transactional(
+            propagation = Propagation.MANDATORY,
+            rollbackFor = Exception.class
+    )
+    public BillingProcessingContext recalculateInsuranceResponsibility(
+            BillingChargeLine chargeLine,
+            VisitMaxLimitTracker visitMaxLimitTracker,
+            String reason
+    ) {
+        BillingProcessingContext context =
+                buildRefreshContext(
+                        chargeLine,
+                        chargeLine.getPatientServiceProduct(),
+                        "MAX_LIMIT_REDISTRIBUTION"
+                );
+
+        context.setVisitMaxLimitTracker(visitMaxLimitTracker);
+
+        supersedeActiveResponsibilities(
+                context,
+                reason
+        );
+
+        calculate(context);
+
+        return context;
+    }
+
     private BillingProcessingContext buildRefreshContext(
             BillingChargeLine chargeLine,
             PatientServiceAndProduct item
+    ) {
+        return buildRefreshContext(
+                chargeLine,
+                item,
+                "ELIGIBILITY_REFRESH"
+        );
+    }
+
+    private BillingProcessingContext buildRefreshContext(
+            BillingChargeLine chargeLine,
+            PatientServiceAndProduct item,
+            String idempotencyPrefix
     ) {
         /*
          * Rebuild the amounts as they were before the party toggles removed
@@ -1542,7 +1600,8 @@ public class BillingResponsibilityService {
         return BillingProcessingContext.builder()
                 .transactionGroupId(UUID.randomUUID())
                 .idempotencyKey(
-                        "ELIGIBILITY_REFRESH:"
+                        idempotencyPrefix
+                                + ":"
                                 + chargeLine.getId()
                                 + ":"
                                 + UUID.randomUUID()

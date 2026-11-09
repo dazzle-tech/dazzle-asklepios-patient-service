@@ -177,8 +177,7 @@ public class BillingChargeResponsibility extends AbstractAuditingEntity<Long> im
     @JoinColumn(name = "superseded_responsibility_id")
     private BillingChargeResponsibility supersededResponsibility;
 
-    @Size(max = 500)
-    @Column(name = "adjustment_reason", length = 500)
+    @Column(name = "adjustment_reason", columnDefinition = "text")
     private String adjustmentReason;
 
     @NotNull

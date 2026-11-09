@@ -80,7 +80,13 @@ public record EncounterBillingItemSummary(
          */
         BigDecimal patientTaxAmount,
 
-        BigDecimal insuranceTaxAmount
+        BigDecimal insuranceTaxAmount,
+
+        /*
+         * Name (or code) of the price list the line was priced from.
+         * Null when the price did not come from a price list.
+         */
+        String priceListName
 
 ) implements Serializable {
 
@@ -154,6 +160,7 @@ public record EncounterBillingItemSummary(
                 discountRate,
                 discountSource,
                 discountReason,
+                null,
                 null,
                 null
         );

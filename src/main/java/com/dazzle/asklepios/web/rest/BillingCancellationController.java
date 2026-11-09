@@ -1,8 +1,10 @@
 package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.service.BillingCancellationService;
+import com.dazzle.asklepios.service.ServiceCancellationBeforeInvoiceService;
 import com.dazzle.asklepios.service.dto.billing.BillingCancellationRequest;
 import com.dazzle.asklepios.service.dto.billing.BillingCancellationResult;
+import com.dazzle.asklepios.service.dto.billing.ServiceCancellationBeforeInvoiceRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -19,6 +21,9 @@ public class BillingCancellationController {
     private final BillingCancellationService
             billingCancellationService;
 
+    private final ServiceCancellationBeforeInvoiceService
+            serviceCancellationBeforeInvoiceService;
+
     @PostMapping("/billing/cancel-service")
     public ResponseEntity<BillingCancellationResult>
     cancelService(
@@ -30,5 +35,20 @@ public class BillingCancellationController {
                 billingCancellationService
                         .cancelPatientService(request)
         );
+    }
+
+    @PostMapping("/billing/cancel-service-before-invoice")
+    public ResponseEntity<Void>
+    cancelServiceBeforeInvoice(
+            @Valid
+            @RequestBody
+            ServiceCancellationBeforeInvoiceRequest request
+    ) {
+        serviceCancellationBeforeInvoiceService.cancel(
+                request.patientServiceProductId(),
+                request.reason()
+        );
+
+        return ResponseEntity.noContent().build();
     }
 }

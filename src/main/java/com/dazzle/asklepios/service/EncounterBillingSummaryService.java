@@ -433,7 +433,8 @@ public class EncounterBillingSummaryService {
                 pricingDisplay.discountSource(),
                 pricingDisplay.discountReason(),
                 resolvePartyTax(line, line.getPatientTaxAmount()),
-                resolvePartyTax(line, line.getInsuranceTaxAmount())
+                resolvePartyTax(line, line.getInsuranceTaxAmount()),
+                pricingDisplay.priceListName()
         );
     }
 
@@ -723,7 +724,15 @@ public class EncounterBillingSummaryService {
                         pricingResponse.priceListName(),
                         pricingResponse.priceListCode()
                 ),
-                null
+                null,
+                null,
+                null,
+                pricingResponse == null
+                        ? null
+                        : firstText(
+                        pricingResponse.priceListName(),
+                        pricingResponse.priceListCode()
+                )
         );
     }
 
@@ -884,7 +893,10 @@ public class EncounterBillingSummaryService {
                 item.discountType(),
                 item.discountRate(),
                 item.discountSource(),
-                item.discountReason()
+                item.discountReason(),
+                item.patientTaxAmount(),
+                item.insuranceTaxAmount(),
+                item.priceListName()
         );
     }
 
@@ -1201,12 +1213,17 @@ public class EncounterBillingSummaryService {
                                     snapshot.getPriceListName(),
                                     snapshot.getPriceListCode()
                             ),
-                            firstText(snapshot.getDiscountReason())
+                            firstText(snapshot.getDiscountReason()),
+                            firstText(
+                                    snapshot.getPriceListName(),
+                                    snapshot.getPriceListCode()
+                            )
                     );
                 })
                 .orElseGet(
                         () ->
                                 new PricingDisplayFields(
+                                        null,
                                         null,
                                         null,
                                         null,
@@ -1364,7 +1381,8 @@ public class EncounterBillingSummaryService {
             String discountType,
             BigDecimal discountRate,
             String discountSource,
-            String discountReason
+            String discountReason,
+            String priceListName
     ) {
     }
 

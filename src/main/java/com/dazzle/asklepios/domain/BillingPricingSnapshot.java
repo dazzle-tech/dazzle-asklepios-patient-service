@@ -255,8 +255,7 @@ public class BillingPricingSnapshot extends AbstractAuditingEntity<Long>
     @Column(name = "pricing_reason", nullable = false, length = 100)
     private PricingReason pricingReason;
 
-    @Size(max = 500)
-    @Column(name = "override_reason", length = 500)
+    @Column(name = "override_reason", columnDefinition = "text")
     private String overrideReason;
 
     @NotNull

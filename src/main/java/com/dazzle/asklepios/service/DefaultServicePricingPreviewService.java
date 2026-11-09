@@ -384,7 +384,12 @@ public class DefaultServicePricingPreviewService {
                             insurance,
                             previewItem,
                             pricing.netAmount(),
-                            visitMaxLimitTracker
+                            visitMaxLimitTracker,
+                            billingPricingService.patientPayableRatio(
+                                    pricing.taxAmount(),
+                                    pricing.netAmount(),
+                                    pricingInput.taxApplyOnPatientCopayment()
+                            )
                     );
             patientShareAmount = split.patientShare();
             insuranceShareAmount = split.insuranceShare();
