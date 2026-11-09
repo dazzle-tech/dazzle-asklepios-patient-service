@@ -1,7 +1,6 @@
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.converter.ToothNumberListConverter;
-import com.dazzle.asklepios.domain.enumeration.ToothNumber;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
@@ -50,7 +49,7 @@ public class DentalProcedure extends AbstractAuditingEntity<Long> implements Ser
     @Convert(converter = ToothNumberListConverter.class)
     @Column(name = "tooth_number", nullable = false, columnDefinition = "TEXT")
     @Builder.Default
-    private List<ToothNumber> toothNumbers = new ArrayList<>();
+    private List<String> toothNumbers = new ArrayList<>();
 
     @Column(name = "surface", nullable = false)
     private String surface;
@@ -79,6 +78,13 @@ public class DentalProcedure extends AbstractAuditingEntity<Long> implements Ser
 
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
+
+    @Column(name = "informed_consent_obtained", nullable = false)
+    @Builder.Default
+    private boolean informedConsentObtained = false;
+
+    @Column(name = "treatment_outcome", columnDefinition = "TEXT")
+    private String treatmentOutcome;
 
     @Column(name = "is_cancelled", nullable = false)
     private boolean cancelled = false;
