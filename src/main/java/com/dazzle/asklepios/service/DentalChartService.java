@@ -39,6 +39,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Period;
 import java.util.ArrayList;
+import java.util.Optional;
 import java.util.Arrays;
 import java.util.List;
 
@@ -95,6 +96,14 @@ public class DentalChartService {
     public DentalChartResponseDTO getChartById(Long chartId) {
         DentalChart chart = getChart(chartId);
         return assembleChart(chart);
+    }
+
+    /**
+     * Read the chart already stored for an encounter. Does not create teeth or a chart.
+     */
+    @Transactional(readOnly = true)
+    public Optional<DentalChartResponseDTO> findExistingChartForEncounter(Long encounterId) {
+        return dentalChartRepository.findByEncounter_Id(encounterId).map(this::assembleChart);
     }
 
     public DentalChartResponseDTO updateChart(Long chartId, ChartUpdateDTO dto) {
