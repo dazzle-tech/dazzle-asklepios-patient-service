@@ -12,7 +12,7 @@ import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
-import com.dazzle.asklepios.domain.enumeration.ToothNumber;
+import com.dazzle.asklepios.domain.enumeration.FdiToothNumber;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
@@ -421,7 +421,7 @@ public class DentalProcedureService {
         return DentalProcedure.builder()
                 .patient(patient)
                 .encounter(encounter)
-                .toothNumbers(normalizeToothNumbers(dto.toothNumbers()))
+                .toothNumbers(normalizeToothNumbers(dto.toothNumbers(), patient))
                 .surface(dto.surface())
                 .anesthesiaUsed(dto.anesthesiaUsed())
                 .dose(dto.dose())
@@ -431,12 +431,14 @@ public class DentalProcedureService {
                 .serviceId(dto.serviceId())
                 .cdtCodeId(dto.cdtCodeId())
                 .notes(dto.notes())
+                .informedConsentObtained(Boolean.TRUE.equals(dto.informedConsentObtained()))
+                .treatmentOutcome(blankToNull(dto.treatmentOutcome()))
                 .cancelled(false)
                 .build();
     }
 
     private void updateDentalProcedureFields(DentalProcedure entity, DentalProcedureUpdateDTO dto) {
-        entity.setToothNumbers(normalizeToothNumbers(dto.toothNumbers()));
+        entity.setToothNumbers(normalizeToothNumbers(dto.toothNumbers(), entity.getPatient()));
         entity.setSurface(dto.surface());
         entity.setAnesthesiaUsed(dto.anesthesiaUsed());
         entity.setDose(dto.dose());
@@ -446,6 +448,16 @@ public class DentalProcedureService {
         entity.setServiceId(dto.serviceId());
         entity.setCdtCodeId(dto.cdtCodeId());
         entity.setNotes(dto.notes());
+        entity.setInformedConsentObtained(Boolean.TRUE.equals(dto.informedConsentObtained()));
+        entity.setTreatmentOutcome(blankToNull(dto.treatmentOutcome()));
+    }
+
+    private String blankToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private PatientServiceAndProduct createProcedureBillingItem(
@@ -648,12 +660,17 @@ public class DentalProcedureService {
         patientServiceAndProductRepository.flush();
     }
 
-    private List<ToothNumber> normalizeToothNumbers(List<ToothNumber> toothNumbers) {
-        List<ToothNumber> normalized = toothNumbers == null
+    private List<String> normalizeToothNumbers(List<String> toothNumbers, Patient patient) {
+        List<String> requested = toothNumbers == null
                 ? List.of()
-                : toothNumbers.stream().filter(Objects::nonNull).distinct().toList();
+                : toothNumbers.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .distinct()
+                .toList();
 
-        if (normalized.isEmpty()) {
+        if (requested.isEmpty()) {
             throw new BadRequestAlertException(
                     "At least one tooth number is required",
                     "dentalProcedure",
@@ -661,20 +678,37 @@ public class DentalProcedureService {
             );
         }
 
-        return new ArrayList<>(normalized);
+        FdiToothNumber.Dentition dentition = FdiToothNumber.dentitionFor(
+                patient == null ? null : patient.getDateOfBirth()
+        );
+        List<String> normalized = new ArrayList<>();
+
+        for (String code : requested) {
+            FdiToothNumber tooth = FdiToothNumber.fromCode(code);
+            if (tooth == null || tooth.dentition() != dentition) {
+                throw new BadRequestAlertException(
+                        "Tooth " + code + " is not valid for this patient's age.",
+                        "dentalProcedure",
+                        "toothNumberNotAllowedForAge"
+                );
+            }
+            normalized.add(tooth.code());
+        }
+
+        return normalized;
     }
 
-    private String formatToothNumbers(List<ToothNumber> toothNumbers) {
+    private String formatToothNumbers(List<String> toothNumbers) {
         if (toothNumbers == null || toothNumbers.isEmpty()) {
             return "";
         }
 
         return toothNumbers.stream()
-                .map(tooth -> tooth.name().replaceFirst("^Tooth", ""))
+                .map(tooth -> tooth.startsWith("Tooth") ? tooth.replaceFirst("^Tooth", "") : tooth)
                 .collect(Collectors.joining(", "));
     }
 
-    private String buildBillingNotesValue(String notesValue, String surface, List<ToothNumber> toothNumbers) {
+    private String buildBillingNotesValue(String notesValue, String surface, List<String> toothNumbers) {
         String notes = notesValue == null ? "" : notesValue.trim();
         String surfaceValue = surface == null ? "" : surface.trim();
         String teeth = formatToothNumbers(toothNumbers);
