@@ -598,7 +598,7 @@ public class PatientController {
     }
 
     @PostMapping("/patient-portal/request-otp")
-    public ResponseEntity<String> requestPatientOtp(
+    public ResponseEntity<Void> requestPatientOtp(
             @Valid @RequestBody PatientOtpRequestDTO request
     ) {
         LOG.debug(
@@ -606,9 +606,9 @@ public class PatientController {
                 request.primaryDocumentNumber()
         );
 
-        String otp = patientOtpAuthenticationService.requestOtp(request);
+        patientOtpAuthenticationService.requestOtp(request);
 
-        return ResponseEntity.ok(otp);
+        return ResponseEntity.ok().build();
     }
 
     @PostMapping("/patient-portal/verify-login-otp")

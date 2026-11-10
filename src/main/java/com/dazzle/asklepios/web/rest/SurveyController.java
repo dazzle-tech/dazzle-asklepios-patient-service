@@ -40,10 +40,11 @@ public class SurveyController {
 
     /** Public (web page): the patient portal OTP without the portal secret, limited per ID number */
     @PostMapping("/survey/request-otp")
-    public ResponseEntity<String> requestOtp(
+    public ResponseEntity<Void> requestOtp(
             @Valid @RequestBody PatientOtpRequestDTO request
     ) {
-        return ResponseEntity.ok(surveyOtpService.requestOtp(request));
+        surveyOtpService.requestOtp(request);
+        return ResponseEntity.ok().build();
     }
 
     /** Public (web page): returns the token the survey is submitted with when the OTP is right */
