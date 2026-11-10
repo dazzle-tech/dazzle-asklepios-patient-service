@@ -2419,6 +2419,9 @@ public class AppointmentService {
         } else if (appointment.getStatus() == AppointmentStatus.NO_SHOW) {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "no-show appointment cannot be cancelled");
         }
+        else if(appointment.getStatus() == AppointmentStatus.CONFIRMED) {
+            throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Confirmed appointment cannot be cancelled");
+        }
 
     }
 

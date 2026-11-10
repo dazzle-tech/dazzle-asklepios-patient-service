@@ -30,7 +30,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * (they need the portal secret); the web page cannot keep that secret, so it calls these instead.
  * The OTP itself is the patient portal one (PatientOtpAuthenticationService): same table, same SMS.
  * Without the secret anyone can call these, so requests are limited per ID number.
- * Like the patient portal request-otp, the OTP is returned in the response for now (testing).
+ * The OTP is sent by SMS and is not returned in the response.
  */
 @Service
 @Slf4j
@@ -63,17 +63,16 @@ public class SurveyOtpService {
         this.tokenKey = hmac(com.nimbusds.jose.util.Base64.from(jwtKey).decode(), "patient-satisfaction-survey");
     }
 
-    public String requestOtp(PatientOtpRequestDTO request) {
+    public void requestOtp(PatientOtpRequestDTO request) {
         String document = documentKey(request.primaryDocumentNumber());
         checkLimit(OTP_PER_DOCUMENT_MINUTE, "otp-minute:" + document);
         checkLimit(OTP_PER_DOCUMENT_HOUR, "otp-hour:" + document);
 
-        String otp = portalOtpService.requestOtp(request);
+        portalOtpService.requestOtp(request);
 
         // Only an OTP that was sent counts: a wrong ID number or a patient without a mobile does not
         record("otp-minute:" + document);
         record("otp-hour:" + document);
-        return otp;
     }
 
     public SurveyOtpVerifiedVM verifyOtp(PatientOtpVerifyDTO request) {
