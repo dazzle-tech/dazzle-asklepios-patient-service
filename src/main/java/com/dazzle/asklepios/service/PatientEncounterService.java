@@ -9,6 +9,7 @@ import com.dazzle.asklepios.domain.AdditionalMeasurements;
 import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.BodyMeasurements;
 import com.dazzle.asklepios.domain.EncounterDischargeLog;
+import com.dazzle.asklepios.domain.EncounterPlan;
 import com.dazzle.asklepios.domain.PainAssessment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDocument;
@@ -99,7 +100,6 @@ import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import jakarta.persistence.criteria.Subquery;
 import com.dazzle.asklepios.repository.EncounterAssessmentRepository;
 import com.dazzle.asklepios.repository.EncounterPlanRepository;
-import com.dazzle.asklepios.repository.ProgressNoteRepository;
 import com.dazzle.asklepios.repository.PatientDiagnosisRepository;
 import com.dazzle.asklepios.repository.PatientProblemRepository;
 import com.dazzle.asklepios.repository.FamilyHistoryRepository;
@@ -118,7 +118,6 @@ public class PatientEncounterService {
     private final PatientRepository patientRepository;
     private final EncounterAssessmentRepository encounterAssessmentRepository;
     private final EncounterPlanRepository encounterPlanRepository;
-    private final ProgressNoteRepository progressNoteRepository;
     private final PatientDiagnosisRepository patientDiagnosisRepository;
 
     private final PatientProblemRepository patientProblemRepository;
@@ -160,7 +159,6 @@ public class PatientEncounterService {
 
             EncounterAssessmentRepository encounterAssessmentRepository,
             EncounterPlanRepository encounterPlanRepository,
-            ProgressNoteRepository progressNoteRepository,
             PatientDiagnosisRepository patientDiagnosisRepository,
 
             PatientProblemRepository patientProblemRepository,
@@ -215,7 +213,6 @@ public class PatientEncounterService {
 
         this.encounterAssessmentRepository = encounterAssessmentRepository;
         this.encounterPlanRepository = encounterPlanRepository;
-        this.progressNoteRepository = progressNoteRepository;
         this.patientDiagnosisRepository = patientDiagnosisRepository;
 
         this.patientProblemRepository = patientProblemRepository;
@@ -1233,7 +1230,6 @@ public class PatientEncounterService {
                     true, // medicalHistory
                     true, // surgicalHistory
                     true, // socialHistory
-                    true, // progressNotes
                     true, // vitalSigns
                     true, // bodyMeasurements
                     true, // canComplete
@@ -1263,6 +1259,8 @@ public class PatientEncounterService {
         boolean treatmentPlan =
                 encounterPlanRepository
                         .findTopByEncounterIdOrderByCreatedDateDesc(encounterId)
+                        .map(EncounterPlan::getTreatmentPlan)
+                        .filter(plan -> !isBlank(plan))
                         .isPresent();
 
         boolean medicalHistory =
@@ -1312,11 +1310,6 @@ public class PatientEncounterService {
                         .findTopByPatientIdOrderByCreatedDateDesc(patientId)
                         .isPresent();
 
-        boolean progressNotes =
-                progressNoteRepository
-                        .findTopByEncounterIdAndCancelledDateIsNullOrderByCreatedDateDesc(encounterId)
-                        .isPresent();
-
         boolean vitalSigns =
                 !findEncounterIdsWithObservation(List.of(encounterId)).isEmpty();
 
@@ -1363,10 +1356,6 @@ public class PatientEncounterService {
             missing.add("Social History");
         }
 
-        if (!progressNotes && encounter.getEncounterType() != EncounterType.CLINIC) {
-            missing.add("Progress Notes");
-        }
-
         if (!vitalSigns) {
             missing.add("Vital Signs & Measurements");
         }
@@ -1395,9 +1384,8 @@ public class PatientEncounterService {
                 medicalHistory,
                 surgicalHistory,
                 socialHistory,
-                progressNotes,
-                bodyMeasurements,
                 vitalSigns,
+                bodyMeasurements,
                 canComplete,
                 missing,
                 diagnosticApprovals
