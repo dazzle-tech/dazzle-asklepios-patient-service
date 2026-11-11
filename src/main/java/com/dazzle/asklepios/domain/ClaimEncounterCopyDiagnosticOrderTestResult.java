@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.TestResultType;
+import java.time.Instant;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -73,4 +74,10 @@ public class ClaimEncounterCopyDiagnosticOrderTestResult
     @Column(name = "result_type_at_entry", length = 20)
     private TestResultType resultTypeAtEntry;
 
+    // Who wrote the original record and when; createdBy/createdDate are the copy's own
+    @Column(name = "original_created_by", length = 50, updatable = false)
+    private String originalCreatedBy;
+
+    @Column(name = "original_created_date", updatable = false)
+    private Instant originalCreatedDate;
 }
