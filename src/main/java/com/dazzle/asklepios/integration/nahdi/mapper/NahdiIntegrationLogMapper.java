@@ -16,6 +16,7 @@ public class NahdiIntegrationLogMapper {
         }
         return new NahdiIntegrationLogDTO(
                 entity.getId(),
+                entity.getPrescriptionId(),
                 entity.getEndpoint(),
                 entity.getRequestPayload(),
                 entity.getResponsePayload(),
@@ -33,6 +34,7 @@ public class NahdiIntegrationLogMapper {
             return null;
         }
         NahdiIntegrationLog entity = new NahdiIntegrationLog();
+        entity.setPrescriptionId(dto.prescriptionId());
         entity.setEndpoint(dto.endpoint());
         entity.setRequestPayload(dto.requestPayload());
         entity.setResponsePayload(dto.responsePayload());
