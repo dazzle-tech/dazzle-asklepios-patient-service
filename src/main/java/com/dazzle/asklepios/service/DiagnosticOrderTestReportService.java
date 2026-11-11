@@ -113,9 +113,9 @@ public class DiagnosticOrderTestReportService {
         if (username == null) {
             LOG.warn("[DiagnosticOrderTestReportService] AUTH - unauthenticated request");
             throw new BadRequestAlertException(
-                    "unauthenticated",
+                    "No authenticated user",
                     "diagnostic_order_tests_report",
-                    "No authenticated user"
+                    "unauthenticated"
             );
         }
         return username;
@@ -126,9 +126,9 @@ public class DiagnosticOrderTestReportService {
                 .orElseThrow(() -> {
                     LOG.warn("[DiagnosticOrderTestReportService] REQUIRE_RADIOLOGY_TEST - test not found. testId={}", testId);
                     return new BadRequestAlertException(
-                            "notfound_or_not_radiology",
+                            "Radiology DiagnosticOrderTest not found with id " + testId,
                             "diagnostic_order_tests",
-                            "Radiology DiagnosticOrderTest not found with id " + testId
+                            "notfound_or_not_radiology"
                     );
                 });
 
@@ -136,9 +136,9 @@ public class DiagnosticOrderTestReportService {
             LOG.warn("[DiagnosticOrderTestReportService] REQUIRE_RADIOLOGY_TEST - test is not radiology. testId={} orderType={}",
                     testId, test.getOrderType());
             throw new BadRequestAlertException(
-                    "notfound_or_not_radiology",
+                    "Radiology DiagnosticOrderTest not found with id " + testId,
                     "diagnostic_order_tests",
-                    "Radiology DiagnosticOrderTest not found with id " + testId
+                    "notfound_or_not_radiology"
             );
         }
 
@@ -151,9 +151,9 @@ public class DiagnosticOrderTestReportService {
         LOG.debug("[DiagnosticOrderTestReportService] RECOMPUTE_ORDER_STATUS - start. orderTestId={}", orderTestId);
         DiagnosticOrderTest test = diagnosticOrderTestRepository.findById(orderTestId)
                 .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
+                        "DiagnosticOrderTest not found with id " + orderTestId,
                         "diagnostic_order_tests",
-                        "DiagnosticOrderTest not found with id " + orderTestId
+                        "notfound"
                 ));
         diagnosticOrderStatusService.recomputeLabRadStatuses(test.getOrderId());
         LOG.debug("[DiagnosticOrderTestReportService] RECOMPUTE_ORDER_STATUS - done. orderTestId={} orderId={}",
@@ -175,16 +175,16 @@ public class DiagnosticOrderTestReportService {
 
 
         if (orderTest.getProcessingStatus() != DiagnosticStatus.ACCEPTED) {
-            throw new BadRequestAlertException("not_accepted", "diagnostic_order_tests",
-                    "Radiology orderTest must be ACCEPTED before creating report");
+            throw new BadRequestAlertException("Radiology orderTest must be ACCEPTED before creating report", "diagnostic_order_tests",
+                    "not_accepted");
         }
 
         diagnosticOrderTestReportRepository.findByOrderTestId(reportCreateDTO.orderTestId())
                 .ifPresent(existing -> {
                     throw new BadRequestAlertException(
-                            "already_exists",
+                            "Report already exists for this Test=" + reportCreateDTO.orderTestId(),
                             "diagnostic_order_tests_report",
-                            "Report already exists for this Test=" + reportCreateDTO.orderTestId()
+                            "already_exists"
                     );
                 });
 
@@ -215,9 +215,9 @@ public class DiagnosticOrderTestReportService {
         LOG.debug("[DiagnosticOrderTestReportService] UPDATE_RADIOLOGY_REPORT - start. reportId={} payload={}", reportId, orderTestReportUpdateDTO);
         DiagnosticOrderTestReport report = diagnosticOrderTestReportRepository.findById(reportId)
                 .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
+                        "Report not found with id " + reportId,
                         "diagnostic_order_tests_report",
-                        "Report not found with id " + reportId
+                        "notfound"
                 ));
 
         requireRadiologyTest(report.getOrderTestId());
@@ -227,9 +227,9 @@ public class DiagnosticOrderTestReportService {
                 LOG.warn("[DiagnosticOrderTestReportService] UPDATE_RADIOLOGY_REPORT - report text update blocked. reportId={} orderTestId={} imageStatus={}",
                         reportId, report.getOrderTestId(), report.getImageStatus());
                 throw new BadRequestAlertException(
-                        "invalid_state",
+                        "Cannot write report before image is FINISHED",
                         "diagnostic_order_tests_report",
-                        "Cannot write report before image is FINISHED"
+                        "invalid_state"
                 );
             }
         }
@@ -268,10 +268,10 @@ public class DiagnosticOrderTestReportService {
                 diagnosticOrderTestReportRepository
                         .findByOrderTestId(orderTestReportReviewDTO.orderTestId())
                         .orElseThrow(() -> new BadRequestAlertException(
-                                "notfound",
-                                "diagnostic_order_tests_report",
                                 "Report not found for orderTestId "
-                                        + orderTestReportReviewDTO.orderTestId()
+                                        + orderTestReportReviewDTO.orderTestId(),
+                                "diagnostic_order_tests_report",
+                                "notfound"
                         ));
 
         String currentUser = currentUsername();
@@ -315,9 +315,9 @@ public class DiagnosticOrderTestReportService {
 
         DiagnosticOrderTestReport report = diagnosticOrderTestReportRepository.findByOrderTestId(orderTestReportRejectDTO.orderTestId())
                 .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
+                        "Report not found for orderTestId " + orderTestReportRejectDTO.orderTestId(),
                         "diagnostic_order_tests_report",
-                        "Report not found for orderTestId " + orderTestReportRejectDTO.orderTestId()
+                        "notfound"
                 ));
 
         report.setRejectedBy(currentUsername());
@@ -340,9 +340,9 @@ public class DiagnosticOrderTestReportService {
 
         if (test.getProcessingStatus() != DiagnosticStatus.ACCEPTED) {
             throw new BadRequestAlertException(
-                    "not_accepted",
+                    "Radiology test must be ACCEPTED before starting imaging",
                     "diagnostic_order_tests",
-                    "Radiology test must be ACCEPTED before starting imaging"
+                    "not_accepted"
             );
         }
 
@@ -377,9 +377,9 @@ public class DiagnosticOrderTestReportService {
 
         diagnosticOrderTestReportRepository.findByOrderTestId(testId)
                 .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
+                        "Report not found for orderTestId " + testId,
                         "diagnostic_order_tests_report",
-                        "Report not found for orderTestId " + testId
+                        "notfound"
                 ));
 
         RadiologyImageStatusResponseVM response = setImageStatusByReport(testId, RadiologyImageStatus.PAUSED);
@@ -394,9 +394,9 @@ public class DiagnosticOrderTestReportService {
 
         diagnosticOrderTestReportRepository.findByOrderTestId(testId)
                 .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
+                        "Report not found for orderTestId " + testId,
                         "diagnostic_order_tests_report",
-                        "Report not found for orderTestId " + testId
+                        "notfound"
                 ));
 
         RadiologyImageStatusResponseVM response = setImageStatusByReport(testId, RadiologyImageStatus.RESUMED);
@@ -411,9 +411,9 @@ public class DiagnosticOrderTestReportService {
 
         diagnosticOrderTestReportRepository.findByOrderTestId(testId)
                 .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
+                        "Report not found for orderTestId " + testId,
                         "diagnostic_order_tests_report",
-                        "Report not found for orderTestId " + testId
+                        "notfound"
                 ));
 
         RadiologyImageStatusResponseVM vm = setImageStatusByReport(testId, RadiologyImageStatus.FINISHED);
@@ -429,9 +429,9 @@ public class DiagnosticOrderTestReportService {
         LOG.debug("[DiagnosticOrderTestReportService] APPROVE_RADIOLOGY_REPORT - start. reportId={}", reportId);
         DiagnosticOrderTestReport report = diagnosticOrderTestReportRepository.findById(reportId)
                 .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
+                        "Report not found with id " + reportId,
                         "diagnostic_order_tests_report",
-                        "Report not found with id " + reportId
+                        "notfound"
                 ));
 
         requireRadiologyTest(report.getOrderTestId());
@@ -456,9 +456,9 @@ public class DiagnosticOrderTestReportService {
         LOG.debug("[DiagnosticOrderTestReportService] SECOND_APPROVE_RADIOLOGY_REPORT - start. reportId={}", reportId);
         DiagnosticOrderTestReport report = diagnosticOrderTestReportRepository.findById(reportId)
                 .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
+                        "Report not found with id " + reportId,
                         "diagnostic_order_tests_report",
-                        "Report not found with id " + reportId
+                        "notfound"
                 ));
 
         requireRadiologyTest(report.getOrderTestId());
@@ -467,9 +467,9 @@ public class DiagnosticOrderTestReportService {
             LOG.warn("[DiagnosticOrderTestReportService] SECOND_APPROVE_RADIOLOGY_REPORT - first approval missing. reportId={} orderTestId={}",
                     reportId, report.getOrderTestId());
             throw new BadRequestAlertException(
-                    "first_approve_required",
+                    "First approve is required before second approve",
                     "diagnostic_order_tests_report",
-                    "First approve is required before second approve"
+                    "first_approve_required"
             );
         }
 
@@ -477,9 +477,9 @@ public class DiagnosticOrderTestReportService {
             LOG.warn("[DiagnosticOrderTestReportService] SECOND_APPROVE_RADIOLOGY_REPORT - already second approved. reportId={} orderTestId={} secondApprovedBy={}",
                     reportId, report.getOrderTestId(), report.getSecondApprovedBy());
             throw new BadRequestAlertException(
-                    "already_second_approved",
+                    "Report already second approved",
                     "diagnostic_order_tests_report",
-                    "Report already second approved"
+                    "already_second_approved"
             );
         }
 
@@ -489,9 +489,9 @@ public class DiagnosticOrderTestReportService {
             LOG.warn("[DiagnosticOrderTestReportService] SECOND_APPROVE_RADIOLOGY_REPORT - same user attempted second approval. reportId={} user={}",
                     reportId, currentUser);
             throw new BadRequestAlertException(
-                    "same_user_not_allowed",
+                    "Second approve must be performed by a different user",
                     "diagnostic_order_tests_report",
-                    "Second approve must be performed by a different user"
+                    "same_user_not_allowed"
             );
         }
 
@@ -511,9 +511,9 @@ public class DiagnosticOrderTestReportService {
         LOG.debug("[DiagnosticOrderTestReportService] SET_IMAGE_STATUS - start. orderTestId={} imageStatusTo={}", orderTestId, imageStatusTo);
         DiagnosticOrderTestReport report = diagnosticOrderTestReportRepository.findByOrderTestId(orderTestId)
                 .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
+                        "Report not found for orderTestId " + orderTestId,
                         "diagnostic_order_tests_report",
-                        "Report not found for orderTestId " + orderTestId
+                        "notfound"
                 ));
 
         ensureImageTransitionAllowed(report.getImageStatus(), imageStatusTo);
@@ -553,13 +553,13 @@ public class DiagnosticOrderTestReportService {
 
         if (imageStatusFrom == null) {
             LOG.warn("[DiagnosticOrderTestReportService] ENSURE_IMAGE_TRANSITION_ALLOWED - missing current image status. target={}", imageStatusTo);
-            throw new BadRequestAlertException("missing_state", "diagnostic_order_tests_report", "Image status is missing");
+            throw new BadRequestAlertException("Image status is missing", "diagnostic_order_tests_report", "missing_state");
         }
 
         if (imageStatusFrom == RadiologyImageStatus.FINISHED) {
             LOG.warn("[DiagnosticOrderTestReportService] ENSURE_IMAGE_TRANSITION_ALLOWED - transition blocked because workflow finished. from={} to={}",
                     imageStatusFrom, imageStatusTo);
-            throw new BadRequestAlertException("invalid_transition", "diagnostic_order_tests_report", "Image workflow already finished");
+            throw new BadRequestAlertException("Image workflow already finished", "diagnostic_order_tests_report", "invalid_transition");
         }
 
         boolean ok =
@@ -573,9 +573,9 @@ public class DiagnosticOrderTestReportService {
     private BadRequestAlertException invalidImageTransition(RadiologyImageStatus from, RadiologyImageStatus to) {
         LOG.warn("[DiagnosticOrderTestReportService] ENSURE_IMAGE_TRANSITION_ALLOWED - invalid transition. from={} to={}", from, to);
         return new BadRequestAlertException(
-                "invalid_transition",
+                "Invalid transition " + from + " -> " + to,
                 "diagnostic_order_tests_report",
-                "Invalid transition " + from + " -> " + to
+                "invalid_transition"
         );
     }
 
@@ -1245,9 +1245,9 @@ public class DiagnosticOrderTestReportService {
                     diagnosticOrderTestReportRepository
                             .findById(id)
                             .orElseThrow(() -> new BadRequestAlertException(
-                                    "notfound",
+                                    "Report not found for Id " + id,
                                     "diagnostic_order_tests_report",
-                                    "Report not found for Id " + id
+                                    "notfound"
                             ));
 
             if (report.getReviewDate() == null) {
