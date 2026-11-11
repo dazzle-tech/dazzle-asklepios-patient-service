@@ -1259,12 +1259,13 @@ public class PatientServiceAndProductService {
 
     /**
      * Cancels the charge of a cancelled vaccination. A vaccination whose charge is already
-     * paid (or reserved / settled) cannot be cancelled; no charge means nothing to cancel.
+     * paid (or settled) cannot be cancelled; a reserved charge is cancelled and its wallet
+     * reservation released. No charge means nothing to cancel.
      */
     public void cancelVaccinationCharge(Long encounterVaccinationId, String reason) {
         findActiveVaccinationCharge(encounterVaccinationId)
                 .ifPresent(item -> {
-                    if (isPaymentStarted(item)) {
+                    if (isPaymentCollected(item)) {
                         throw new BadRequestAlertException(
                                 "This vaccination is already paid and cannot be cancelled.",
                                 "encounterVaccination",
@@ -1276,11 +1277,14 @@ public class PatientServiceAndProductService {
                 });
     }
 
-    /** True when the vaccination charge is paid (or reserved / settled) */
+    /**
+     * True when the vaccination charge is actually paid (or settled). A reserved charge is not:
+     * editing a vaccination never changes its charge (the vaccine and the brand are locked).
+     */
     @Transactional(readOnly = true)
     public boolean isVaccinationChargePaid(Long encounterVaccinationId) {
         return findActiveVaccinationCharge(encounterVaccinationId)
-                .map(this::isPaymentStarted)
+                .map(this::isPaymentCollected)
                 .orElse(false);
     }
 
@@ -1294,10 +1298,6 @@ public class PatientServiceAndProductService {
                 .filter(item -> item.getPaymentStatus() != PaymentStatus.CANCELLED);
     }
 
-    private boolean isPaymentStarted(PatientServiceAndProduct item) {
-        return isPaymentStatusSettled(item) || hasFundsReservedOrAllocated(item);
-    }
-
     /** Money movement started: reserved, paid, posted to debit or exempted */
     private static boolean isPaymentStatusSettled(PatientServiceAndProduct item) {
         PaymentStatus paymentStatus = item.getPaymentStatus();
@@ -1308,6 +1308,26 @@ public class PatientServiceAndProductService {
                 || paymentStatus == PaymentStatus.DEBIT
                 || paymentStatus == PaymentStatus.PARTIALLY_DEBIT
                 || paymentStatus == PaymentStatus.EXEMPTED;
+    }
+
+    /**
+     * Money actually taken: paid, posted to debit, exempted or allocated. A reservation only
+     * holds wallet funds and is released when the charge is cancelled, so it does not count.
+     */
+    private boolean isPaymentCollected(PatientServiceAndProduct item) {
+        PaymentStatus paymentStatus = item.getPaymentStatus();
+        if (paymentStatus == PaymentStatus.PAID
+                || paymentStatus == PaymentStatus.PARTIALLY_PAID
+                || paymentStatus == PaymentStatus.DEBIT
+                || paymentStatus == PaymentStatus.PARTIALLY_DEBIT
+                || paymentStatus == PaymentStatus.EXEMPTED) {
+            return true;
+        }
+
+        return billingChargeService
+                .findActiveChargeLine(item.getId(), item.getEncounterId())
+                .map(chargeLine -> defaultZero(chargeLine.getAllocatedAmount()).signum() > 0)
+                .orElse(false);
     }
 
     private boolean hasFundsReservedOrAllocated(PatientServiceAndProduct item) {
