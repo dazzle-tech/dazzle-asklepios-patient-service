@@ -178,9 +178,7 @@ public class DailyBriefingService {
         if (request.facilityId() == null) {
             throw new BadRequestAlertException("facilityId is required", ENTITY, "facility.required");
         }
-        if (request.branchId() != null) {
-            throw new BadRequestAlertException("Branch is not stored in the patient service, so a branch filter cannot be applied.", ENTITY, "branch.unsupported");
-        }
+
         String language = request.language() == null || request.language().isBlank() ? "en" : request.language().trim().toLowerCase();
         if (!language.equals("en") && !language.equals("ar")) {
             throw new BadRequestAlertException("language must be en or ar", ENTITY, "language.invalid");
@@ -379,7 +377,6 @@ public class DailyBriefingService {
             Long departmentId,
             Long practitionerId,
             String specialty,
-            Long branchId,
             LocalDate reportDate,
             String language,
             Integer openEncounterHours,
