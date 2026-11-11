@@ -2,6 +2,7 @@ package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.DentalChartStatus;
 import com.dazzle.asklepios.domain.enumeration.DentalChartType;
+import com.dazzle.asklepios.domain.enumeration.ToothNumberingSystem;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -59,6 +60,22 @@ public class DentalChart extends AbstractAuditingEntity<Long> implements Seriali
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private DentalChartStatus status;
+
+    /**
+     * Snapshot of the Setup numbering system applied when this chart was created.
+     * Later Setup edits must not rewrite existing charts.
+     */
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @Column(name = "numbering_system", nullable = false)
+    @Builder.Default
+    private ToothNumberingSystem numberingSystem = ToothNumberingSystem.UNIVERSAL;
+
+    /**
+     * Snapshot of the DentalChartAgeRule id that seeded this chart (nullable for legacy charts).
+     */
+    @Column(name = "age_rule_id")
+    private Long ageRuleId;
 
     @Column(name = "treatment_plan", columnDefinition = "TEXT")
     private String treatmentPlan;
