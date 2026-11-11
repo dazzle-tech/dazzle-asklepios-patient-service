@@ -184,7 +184,13 @@ public class ClaimEncounterDiagnosisService {
                 diagnosis.getDiagnosisId(),
                 diagnosis.getType(),
                 diagnosis.getSuspected(),
-                diagnosis.getMajor()
+                diagnosis.getMajor(),
+                diagnosis.getCreatedBy(),
+                diagnosis.getCreatedDate(),
+                diagnosis.getLastModifiedBy(),
+                diagnosis.getLastModifiedDate(),
+                diagnosis.getOriginalCreatedBy(),
+                diagnosis.getOriginalCreatedDate()
         );
     }
 }
