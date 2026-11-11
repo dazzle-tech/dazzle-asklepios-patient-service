@@ -90,4 +90,7 @@ public interface BillingChargeLineRepository
             Collection<Long> patientServiceProductIds,
             Collection<BillingChargeLineStatus> excludedStatuses
     );
+
+    @Query("select c from BillingChargeLine c where c.id in :ids")
+    List<BillingChargeLine> findReadableByIdIn(@Param("ids") Collection<Long> ids);
 }

@@ -6,7 +6,9 @@ import com.dazzle.asklepios.domain.enumeration.billing.CalculationOrder;
 import com.dazzle.asklepios.domain.enumeration.billing.DiscountType;
 import com.dazzle.asklepios.domain.enumeration.billing.RoundingModeType;
 import com.dazzle.asklepios.domain.enumeration.billing.TaxType;
+import com.dazzle.asklepios.service.dto.billing.AppliedDefaultServiceDiscount;
 import com.dazzle.asklepios.service.dto.billing.BillingPricingInput;
+import com.dazzle.asklepios.service.dto.billing.DefaultServiceDiscountLine;
 import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
 import com.dazzle.asklepios.service.dto.billing.PartyTaxDistribution;
 import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
@@ -72,7 +74,7 @@ public class BillingPricingService {
                         .multiply(unitPrice)
                         .setScale(scale, roundingMode);
 
-        BigDecimal discountAmount =
+        BigDecimal priceListDiscount =
                 calculateDiscount(
                         grossAmount,
                         input.discountType(),
@@ -81,6 +83,21 @@ public class BillingPricingService {
                         scale,
                         roundingMode
                 );
+
+        BigDecimal discountAmount =
+                applyDefaultServiceDiscountCode(
+                        priceListDiscount,
+                        grossAmount,
+                        scale,
+                        roundingMode
+                );
+
+        recordDefaultServiceDiscountUse(
+                item,
+                grossAmount,
+                priceListDiscount,
+                discountAmount
+        );
 
         BigDecimal amountAfterDiscount =
                 grossAmount
@@ -336,6 +353,68 @@ public class BillingPricingService {
         }
 
         return result.setScale(scale, roundingMode);
+    }
+
+    /**
+     * Adds the discount code authorized for this default-service preview or
+     * prepare. Percentage is taken from the line gross. A fixed amount is
+     * taken once on the line. The combined discount never exceeds the gross.
+     */
+    private BigDecimal applyDefaultServiceDiscountCode(
+            BigDecimal existingDiscount,
+            BigDecimal grossAmount,
+            int scale,
+            RoundingMode roundingMode
+    ) {
+        AppliedDefaultServiceDiscount extra =
+                DefaultServiceDiscountContext.current();
+        if (extra == null || extra.discountType() == null) {
+            return existingDiscount;
+        }
+
+        BigDecimal extraAmount = switch (extra.discountType()) {
+            case PERCENTAGE -> grossAmount
+                    .multiply(defaultZero(extra.percentage()))
+                    .divide(
+                            BigDecimal.valueOf(100),
+                            scale,
+                            roundingMode
+                    );
+            case FIXED_AMOUNT -> defaultZero(extra.fixedAmount());
+        };
+
+        BigDecimal total = defaultZero(existingDiscount).add(extraAmount);
+        if (total.compareTo(grossAmount) > 0) {
+            total = grossAmount;
+        }
+        return total.max(BigDecimal.ZERO).setScale(scale, roundingMode);
+    }
+
+    private void recordDefaultServiceDiscountUse(
+            PatientServiceAndProduct item,
+            BigDecimal grossAmount,
+            BigDecimal priceListDiscount,
+            BigDecimal discountAmount
+    ) {
+        if (DefaultServiceDiscountContext.current() == null
+                || item.getId() == null) {
+            return;
+        }
+
+        BigDecimal codeDiscount =
+                discountAmount
+                        .subtract(defaultZero(priceListDiscount))
+                        .max(BigDecimal.ZERO);
+
+        DefaultServiceDiscountContext.recordLine(
+                new DefaultServiceDiscountLine(
+                        item.getId(),
+                        item.getServiceId(),
+                        item.getProcedureId(),
+                        grossAmount,
+                        codeDiscount
+                )
+        );
     }
 
     private BigDecimal calculateExemption(

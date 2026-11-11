@@ -50,7 +50,20 @@ public record PrepareDefaultServicesRequest(
          */
         Boolean payZeroNow,
 
-        Boolean acceptUncoveredAsCash
+        Boolean acceptUncoveredAsCash,
+
+        /**
+         * Optional default-service discount. All three are required together.
+         * Setup-service checks the code, the user, and the authorization token
+         * before the price is changed.
+         */
+        @Size(max = 50)
+        String discountCode,
+
+        Long authorizedUserId,
+
+        @Size(max = 300)
+        String discountAuthorizationToken
 
 ) implements Serializable {
 

@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 import java.io.Serializable;
 import java.util.List;
@@ -27,7 +28,15 @@ public record PreviewDefaultServicesPricingRequest(
         @NotNull
         List<@Valid PrepareDefaultServiceItem> items,
 
-        List<@Valid PrepareDefaultProcedureItem> procedures
+        List<@Valid PrepareDefaultProcedureItem> procedures,
+
+        @Size(max = 50)
+        String discountCode,
+
+        Long authorizedUserId,
+
+        @Size(max = 300)
+        String discountAuthorizationToken
 
 ) implements Serializable {
 

@@ -85,6 +85,8 @@ public class DefaultServicePreparationService {
     private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
     private final InsuranceVisitEligibilityGuard insuranceVisitEligibilityGuard;
     private final EncounterDefaultProcedureService encounterDefaultProcedureService;
+    private final DefaultServiceDiscountSupport defaultServiceDiscountSupport;
+    private final DiscountCodeUsageService discountCodeUsageService;
 
     /**
      * Creates/reuses selected default-service PSP records, orders the selected
@@ -94,6 +96,28 @@ public class DefaultServicePreparationService {
      */
     @Transactional
     public PrepareDefaultServicesResult prepare(
+            Long encounterId,
+            PrepareDefaultServicesRequest request
+    ) {
+        try {
+            if (request != null) {
+                defaultServiceDiscountSupport.bind(
+                        request.facilityId(),
+                        request.currency(),
+                        request.discountCode(),
+                        request.authorizedUserId(),
+                        request.discountAuthorizationToken()
+                );
+            }
+            PrepareDefaultServicesResult result = prepareWithDiscount(encounterId, request);
+            discountCodeUsageService.log(encounterId, request, result);
+            return result;
+        } finally {
+            defaultServiceDiscountSupport.clear();
+        }
+    }
+
+    private PrepareDefaultServicesResult prepareWithDiscount(
             Long encounterId,
             PrepareDefaultServicesRequest request
     ) {

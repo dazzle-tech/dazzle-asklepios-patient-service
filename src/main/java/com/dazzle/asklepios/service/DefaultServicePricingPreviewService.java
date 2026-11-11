@@ -65,9 +65,30 @@ public class DefaultServicePricingPreviewService {
     private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
     private final CoveragePreApprovalLimitService coveragePreApprovalLimitService;
     private final EncounterDefaultProcedureService encounterDefaultProcedureService;
+    private final DefaultServiceDiscountSupport defaultServiceDiscountSupport;
 
     @Transactional(readOnly = true)
     public PreviewDefaultServicesPricingResult preview(
+            Long encounterId,
+            PreviewDefaultServicesPricingRequest request
+    ) {
+        try {
+            if (request != null) {
+                defaultServiceDiscountSupport.bind(
+                        request.facilityId(),
+                        request.currency(),
+                        request.discountCode(),
+                        request.authorizedUserId(),
+                        request.discountAuthorizationToken()
+                );
+            }
+            return previewWithDiscount(encounterId, request);
+        } finally {
+            defaultServiceDiscountSupport.clear();
+        }
+    }
+
+    private PreviewDefaultServicesPricingResult previewWithDiscount(
             Long encounterId,
             PreviewDefaultServicesPricingRequest request
     ) {
