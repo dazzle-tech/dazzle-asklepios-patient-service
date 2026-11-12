@@ -31,6 +31,7 @@ import java.time.Instant;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 
 @Service
 @Transactional
@@ -95,14 +96,16 @@ public class DentalTreatmentPlanService {
         }
 
         DentalTreatmentPlan plan = DentalTreatmentPlan.builder()
-                .planNumber(nextPlanNumber())
+                .planNumber(temporaryPlanNumber())
                 .patientId(dto.patientId())
-                .originEncounterId(encounter.getId())
+                .originEncounter(encounter)
                 .title(title)
                 .notes(blankToNull(dto.notes()))
                 .practitionerId(dto.practitionerId())
                 .status(DentalTreatmentPlanStatus.DRAFT)
                 .build();
+        plan = planRepository.save(plan);
+        plan.setPlanNumber(formatPlanNumber(plan.getId()));
         plan = planRepository.save(plan);
         logChange(plan, null, DentalTreatmentPlanStatus.DRAFT, null);
         return toSummary(plan);
@@ -123,7 +126,7 @@ public class DentalTreatmentPlanService {
         if (title.isEmpty()) {
             throw new BadRequestAlertException("Title is required", ENTITY, "titleRequired");
         }
-        plan.setOriginEncounterId(originEncounter.getId());
+        plan.setOriginEncounter(originEncounter);
         plan.setTitle(title);
         plan.setNotes(blankToNull(dto.notes()));
         plan.setPractitionerId(dto.practitionerId());
@@ -133,7 +136,7 @@ public class DentalTreatmentPlanService {
     public List<DentalTreatmentSessionDTO> listSessions(Long planId) {
         getPlan(planId);
         return sessionRepository.findByTreatmentPlanIdOrderBySessionNumberAsc(planId).stream()
-                .map(s -> new DentalTreatmentSessionDTO(s.getId(), s.getTreatmentPlanId(), s.getSessionNumber()))
+                .map(s -> new DentalTreatmentSessionDTO(s.getId(), s.getTreatmentPlan().getId(), s.getSessionNumber()))
                 .toList();
     }
 
@@ -159,7 +162,7 @@ public class DentalTreatmentPlanService {
                             "dentalTreatmentSession",
                             "notfound"
                     ));
-            if (!Objects.equals(session.getTreatmentPlanId(), planId)) {
+            if (!Objects.equals(session.getTreatmentPlan().getId(), planId)) {
                 throw new BadRequestAlertException(
                         "Session does not belong to the selected treatment plan",
                         ENTITY,
@@ -171,10 +174,12 @@ public class DentalTreatmentPlanService {
         if (!createNew) {
             throw new BadRequestAlertException("A session is required", ENTITY, "sessionRequired");
         }
-        Integer max = sessionRepository.findMaxSessionNumber(planId);
-        int next = (max == null ? 0 : max) + 1;
+        int max = sessionRepository.findFirstByTreatmentPlanIdOrderBySessionNumberDesc(planId)
+                .map(DentalTreatmentSession::getSessionNumber)
+                .orElse(0);
+        int next = max + 1;
         return sessionRepository.save(DentalTreatmentSession.builder()
-                .treatmentPlanId(planId)
+                .treatmentPlan(plan)
                 .sessionNumber(next)
                 .build());
     }
@@ -342,10 +347,10 @@ public class DentalTreatmentPlanService {
         }
         boolean allCompleted = active.stream().allMatch(t ->
                 t.getStatus() == PlannedTreatmentStatus.COMPLETED
-                        || t.getPatientServiceAndProductId() != null);
+                        || t.getPatientServiceAndProduct() != null);
         boolean anyCompleted = active.stream().anyMatch(t ->
                 t.getStatus() == PlannedTreatmentStatus.COMPLETED
-                        || t.getPatientServiceAndProductId() != null);
+                        || t.getPatientServiceAndProduct() != null);
         if (allCompleted && anyCompleted) {
             plan.setCompletedBy(currentUser());
             plan.setCompletedAt(Instant.now());
@@ -455,19 +460,17 @@ public class DentalTreatmentPlanService {
             }
             active++;
             if (row.getStatus() == PlannedTreatmentStatus.COMPLETED
-                    || row.getPatientServiceAndProductId() != null) {
+                    || row.getPatientServiceAndProduct() != null) {
                 completed++;
             }
         }
-        String encounterNumber = patientEncounterRepository.findById(plan.getOriginEncounterId())
-                .map(PatientEncounter::getEncounterNumber)
-                .orElse(null);
+        PatientEncounter originEncounter = plan.getOriginEncounter();
         return new DentalTreatmentPlanSummaryDTO(
                 plan.getId(),
                 plan.getPlanNumber(),
                 plan.getPatientId(),
-                plan.getOriginEncounterId(),
-                encounterNumber,
+                originEncounter.getId(),
+                originEncounter.getEncounterNumber(),
                 plan.getTitle(),
                 plan.getNotes(),
                 plan.getPractitionerId(),
@@ -483,9 +486,13 @@ public class DentalTreatmentPlanService {
         );
     }
 
-    private String nextPlanNumber() {
-        Long seq = planRepository.nextPlanSequence();
-        return "DTP-" + String.format("%05d", seq);
+    /** Unique placeholder for the insert; replaced with {@link #formatPlanNumber} once the id is known. */
+    private String temporaryPlanNumber() {
+        return "TMP-" + UUID.randomUUID();
+    }
+
+    private String formatPlanNumber(Long planId) {
+        return "DTP-" + String.format("%05d", planId);
     }
 
     private void lockPlan(Long planId) {

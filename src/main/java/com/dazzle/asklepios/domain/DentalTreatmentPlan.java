@@ -7,7 +7,10 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -37,7 +40,7 @@ public class DentalTreatmentPlan extends AbstractAuditingEntity<Long> implements
     private Long id;
 
     @NotNull
-    @Column(name = "plan_number", nullable = false, unique = true, length = 40, updatable = false)
+    @Column(name = "plan_number", nullable = false, unique = true, length = 40)
     private String planNumber;
 
     @NotNull
@@ -45,8 +48,9 @@ public class DentalTreatmentPlan extends AbstractAuditingEntity<Long> implements
     private Long patientId;
 
     @NotNull
-    @Column(name = "origin_encounter_id", nullable = false)
-    private Long originEncounterId;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "origin_encounter_id", nullable = false)
+    private PatientEncounter originEncounter;
 
     @NotNull
     @Column(name = "title", nullable = false, length = 255)
