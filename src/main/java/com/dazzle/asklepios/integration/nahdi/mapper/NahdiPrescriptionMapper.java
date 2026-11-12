@@ -68,7 +68,6 @@ import java.time.Period;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -126,15 +125,12 @@ public class NahdiPrescriptionMapper {
                 ? null
                 : patientEncounterRepository.findById(prescription.getEncounterId()).orElse(null);
 
-        List<PatientPrescriptionMedication> lines = sentLines(prescription);
-        List<PatientPrescriptionMedication> activeLines = lines.stream()
-                .filter(medication -> !PrescriptionStatus.CANCELLED.equals(medication.getStatus()))
-                .toList();
+        List<PatientPrescriptionMedication> medications = activeMedications(prescription);
 
         return NahdiSendPrescriptionRequest.builder()
                 .presHead(toHead(prescription, encounter))
-                .presDiagnosis(toDiagnoses(activeLines))
-                .presItem(toItems(lines))
+                .presDiagnosis(toDiagnoses(medications))
+                .presItem(toItems(medications))
                 .build();
     }
 
@@ -207,23 +203,13 @@ public class NahdiPrescriptionMapper {
                 .build();
     }
 
-    /**
-     * Lines sent to Nahdi, in a fixed order (by id) so each medication keeps its line_No on every resend:
-     * active medications, plus medications cancelled after the prescription was submitted (sent as cancelled).
-     * Medications cancelled before submit were never sent and are left out.
-     */
-    private static List<PatientPrescriptionMedication> sentLines(PatientPrescription prescription) {
-        if (prescription.getMedications() == null) {
-            return List.of();
-        }
-        Instant submittedAt = prescription.getSubmitedDate();
-        return prescription.getMedications().stream()
-                .filter(Objects::nonNull)
-                .filter(medication -> !PrescriptionStatus.CANCELLED.equals(medication.getStatus())
-                        || (submittedAt != null && medication.getCancelledDate() != null
-                        && medication.getCancelledDate().isAfter(submittedAt)))
-                .sorted(Comparator.comparing(PatientPrescriptionMedication::getId, Comparator.nullsLast(Comparator.naturalOrder())))
-                .toList();
+    private static List<PatientPrescriptionMedication> activeMedications(PatientPrescription prescription) {
+        return prescription.getMedications() == null
+                ? List.of()
+                : prescription.getMedications().stream()
+                        .filter(Objects::nonNull)
+                        .filter(medication -> !PrescriptionStatus.CANCELLED.equals(medication.getStatus()))
+                        .toList();
     }
 
     /**
@@ -290,9 +276,7 @@ public class NahdiPrescriptionMapper {
                 .qty(serviceAndProduct == null || serviceAndProduct.getQuantity() == null ? null : BigDecimal.valueOf(serviceAndProduct.getQuantity()))
                 .dose(toDoseText(medication))
                 .price(text(price))
-                .appStatus(PrescriptionStatus.CANCELLED.equals(medication.getStatus())
-                        ? nahdiProperties.prescription().itemCancelledStatus()
-                        : nahdiProperties.prescription().itemApprovalStatus())
+                .appStatus(nahdiProperties.prescription().itemApprovalStatus())
                 .build();
     }
 

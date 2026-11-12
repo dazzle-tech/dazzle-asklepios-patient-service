@@ -26,7 +26,6 @@ nahdi:
     type-cash: ${NAHDI_PRESCRIPTION_TYPE_CASH:1}
     type-insurance: ${NAHDI_PRESCRIPTION_TYPE_INSURANCE:2}
     item-approval-status: ${NAHDI_ITEM_APPROVAL_STATUS:A}
-    item-cancelled-status: ${NAHDI_ITEM_CANCELLED_STATUS:C}
     item-code-priority: ${NAHDI_ITEM_CODE_PRIORITY:SFDA}
 
 management:

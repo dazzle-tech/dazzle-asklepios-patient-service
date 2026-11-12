@@ -132,15 +132,5 @@ public class PatientPrescriptionMedication extends AbstractAuditingEntity<Long> 
     @Column(name = "cancelled_date")
     private Instant cancelledDate;
 
-    // Dispensing status reported by the external pharmacy (Nahdi). A dispensed line cannot be edited or cancelled.
-    @Builder.Default
-    @Column(name = "is_dispensed", nullable = false)
-    private Boolean dispensed = false;
 
-    @Column(name = "dispensed_at")
-    private Instant dispensedAt;
-
-    // Pharmacy reference of the dispensing (e.g. invoice number).
-    @Column(name = "dispensing_reference", length = 100)
-    private String dispensingReference;
 }

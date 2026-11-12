@@ -10,7 +10,6 @@ import java.time.Instant;
  */
 public record NahdiIntegrationLogDTO(
         Long id,
-        Long prescriptionId,
         String endpoint,
         String requestPayload,
         String responsePayload,
