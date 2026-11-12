@@ -45,12 +45,14 @@ public class PatientPrescriptionMedicationService {
     private final ICDTreeHelper icdTreeHelper;
     private final PatientServiceAndProductService patientServiceAndProductService;
     private final ReopenSessionAuditContext reopenSessionAuditContext;
+    private final SubmittedPrescriptionEditPolicy submittedPrescriptionEditPolicy;
 
     public PatientPrescriptionMedication create(PrescriptionMedicationCreateDTO prescriptionMedicationCreateDTO) {
         LOG.debug("create a PrescriptionMedicationCreateDTO={}", prescriptionMedicationCreateDTO);
 
         PatientPrescription header = patientPrescriptionRepository.findById(prescriptionMedicationCreateDTO.prescriptionHeaderId)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescription not found: " + prescriptionMedicationCreateDTO.prescriptionHeaderId));
+        submittedPrescriptionEditPolicy.assertCanEdit(header);
 
         //validateChronicVsDuration(prescriptionMedicationCreateDTO.chronicMedication, prescriptionMedicationCreateDTO.duration);
         validateMedicationSelection(
@@ -114,6 +116,7 @@ public class PatientPrescriptionMedicationService {
         PatientPrescriptionMedication entity = patientPrescriptionMedicationRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescriptionMedication not found: " + id));
         Long encounterId = entity.getPrescriptionHeader() == null ? null : entity.getPrescriptionHeader().getEncounterId();
+        submittedPrescriptionEditPolicy.assertCanEdit(entity.getPrescriptionHeader());
         nahdiDispensingService.assertNotDispensed(entity);
         validateMedicationIdentityUnchangedAfterSubmit(entity, prescriptionMedicationUpdateDTO);
         if (prescriptionMedicationUpdateDTO.instructionsType != null)
@@ -252,6 +255,7 @@ public class PatientPrescriptionMedicationService {
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescriptionMedication not found: " + id));
 
         Long encounterId = entity.getPrescriptionHeader() == null ? null : entity.getPrescriptionHeader().getEncounterId();
+        submittedPrescriptionEditPolicy.assertCanEdit(entity.getPrescriptionHeader());
         nahdiDispensingService.assertNotDispensed(entity);
         patientServiceAndProductService.cancelBySource(
                 ServiceSource.PRESCRIPTION,

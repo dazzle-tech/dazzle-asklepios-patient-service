@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.integration.nahdi.service;
 
+import com.dazzle.asklepios.service.SubmittedPrescriptionEditPolicy;
 import com.dazzle.asklepios.domain.PatientPrescription;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionStatus;
 import com.dazzle.asklepios.integration.nahdi.client.NahdiClient;
@@ -51,6 +52,7 @@ public class NahdiIntegrationService {
     private final PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository;
     private final NahdiIntegrationLogRepository nahdiIntegrationLogRepository;
     private final ObjectMapper objectMapper;
+    private final SubmittedPrescriptionEditPolicy submittedPrescriptionEditPolicy;
 
     /**
      * Sends a submitted prescription to Nahdi and records the exchange. Never throws.
@@ -118,6 +120,7 @@ public class NahdiIntegrationService {
         if (!PrescriptionStatus.SUBMITTED.equals(prescription.getStatus())) {
             throw new BadRequestAlertException("Only a submitted prescription can be resent", "prescription", "notSubmitted");
         }
+        submittedPrescriptionEditPolicy.assertCanEdit(prescription);
         LOG.info("[NAHDI][RESEND_PRESCRIPTION] prescriptionId={}", prescriptionId);
         return sendPrescription(prescriptionId);
     }

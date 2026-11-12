@@ -13,6 +13,12 @@ waseel:
     system-type: ${WASEEL_SYSTEM_TYPE:1}
     timeout-seconds: 90
 
+# Changing a prescription after it was submitted (add/edit/cancel a medication, resend to the pharmacy),
+# in the visit and from the EMR on a closed visit. false = nobody; true = users who have the permission.
+prescription:
+  edit-after-submit:
+    enabled: ${PRESCRIPTION_EDIT_AFTER_SUBMIT_ENABLED:true}
+
 # Nahdi pharmacy integration (prescriptions are sent to Nahdi on submit)
 nahdi:
   enabled: ${NAHDI_ENABLED:false}
