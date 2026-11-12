@@ -51,6 +51,13 @@ public class ToothAction extends AbstractAuditingEntity<Long> implements Seriali
     @Column(name = "existing", nullable = false)
     private boolean existing = false;
 
+    /**
+     * Patient-scoped Visit Number for Existing chart treatments shown in Treatment Plan.
+     * Assigned by {@code DentalVisitNumberService}; not a billable plan field.
+     */
+    @Column(name = "visit_number")
+    private Integer visitNumber;
+
     @Column(name = "image_name")
     private String imageName;
 

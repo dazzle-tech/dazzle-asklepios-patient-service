@@ -2,8 +2,10 @@ package com.dazzle.asklepios.web.rest;
 
 import com.dazzle.asklepios.service.DentalPlannedTreatmentService;
 import com.dazzle.asklepios.service.dto.dentalChart.DentalTreatmentPlanResponseDTO;
+import com.dazzle.asklepios.service.dto.dentalChart.PlannedTreatmentBatchSaveDTO;
 import com.dazzle.asklepios.service.dto.dentalChart.PlannedTreatmentCancelDTO;
 import com.dazzle.asklepios.service.dto.dentalChart.PlannedTreatmentDTO;
+import com.dazzle.asklepios.service.dto.dentalChart.PlannedTreatmentExecutionDTO;
 import com.dazzle.asklepios.service.dto.dentalChart.PlannedTreatmentSaveDTO;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -17,6 +19,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/patient/dental/treatment-plan")
 public class DentalPlannedTreatmentController {
@@ -29,10 +33,33 @@ public class DentalPlannedTreatmentController {
         this.dentalPlannedTreatmentService = dentalPlannedTreatmentService;
     }
 
+    @GetMapping("/by-plan/{planId}")
+    public ResponseEntity<List<PlannedTreatmentDTO>> getTreatmentsForPlan(@PathVariable Long planId) {
+        LOG.debug("REST get planned treatments for planId={}", planId);
+        return ResponseEntity.ok(dentalPlannedTreatmentService.listForPlan(planId));
+    }
+
     @GetMapping("/by-encounter/{encounterId}")
     public ResponseEntity<DentalTreatmentPlanResponseDTO> getTreatmentPlanForEncounter(@PathVariable Long encounterId) {
         LOG.debug("REST get treatment plan for encounterId={}", encounterId);
         return ResponseEntity.ok(dentalPlannedTreatmentService.getTreatmentPlanForEncounter(encounterId));
+    }
+
+    @GetMapping("/sessions/by-patient/{patientId}")
+    public ResponseEntity<List<Integer>> listPatientSessionNumbers(@PathVariable Long patientId) {
+        LOG.debug("REST list treatment sessions for patientId={}", patientId);
+        return ResponseEntity.ok(dentalPlannedTreatmentService.listPatientSessionNumbers(patientId));
+    }
+
+    @PostMapping("/{id}/start")
+    public ResponseEntity<PlannedTreatmentDTO> startPlannedTreatment(
+            @PathVariable Long id,
+            @Valid @RequestBody PlannedTreatmentExecutionDTO dto
+    ) {
+        LOG.debug("REST start planned treatment id={}", id);
+        return ResponseEntity.ok(
+                dentalPlannedTreatmentService.startPlannedTreatment(id, dto.executionEncounterId())
+        );
     }
 
     @PostMapping("")
@@ -41,6 +68,17 @@ public class DentalPlannedTreatmentController {
         PlannedTreatmentDTO saved = dentalPlannedTreatmentService.createPlannedTreatment(dto);
         return ResponseEntity
                 .created(java.net.URI.create("/api/patient/dental/treatment-plan/" + saved.id()))
+                .body(saved);
+    }
+
+    @PostMapping("/batch")
+    public ResponseEntity<List<PlannedTreatmentDTO>> createPlannedTreatmentsBatch(
+            @Valid @RequestBody PlannedTreatmentBatchSaveDTO dto
+    ) {
+        LOG.debug("REST create planned treatment batch toothCount={}", dto.toothIds() != null ? dto.toothIds().size() : 0);
+        List<PlannedTreatmentDTO> saved = dentalPlannedTreatmentService.createPlannedTreatmentsBatch(dto);
+        return ResponseEntity
+                .created(java.net.URI.create("/api/patient/dental/treatment-plan/batch"))
                 .body(saved);
     }
 
@@ -61,6 +99,17 @@ public class DentalPlannedTreatmentController {
         LOG.debug("REST cancel planned treatment id={}", id);
         return ResponseEntity.ok(
                 dentalPlannedTreatmentService.cancelPlannedTreatment(id, dto.cancellationReason())
+        );
+    }
+
+    @PostMapping("/{id}/complete")
+    public ResponseEntity<PlannedTreatmentDTO> completePlannedTreatment(
+            @PathVariable Long id,
+            @Valid @RequestBody PlannedTreatmentExecutionDTO dto
+    ) {
+        LOG.debug("REST complete planned treatment id={}", id);
+        return ResponseEntity.ok(
+                dentalPlannedTreatmentService.completePlannedTreatment(id, dto.executionEncounterId())
         );
     }
 }

@@ -56,6 +56,14 @@ public class DentalChartController {
         return ResponseEntity.ok(dentalChartService.getOrCreateChartForEncounter(encounterId));
     }
 
+    @GetMapping("/charts/by-encounter/{encounterId}/existing")
+    public ResponseEntity<DentalChartResponseDTO> getExistingChartForEncounter(@PathVariable Long encounterId) {
+        LOG.debug("REST get existing dental chart for encounterId={}", encounterId);
+        return dentalChartService.findExistingChartForEncounter(encounterId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
     @GetMapping("/charts/{chartId}")
     public ResponseEntity<DentalChartResponseDTO> getChartById(@PathVariable Long chartId) {
         LOG.debug("REST get dental chart id={}", chartId);
