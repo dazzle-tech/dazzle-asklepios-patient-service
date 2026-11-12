@@ -1,9 +1,14 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.DentalChart;
+import com.dazzle.asklepios.domain.DentalChartTooth;
 import com.dazzle.asklepios.domain.DentalPlannedTreatment;
 import com.dazzle.asklepios.domain.ToothAction;
+import com.dazzle.asklepios.repository.DentalChartRepository;
+import com.dazzle.asklepios.repository.DentalChartToothRepository;
 import com.dazzle.asklepios.repository.DentalPlannedTreatmentRepository;
 import com.dazzle.asklepios.repository.ToothActionRepository;
+import com.dazzle.asklepios.repository.projection.VisitNumberView;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Service;
@@ -13,6 +18,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Patient-scoped Visit Number allocation for dental planned treatments and Existing chart treatments.
@@ -34,15 +41,41 @@ public class DentalVisitNumberService {
     private final EntityManager entityManager;
     private final DentalPlannedTreatmentRepository dentalPlannedTreatmentRepository;
     private final ToothActionRepository toothActionRepository;
+    private final DentalChartRepository dentalChartRepository;
+    private final DentalChartToothRepository dentalChartToothRepository;
 
     public DentalVisitNumberService(
             EntityManager entityManager,
             DentalPlannedTreatmentRepository dentalPlannedTreatmentRepository,
-            ToothActionRepository toothActionRepository
+            ToothActionRepository toothActionRepository,
+            DentalChartRepository dentalChartRepository,
+            DentalChartToothRepository dentalChartToothRepository
     ) {
         this.entityManager = entityManager;
         this.dentalPlannedTreatmentRepository = dentalPlannedTreatmentRepository;
         this.toothActionRepository = toothActionRepository;
+        this.dentalChartRepository = dentalChartRepository;
+        this.dentalChartToothRepository = dentalChartToothRepository;
+    }
+
+    /**
+     * Distinct positive Visit Numbers used by the patient on planned treatments and tooth actions, ascending.
+     */
+    @Transactional(readOnly = true)
+    public List<Integer> listPatientVisitNumbers(Long patientId) {
+        Set<Integer> numbers = new TreeSet<>();
+        dentalPlannedTreatmentRepository.findDistinctByPatientIdAndVisitNumberNotNull(patientId).stream()
+                .map(VisitNumberView::getVisitNumber)
+                .filter(n -> n != null && n > 0)
+                .forEach(numbers::add);
+        List<Long> toothIds = patientChartToothIds(patientId);
+        if (!toothIds.isEmpty()) {
+            toothActionRepository.findDistinctByToothIdInAndVisitNumberNotNull(toothIds).stream()
+                    .map(VisitNumberView::getVisitNumber)
+                    .filter(n -> n != null && n > 0)
+                    .forEach(numbers::add);
+        }
+        return new ArrayList<>(numbers);
     }
 
     /**
@@ -182,11 +215,31 @@ public class DentalVisitNumberService {
     }
 
     private int currentMaxVisitNumber(Long patientId) {
-        Integer fromPlans = dentalPlannedTreatmentRepository.findMaxVisitNumberByPatientId(patientId);
-        Integer fromActions = toothActionRepository.findMaxVisitNumberByPatientId(patientId);
-        int planMax = fromPlans != null ? fromPlans : 0;
-        int actionMax = fromActions != null ? fromActions : 0;
+        int planMax = dentalPlannedTreatmentRepository
+                .findFirstByPatientIdAndVisitNumberNotNullOrderByVisitNumberDesc(patientId)
+                .map(DentalPlannedTreatment::getVisitNumber)
+                .orElse(0);
+        List<Long> toothIds = patientChartToothIds(patientId);
+        int actionMax = toothIds.isEmpty()
+                ? 0
+                : toothActionRepository
+                        .findFirstByToothIdInAndVisitNumberNotNullOrderByVisitNumberDesc(toothIds)
+                        .map(ToothAction::getVisitNumber)
+                        .orElse(0);
         return Math.max(planMax, actionMax);
+    }
+
+    /** IDs of every chart tooth across all of the patient's dental charts. */
+    private List<Long> patientChartToothIds(Long patientId) {
+        List<Long> chartIds = dentalChartRepository.findByPatient_Id(patientId).stream()
+                .map(DentalChart::getId)
+                .toList();
+        if (chartIds.isEmpty()) {
+            return List.of();
+        }
+        return dentalChartToothRepository.findByChartIdIn(chartIds).stream()
+                .map(DentalChartTooth::getId)
+                .toList();
     }
 
     private void lockPatientVisitSequence(Long patientId) {

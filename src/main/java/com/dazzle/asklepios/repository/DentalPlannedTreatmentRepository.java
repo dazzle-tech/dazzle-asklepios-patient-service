@@ -2,11 +2,11 @@ package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.DentalPlannedTreatment;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentType;
+import com.dazzle.asklepios.repository.projection.VisitNumberView;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface DentalPlannedTreatmentRepository extends JpaRepository<DentalPlannedTreatment, Long> {
 
@@ -21,20 +21,9 @@ public interface DentalPlannedTreatmentRepository extends JpaRepository<DentalPl
     List<DentalPlannedTreatment> findByTreatmentPlanIdAndCancelledFalseOrderByVisitNumberAsc(Long treatmentPlanId);
 
     /**
-     * Highest Visit Number for the patient across all encounters, DRAFT/CURRENT, including cancelled.
+     * Row holding the highest Visit Number for the patient across all encounters, DRAFT/CURRENT, including cancelled.
      */
-    @Query("""
-            select max(t.visitNumber)
-            from DentalPlannedTreatment t
-            where t.patientId = :patientId
-            """)
-    Integer findMaxVisitNumberByPatientId(@Param("patientId") Long patientId);
+    Optional<DentalPlannedTreatment> findFirstByPatientIdAndVisitNumberNotNullOrderByVisitNumberDesc(Long patientId);
 
-    @Query("""
-            select distinct t.visitNumber
-            from DentalPlannedTreatment t
-            where t.patientId = :patientId
-              and t.visitNumber is not null
-            """)
-    List<Integer> findDistinctVisitNumbersByPatientId(@Param("patientId") Long patientId);
+    List<VisitNumberView> findDistinctByPatientIdAndVisitNumberNotNull(Long patientId);
 }

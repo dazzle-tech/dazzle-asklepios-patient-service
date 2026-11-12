@@ -11,7 +11,10 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -46,14 +49,17 @@ public class DentalPlannedTreatment extends AbstractAuditingEntity<Long> impleme
     private Long encounterId;
 
     /** Planning encounter stays on encounterId. Set when work actually starts or completes. */
-    @Column(name = "execution_encounter_id")
-    private Long executionEncounterId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "execution_encounter_id")
+    private PatientEncounter executionEncounter;
 
-    @Column(name = "treatment_plan_id")
-    private Long treatmentPlanId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "treatment_plan_id")
+    private DentalTreatmentPlan treatmentPlan;
 
-    @Column(name = "treatment_session_id")
-    private Long treatmentSessionId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "treatment_session_id")
+    private DentalTreatmentSession treatmentSession;
 
     @NotNull
     @Enumerated(EnumType.STRING)
@@ -125,8 +131,9 @@ public class DentalPlannedTreatment extends AbstractAuditingEntity<Long> impleme
     @Builder.Default
     private PlannedTreatmentStatus status = PlannedTreatmentStatus.PENDING;
 
-    @Column(name = "patient_service_and_product_id")
-    private Long patientServiceAndProductId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "patient_service_and_product_id")
+    private PatientServiceAndProduct patientServiceAndProduct;
 
     /** Login of the user who completed the treatment. Null until completion. */
     @Column(name = "completed_by")

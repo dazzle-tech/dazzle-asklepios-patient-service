@@ -304,8 +304,8 @@ public class ToothActionService {
                     cancellationReason,
                     currentUser
             );
-            if (plannedTreatment.getTreatmentPlanId() != null) {
-                planIdForCompletion = plannedTreatment.getTreatmentPlanId();
+            if (plannedTreatment.getTreatmentPlan() != null) {
+                planIdForCompletion = plannedTreatment.getTreatmentPlan().getId();
             }
         }
         if (planIdForCompletion != null) {
@@ -372,8 +372,8 @@ public class ToothActionService {
             DentalPlannedTreatment plannedTreatment = DentalPlannedTreatment.builder()
                     .patientId(chart.getPatient().getId())
                     .encounterId(chart.getEncounter().getId())
-                    .treatmentPlanId(dto.treatmentPlanId())
-                    .treatmentSessionId(session.getId())
+                    .treatmentPlan(session.getTreatmentPlan())
+                    .treatmentSession(session)
                     .type(PlannedTreatmentType.CURRENT)
                     .visitNumber(visitNumber)
                     .cdtCodeId(dto.cdtCodeId())

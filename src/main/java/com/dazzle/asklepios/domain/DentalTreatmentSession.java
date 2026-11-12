@@ -4,9 +4,11 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -21,13 +23,7 @@ import java.io.Serializable;
  * Session numbers restart at 1 for each plan.
  */
 @Entity
-@Table(
-        name = "dental_treatment_session",
-        uniqueConstraints = @UniqueConstraint(
-                name = "uk_dental_treatment_session_plan_number",
-                columnNames = {"treatment_plan_id", "session_number"}
-        )
-)
+@Table(name = "dental_treatment_session")
 @Getter
 @Setter
 @Builder
@@ -40,8 +36,9 @@ public class DentalTreatmentSession extends AbstractAuditingEntity<Long> impleme
     private Long id;
 
     @NotNull
-    @Column(name = "treatment_plan_id", nullable = false)
-    private Long treatmentPlanId;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "treatment_plan_id", nullable = false)
+    private DentalTreatmentPlan treatmentPlan;
 
     @NotNull
     @Column(name = "session_number", nullable = false)

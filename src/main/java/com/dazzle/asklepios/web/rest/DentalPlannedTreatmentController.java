@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/patient/dental/treatment-plan")
+@RequestMapping("/api/patient")
 public class DentalPlannedTreatmentController {
 
     private static final Logger LOG = LoggerFactory.getLogger(DentalPlannedTreatmentController.class);
@@ -33,25 +33,25 @@ public class DentalPlannedTreatmentController {
         this.dentalPlannedTreatmentService = dentalPlannedTreatmentService;
     }
 
-    @GetMapping("/by-plan/{planId}")
+    @GetMapping("/dental/treatment-plan/by-plan/{planId}")
     public ResponseEntity<List<PlannedTreatmentDTO>> getTreatmentsForPlan(@PathVariable Long planId) {
         LOG.debug("REST get planned treatments for planId={}", planId);
         return ResponseEntity.ok(dentalPlannedTreatmentService.listForPlan(planId));
     }
 
-    @GetMapping("/by-encounter/{encounterId}")
+    @GetMapping("/dental/treatment-plan/by-encounter/{encounterId}")
     public ResponseEntity<DentalTreatmentPlanResponseDTO> getTreatmentPlanForEncounter(@PathVariable Long encounterId) {
         LOG.debug("REST get treatment plan for encounterId={}", encounterId);
         return ResponseEntity.ok(dentalPlannedTreatmentService.getTreatmentPlanForEncounter(encounterId));
     }
 
-    @GetMapping("/sessions/by-patient/{patientId}")
+    @GetMapping("/dental/treatment-plan/sessions/by-patient/{patientId}")
     public ResponseEntity<List<Integer>> listPatientSessionNumbers(@PathVariable Long patientId) {
         LOG.debug("REST list treatment sessions for patientId={}", patientId);
         return ResponseEntity.ok(dentalPlannedTreatmentService.listPatientSessionNumbers(patientId));
     }
 
-    @PostMapping("/{id}/start")
+    @PostMapping("/dental/treatment-plan/{id}/start")
     public ResponseEntity<PlannedTreatmentDTO> startPlannedTreatment(
             @PathVariable Long id,
             @Valid @RequestBody PlannedTreatmentExecutionDTO dto
@@ -62,7 +62,7 @@ public class DentalPlannedTreatmentController {
         );
     }
 
-    @PostMapping("")
+    @PostMapping("/dental/treatment-plan")
     public ResponseEntity<PlannedTreatmentDTO> createPlannedTreatment(@Valid @RequestBody PlannedTreatmentSaveDTO dto) {
         LOG.debug("REST create planned treatment payload={}", dto);
         PlannedTreatmentDTO saved = dentalPlannedTreatmentService.createPlannedTreatment(dto);
@@ -71,7 +71,7 @@ public class DentalPlannedTreatmentController {
                 .body(saved);
     }
 
-    @PostMapping("/batch")
+    @PostMapping("/dental/treatment-plan/batch")
     public ResponseEntity<List<PlannedTreatmentDTO>> createPlannedTreatmentsBatch(
             @Valid @RequestBody PlannedTreatmentBatchSaveDTO dto
     ) {
@@ -82,7 +82,7 @@ public class DentalPlannedTreatmentController {
                 .body(saved);
     }
 
-    @PutMapping("/{id}")
+    @PutMapping("/dental/treatment-plan/{id}")
     public ResponseEntity<PlannedTreatmentDTO> updatePlannedTreatment(
             @PathVariable Long id,
             @Valid @RequestBody PlannedTreatmentSaveDTO dto
@@ -91,7 +91,7 @@ public class DentalPlannedTreatmentController {
         return ResponseEntity.ok(dentalPlannedTreatmentService.updatePlannedTreatment(id, dto));
     }
 
-    @PostMapping("/{id}/cancel")
+    @PostMapping("/dental/treatment-plan/{id}/cancel")
     public ResponseEntity<PlannedTreatmentDTO> cancelPlannedTreatment(
             @PathVariable Long id,
             @Valid @RequestBody PlannedTreatmentCancelDTO dto
@@ -102,7 +102,7 @@ public class DentalPlannedTreatmentController {
         );
     }
 
-    @PostMapping("/{id}/complete")
+    @PostMapping("/dental/treatment-plan/{id}/complete")
     public ResponseEntity<PlannedTreatmentDTO> completePlannedTreatment(
             @PathVariable Long id,
             @Valid @RequestBody PlannedTreatmentExecutionDTO dto
