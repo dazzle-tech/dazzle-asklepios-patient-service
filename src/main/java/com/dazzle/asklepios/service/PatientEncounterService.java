@@ -890,8 +890,13 @@ public class PatientEncounterService {
         }
 
         String username = currentUsername();
-        validateStartedByIsDoctor(username);
+        PractitionerDTO startedByPractitioner = validateStartedByIsDoctor(username);
         encounterPreAuthorizationGuardService.requireNoPendingPreAuthorization(encounterId);
+
+        if (encounter.getPractitionerId() == null) {
+            assignPractitionerOnVisitStartIfConfigured(encounter, startedByPractitioner);
+        }
+
         encounter.setStatus(TreatmentStatus.ONGOING);
         encounter.setStartedBy(currentUsername());
         encounter.setStartedDate(Instant.now());
@@ -917,7 +922,7 @@ public class PatientEncounterService {
         }
     }
 
-    private void validateStartedByIsDoctor(String login) {
+    private PractitionerDTO validateStartedByIsDoctor(String login) {
         PractitionerDTO practitioner;
 
         try {
@@ -966,6 +971,56 @@ public class PatientEncounterService {
                     "startedBy.notDoctor"
             );
         }
+
+        return practitioner;
+    }
+
+    private void assignPractitionerOnVisitStartIfConfigured(
+            PatientEncounter encounter,
+            PractitionerDTO startedByPractitioner
+    ) {
+        Long departmentId = encounter.getDepartmentId();
+        if (departmentId == null) {
+            return;
+        }
+
+        DepartmentDTO department = departmentHelper.getDepartment(departmentId);
+        if (!Boolean.TRUE.equals(department.assignPractitionerOnVisitStart())) {
+            return;
+        }
+
+        if (startedByPractitioner == null || startedByPractitioner.id() == null) {
+            throw new BadRequestAlertException(
+                    "Current user is not linked to a practitioner",
+                    "patientEncounter",
+                    "startedBy.practitioner.notFound"
+            );
+        }
+
+        if (!Boolean.TRUE.equals(startedByPractitioner.isActive())) {
+            throw new BadRequestAlertException(
+                    "Linked practitioner is not active",
+                    "patientEncounter",
+                    "startedBy.practitioner.inactive"
+            );
+        }
+
+        boolean hasDepartmentAccess =
+                practitionerClient.hasDepartmentAccess(startedByPractitioner.id(), departmentId);
+        if (!hasDepartmentAccess) {
+            throw new BadRequestAlertException(
+                    "Linked practitioner does not have access to the encounter department",
+                    "patientEncounter",
+                    "startedBy.practitioner.department.access.denied"
+            );
+        }
+
+        encounter.setPractitionerId(startedByPractitioner.id());
+        LOG.info(
+                "[START] assigned practitionerId={} to encounterId={} from authenticated user",
+                startedByPractitioner.id(),
+                encounter.getId()
+        );
     }
 
     private boolean isBlank(String value) {
