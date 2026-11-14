@@ -41,6 +41,7 @@ class PreAuthorizationStatusRefreshServiceTest {
     @Mock private PatientServiceAndProductRepository patientServiceAndProductRepository;
     @Mock private ApplicationEventPublisher applicationEventPublisher;
     @Mock private CoverageApprovalRoutingService coverageApprovalRoutingService;
+    @Mock private PreAuthorizationLineReleaseService preAuthorizationLineReleaseService;
 
     @InjectMocks
     private PreAuthorizationStatusRefreshService service;

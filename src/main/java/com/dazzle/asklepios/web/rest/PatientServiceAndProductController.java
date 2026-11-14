@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.service.ClinicalFulfillmentStatusResolver;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationDecisionDetailsService;
 import com.dazzle.asklepios.service.CoveragePreApprovalLimitService;
 import com.dazzle.asklepios.service.EncounterReopenGuard;
 import com.dazzle.asklepios.service.PatientServiceAndProductService;
@@ -44,17 +45,20 @@ public class PatientServiceAndProductController {
     private final PatientServiceAndProductService patientServiceAndProductService;
     private final ClinicalFulfillmentStatusResolver clinicalFulfillmentStatusResolver;
     private final CoveragePreApprovalLimitService coveragePreApprovalLimitService;
+    private final PreAuthorizationDecisionDetailsService preAuthorizationDecisionDetailsService;
     private final EncounterReopenGuard encounterReopenGuard;
 
     public PatientServiceAndProductController(
             PatientServiceAndProductService patientServiceAndProductService,
             ClinicalFulfillmentStatusResolver clinicalFulfillmentStatusResolver,
             CoveragePreApprovalLimitService coveragePreApprovalLimitService,
+            PreAuthorizationDecisionDetailsService preAuthorizationDecisionDetailsService,
             EncounterReopenGuard encounterReopenGuard
     ) {
         this.patientServiceAndProductService = patientServiceAndProductService;
         this.clinicalFulfillmentStatusResolver = clinicalFulfillmentStatusResolver;
         this.coveragePreApprovalLimitService = coveragePreApprovalLimitService;
+        this.preAuthorizationDecisionDetailsService = preAuthorizationDecisionDetailsService;
         this.encounterReopenGuard = encounterReopenGuard;
     }
 
@@ -97,6 +101,7 @@ public class PatientServiceAndProductController {
                 patientServiceAndProductService.findAllServicesAndProductsByEncounterId(pageable, encounterId);
         clinicalFulfillmentStatusResolver.attachToItems(page.getContent());
         coveragePreApprovalLimitService.attachHoldReasons(page.getContent());
+        preAuthorizationDecisionDetailsService.attach(page.getContent());
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page

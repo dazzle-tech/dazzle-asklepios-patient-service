@@ -17,6 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,6 +28,8 @@ import java.util.function.Consumer;
 @Service
 @RequiredArgsConstructor
 public class EligibilityPatientInsuranceSyncService {
+
+    private static final ZoneId PAYER_ZONE = ZoneId.of("Asia/Riyadh");
 
     private final PatientInsuranceRepository patientInsuranceRepository;
     private final ObjectMapper objectMapper;
@@ -288,6 +292,15 @@ public class EligibilityPatientInsuranceSyncService {
         }
 
         String date = value.trim();
+
+        // Waseel sends benefit dates as the UTC instant of a Riyadh midnight:
+        // "2025-12-31T21:00:00.000+00:00" is 2026-01-01 for the policy.
+        try {
+            return OffsetDateTime.parse(date.replaceFirst("([+-]\\d{2})(\\d{2})$", "$1:$2"))
+                    .atZoneSameInstant(PAYER_ZONE)
+                    .toLocalDate();
+        } catch (RuntimeException ignored) {
+        }
 
         try {
             if (date.length() >= 10) {

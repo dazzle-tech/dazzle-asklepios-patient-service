@@ -9,6 +9,7 @@ import com.dazzle.asklepios.integration.waseel.event.EncounterPreAuthorizationSy
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.CoverageApprovalRoutingService;
 import com.dazzle.asklepios.service.CoveragePreApprovalLimitService;
+import com.dazzle.asklepios.service.eligibility.EligibilityContractApprovalService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -39,6 +40,7 @@ public class EncounterPreAuthorizationSyncService {
     private final ApplicationEventPublisher applicationEventPublisher;
     private final CoverageApprovalRoutingService coverageApprovalRoutingService;
     private final CoveragePreApprovalLimitService coveragePreApprovalLimitService;
+    private final EligibilityContractApprovalService eligibilityContractApprovalService;
     private final EncounterPreAuthorizationSyncService self;
 
     public EncounterPreAuthorizationSyncService(
@@ -49,6 +51,7 @@ public class EncounterPreAuthorizationSyncService {
             ApplicationEventPublisher applicationEventPublisher,
             CoverageApprovalRoutingService coverageApprovalRoutingService,
             CoveragePreApprovalLimitService coveragePreApprovalLimitService,
+            EligibilityContractApprovalService eligibilityContractApprovalService,
             @Lazy EncounterPreAuthorizationSyncService self
     ) {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
@@ -58,6 +61,7 @@ public class EncounterPreAuthorizationSyncService {
         this.applicationEventPublisher = applicationEventPublisher;
         this.coverageApprovalRoutingService = coverageApprovalRoutingService;
         this.coveragePreApprovalLimitService = coveragePreApprovalLimitService;
+        this.eligibilityContractApprovalService = eligibilityContractApprovalService;
         this.self = self;
     }
 
@@ -136,12 +140,19 @@ public class EncounterPreAuthorizationSyncService {
                             item.getCurrency()
                     );
 
-            preAuthorizationResolutionService.apply(item, resolution);
             preAuthorizationResolutionService.applyEncounterInsuranceLink(
                     item,
                     encounterId,
                     insuranceVisitContext
             );
+
+            // The patient eligibility contract keeps a line held when it crosses a contract limit.
+            if (!resolution.required() && !localApproval
+                    && eligibilityContractApprovalService.requiresPreAuthorization(item, items)) {
+                resolution = PreAuthorizationResolutionService.Resolution.pendingApproval();
+            }
+
+            preAuthorizationResolutionService.apply(item, resolution);
 
             if (resolution.required()) {
                 hasPendingItems = true;

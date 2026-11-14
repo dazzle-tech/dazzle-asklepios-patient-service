@@ -13,6 +13,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -73,6 +74,13 @@ public interface PatientServiceAndProductRepository
             BillingItemTypes billingItemType
     );
 
+    /** Every line of a source that bills more than one line, e.g. a dental procedure on several teeth. */
+    List<PatientServiceAndProduct> findAllByServiceSourceAndSourceIdAndBillingItemTypeOrderByIdAsc(
+            ServiceSource serviceSource,
+            Long sourceId,
+            BillingItemTypes billingItemType
+    );
+
     List<PatientServiceAndProduct> findByServiceSourceInAndSourceIdIn(
             Collection<ServiceSource> serviceSources,
             Collection<Long> sourceIds
@@ -119,6 +127,11 @@ public interface PatientServiceAndProductRepository
     );
 
     boolean existsByEncounterIdAndPatientInsuranceIdIsNotNull(Long encounterId);
+
+    List<PatientServiceAndProduct> findByPatientInsuranceIdAndCreatedDateGreaterThanEqual(
+            Long patientInsuranceId,
+            Instant createdFrom
+    );
 
     boolean existsByEncounterIdAndPatientInsuranceIdIsNotNullAndPreAuthorizationStatusInAndPaymentStatusNot(
             Long encounterId,

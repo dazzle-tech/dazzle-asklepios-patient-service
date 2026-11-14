@@ -457,6 +457,8 @@ public class WaseelCoverageExtractionService {
         private BigDecimal maximumBenefit;
         private BigDecimal approvalLimit;
         private String unit;
+        /** Benefit period, e.g. "Annual, renewing on the anniversary" or "Per day". */
+        private String term;
         private String currency;
 
         private CategoryRuleBuilder(
@@ -478,6 +480,11 @@ public class WaseelCoverageExtractionService {
             Object networkObject = item.get("network");
             String network = networkObject == null ? null : networkObject.toString();
             applyNetwork(network);
+
+            Object termObject = item.get("term");
+            if (termObject != null && !termObject.toString().isBlank()) {
+                term = termObject.toString().trim();
+            }
 
             String description = item.get("description") == null
                     ? null
@@ -530,7 +537,7 @@ public class WaseelCoverageExtractionService {
                     itemCode,
                     networkType,
                     providerType,
-                    null,
+                    term,
                     unit,
                     currency,
                     maximumBenefit,
