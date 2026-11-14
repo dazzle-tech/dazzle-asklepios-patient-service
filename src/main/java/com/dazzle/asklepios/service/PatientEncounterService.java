@@ -114,6 +114,16 @@ public class PatientEncounterService {
 
     private static final Logger LOG = LoggerFactory.getLogger(PatientEncounterService.class);
 
+    /** Statuses that come before a bed assignment; the generic update must not move a bedded encounter back to them. */
+    private static final Set<TreatmentStatus> PRE_BED_TREATMENT_STATUSES = Set.of(
+            TreatmentStatus.PENDING_PAYMENT,
+            TreatmentStatus.WAITING_TRIAGE,
+            TreatmentStatus.TRIAGE_STARTED,
+            TreatmentStatus.WAITING_LIST,
+            TreatmentStatus.SENT_TO_ER,
+            TreatmentStatus.NEW
+    );
+
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientRepository patientRepository;
     private final EncounterAssessmentRepository encounterAssessmentRepository;
@@ -2657,6 +2667,21 @@ public class PatientEncounterService {
             LOG.info(
                     "[UPDATE] PatientEncounter treatment status advanced "
                             + "id={} from={} to={}",
+                    encounter.getId(),
+                    currentStatus,
+                    requestedStatus
+            );
+            return;
+        }
+
+        if (currentStatus == TreatmentStatus.ASSIGNED_TO_BED
+                && PRE_BED_TREATMENT_STATUSES.contains(requestedStatus)) {
+            // A screen opened before the bed assignment (e.g. triage) still holds the old
+            // status and sends it back with unrelated edits. Keep the bed status and save
+            // the rest of the payload.
+            LOG.warn(
+                    "[UPDATE] PatientEncounter ignored stale treatment status "
+                            + "id={} current={} requested={}",
                     encounter.getId(),
                     currentStatus,
                     requestedStatus
