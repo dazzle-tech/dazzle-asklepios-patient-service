@@ -26,6 +26,7 @@ import com.dazzle.asklepios.service.dto.billing.PreviewDefaultServicesPricingReq
 import com.dazzle.asklepios.service.dto.billing.PreviewDefaultServicesPricingResult;
 import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
 import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
+import com.dazzle.asklepios.service.eligibility.EligibilityContractApprovalService;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import feign.FeignException;
@@ -64,6 +65,7 @@ public class DefaultServicePricingPreviewService {
     private final EncounterCoverageService encounterCoverageService;
     private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
     private final CoveragePreApprovalLimitService coveragePreApprovalLimitService;
+    private final EligibilityContractApprovalService eligibilityContractApprovalService;
     private final EncounterDefaultProcedureService encounterDefaultProcedureService;
 
     @Transactional(readOnly = true)
@@ -386,11 +388,15 @@ public class DefaultServicePricingPreviewService {
         boolean preAuthorizationRequired =
                 coveredByInsurance
                         && !Boolean.TRUE.equals(previewItem.getIsExempted())
-                        && coveragePreApprovalLimitService.requiresApproval(
+                        && (coveragePreApprovalLimitService.requiresApproval(
                                 insurance,
                                 previewItem,
                                 pricing.netAmount()
-                        );
+                        ) || eligibilityContractApprovalService.requiresPreAuthorization(
+                                insurance,
+                                previewItem,
+                                pricing.netAmount()
+                        ));
 
         if (preAuthorizationRequired) {
             // Nothing is collected before the payer decision; shares are calculated after it.

@@ -41,6 +41,8 @@ import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.dazzle.asklepios.service.event.ServiceCancelledFromAccountEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -65,6 +67,8 @@ public class PatientServiceAndProductService {
 
     private static final Logger LOG = LoggerFactory.getLogger(PatientServiceAndProductService.class);
 
+    private static final String CANCELLED_FROM_ACCOUNT_REASON = "Cancelled from patient account";
+
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
@@ -85,6 +89,7 @@ public class PatientServiceAndProductService {
     private final EncounterReopenGuard encounterReopenGuard;
     private final UomPriceFactorHelper uomPriceFactorHelper;
     private final VaccineBrandHelper vaccineBrandHelper;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     public PatientServiceAndProductService(
             PatientServiceAndProductRepository patientServiceAndProductRepository,
@@ -106,7 +111,8 @@ public class PatientServiceAndProductService {
             InsurancePriceListCoverageService insurancePriceListCoverageService,
             EncounterReopenGuard encounterReopenGuard,
             UomPriceFactorHelper uomPriceFactorHelper,
-            VaccineBrandHelper vaccineBrandHelper
+            VaccineBrandHelper vaccineBrandHelper,
+            ApplicationEventPublisher applicationEventPublisher
     ) {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.patientRepository = patientRepository;
@@ -128,6 +134,7 @@ public class PatientServiceAndProductService {
         this.encounterReopenGuard = encounterReopenGuard;
         this.uomPriceFactorHelper = uomPriceFactorHelper;
         this.vaccineBrandHelper = vaccineBrandHelper;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     public PatientServiceAndProduct create(PatientServiceProductCreateDTO dto) {
@@ -666,6 +673,12 @@ public class PatientServiceAndProductService {
                 ));
         encounterReopenGuard.rejectIfOpenReopenSession(entity.getEncounterId());
         cancel(id, "Service/product item cancelled");
+        applicationEventPublisher.publishEvent(new ServiceCancelledFromAccountEvent(
+                entity.getServiceSource(),
+                entity.getSourceId(),
+                entity.getBillingItemType(),
+                CANCELLED_FROM_ACCOUNT_REASON
+        ));
     }
 
     /**
@@ -720,6 +733,22 @@ public class PatientServiceAndProductService {
     }
 
     @Transactional
+    /** Cancels every line of a source that bills more than one line (a dental procedure on several teeth). */
+    public void cancelAllBySource(
+            ServiceSource serviceSource,
+            Long sourceId,
+            BillingItemTypes billingItemType,
+            String reason
+    ) {
+        if (serviceSource == null || sourceId == null || billingItemType == null) {
+            return;
+        }
+
+        patientServiceAndProductRepository
+                .findAllByServiceSourceAndSourceIdAndBillingItemTypeOrderByIdAsc(serviceSource, sourceId, billingItemType)
+                .forEach(item -> cancel(item.getId(), reason));
+    }
+
     public void cancelBySource(
             ServiceSource serviceSource,
             Long sourceId,

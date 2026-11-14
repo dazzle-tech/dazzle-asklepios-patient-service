@@ -16,6 +16,7 @@ import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentType;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.ToothActionLogType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
+import com.dazzle.asklepios.integration.waseel.service.readiness.PreAuthorizationReadiness;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.DentalChartRepository;
@@ -457,6 +458,22 @@ public class ToothActionService {
         }
 
         billDentalItem(item, chart);
+
+        // Billing held the line (eligibility contract limit): send it to Waseel now, in this transaction.
+        if (isWaitingForWaseel(item)) {
+            try {
+                encounterPreAuthorizationSyncService.submitPendingPreAuthorizationOrThrow(chart.getEncounter().getId());
+            } catch (BadRequestAlertException ex) {
+                throw mapPreAuthorizationFailure(ex);
+            }
+        }
+    }
+
+    private boolean isWaitingForWaseel(PatientServiceAndProduct item) {
+        return patientServiceAndProductRepository.findById(item.getId())
+                .map(saved -> saved.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL
+                        && saved.getPreAuthorizationRequestId() == null)
+                .orElse(false);
     }
 
     private void billDentalItem(PatientServiceAndProduct item, DentalChart chart) {
@@ -510,7 +527,9 @@ public class ToothActionService {
                 title
         );
 
-        return new BadRequestAlertException(title, "toothAction", errorKey);
+        BadRequestAlertException mapped = new BadRequestAlertException(title, "toothAction", errorKey);
+        PreAuthorizationReadiness.carryMissingFields(ex, mapped);
+        return mapped;
     }
 
     private DentalChartTooth getTooth(Long toothId) {

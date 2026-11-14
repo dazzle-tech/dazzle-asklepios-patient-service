@@ -18,6 +18,8 @@ import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResubmiss
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationStatusRefreshService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationTrackingService;
 import com.dazzle.asklepios.integration.waseel.service.WaseelPreAuthorizationService;
+import com.dazzle.asklepios.integration.waseel.service.readiness.PreAuthorizationReadiness;
+import com.dazzle.asklepios.integration.waseel.service.readiness.PreAuthorizationReadinessService;
 import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -47,6 +49,7 @@ public class WaseelPreAuthorizationController {
     private final PreAuthorizationRejectedItemService preAuthorizationRejectedItemService;
     private final PreAuthorizationResubmissionService preAuthorizationResubmissionService;
     private final LocalPreAuthorizationDecisionService localPreAuthorizationDecisionService;
+    private final PreAuthorizationReadinessService preAuthorizationReadinessService;
 
     @GetMapping("/internal/waseel/pre-authorizations/tracking")
     public Page<PreAuthorizationTrackingResponse> getAll(Pageable pageable) {
@@ -113,6 +116,15 @@ public class WaseelPreAuthorizationController {
         );
     }
 
+    /** The patient accepts a partial approval and pays the difference. */
+    @PostMapping("/internal/waseel/encounters/{encounterId}/pre-authorization/items/{patientServiceProductId}/accept-partial")
+    public BillingOperationResult acceptPartialPreAuthorization(
+            @PathVariable Long encounterId,
+            @PathVariable Long patientServiceProductId
+    ) {
+        return preAuthorizationRejectedItemService.acceptPartialApproval(encounterId, patientServiceProductId);
+    }
+
     @PostMapping("/internal/waseel/encounters/{encounterId}/pre-authorization/items/{patientServiceProductId}/clone")
     public void cloneRejectedPreAuthorizationItem(
             @PathVariable Long encounterId,
@@ -153,5 +165,21 @@ public class WaseelPreAuthorizationController {
     @PostMapping("/internal/waseel/encounters/{encounterId}/pre-authorization/sync")
     public void syncEncounterPreAuthorization(@PathVariable Long encounterId) {
         encounterPreAuthorizationSyncService.syncEncounter(encounterId);
+    }
+
+    /** The mandatory fields the visit still misses before its waiting lines can be sent to Waseel. */
+    @GetMapping("/internal/waseel/encounters/{encounterId}/pre-authorization/readiness")
+    public PreAuthorizationReadiness getPreAuthorizationReadiness(@PathVariable Long encounterId) {
+        return preAuthorizationReadinessService.check(encounterId);
+    }
+
+    /**
+     * Sends the waiting lines once the fields are filled. Fails with the list of missing fields
+     * when some are still empty; the lines then stay held.
+     */
+    @PostMapping("/internal/waseel/encounters/{encounterId}/pre-authorization/send")
+    public PreAuthorizationReadiness sendPendingPreAuthorization(@PathVariable Long encounterId) {
+        encounterPreAuthorizationSyncService.submitPendingPreAuthorizationOrThrow(encounterId);
+        return preAuthorizationReadinessService.check(encounterId);
     }
 }

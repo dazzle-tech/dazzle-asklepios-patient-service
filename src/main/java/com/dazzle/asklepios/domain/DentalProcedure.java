@@ -105,5 +105,9 @@ public class DentalProcedure extends AbstractAuditingEntity<Long> implements Ser
      * drops {@code @Transient} fields from the JSON, so the screen would never see it.
      */
     private transient boolean preAuthorizationPending;
+
+    /** Response only (not stored): the insurance state of each tooth, from its billing line. */
+    @Builder.Default
+    private transient List<DentalToothApproval> toothApprovals = new ArrayList<>();
 }
 

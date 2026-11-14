@@ -24,6 +24,8 @@ import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalCareTeamMa
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalDiagnosisMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalItemMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalPreAuthorizationInfoMapper;
+import com.dazzle.asklepios.integration.waseel.service.readiness.PreAuthorizationClaimType;
+import com.dazzle.asklepios.integration.waseel.service.readiness.PreAuthorizationReadiness;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalSubscriberMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalSupportingInfoMapper;
 import com.dazzle.asklepios.repository.PatientDiagnosisRepository;
@@ -156,10 +158,14 @@ public class ApprovalRequestBuilderService {
 
         validateItems(pendingItems);
 
+        // Dental treatment makes it a dental ("oral") claim, the same rule the mandatory-field check uses.
+        PreAuthorizationClaimType claimType =
+                PreAuthorizationReadiness.claimTypeOf(encounter.getEncounterType(), pendingItems);
+
         Map<Long, BigDecimal> taxPercentByItem = applyPriceListPricing(pendingItems, encounter);
 
         WaseelApprovalEncounter waseelEncounter =
-                encounterMapper.toWaseelEncounter(encounter, nphiesId);
+                encounterMapper.toWaseelEncounter(encounter, nphiesId, claimType);
 
         List<WaseelApprovalDiagnosis> visitDiagnoses = approvalDiagnosisMapper.toWaseelDiagnosisList(diagnoses);
         List<WaseelApprovalDiagnosis> requestDiagnoses = ApprovalDiagnosisMapper.withSinglePrincipal(visitDiagnoses);
@@ -173,7 +179,9 @@ public class ApprovalRequestBuilderService {
                         pendingItems,
                         snapshot.insurancePlan() == null ? null : snapshot.insurancePlan().patientShare(),
                         encounter,
-                        supportingInfo
+                        supportingInfo,
+                        false,
+                        claimType.isOral()
                 ),
                 supportingInfo,
                 labTestSources,
@@ -193,7 +201,8 @@ public class ApprovalRequestBuilderService {
                 preAuthorizationInfoMapper.toPreAuthorizationInfo(
                         snapshot,
                         nphiesId,
-                        resolvePrescriptionReference(pendingItems)
+                        resolvePrescriptionReference(pendingItems),
+                        claimType
                 ),
                 supportingInfo,
                 requestDiagnoses,

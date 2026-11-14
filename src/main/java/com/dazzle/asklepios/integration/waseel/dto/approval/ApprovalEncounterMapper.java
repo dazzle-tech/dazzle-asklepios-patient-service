@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.integration.waseel.dto.approval;
 
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.integration.waseel.service.readiness.PreAuthorizationClaimType;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import org.springframework.stereotype.Component;
 
@@ -10,6 +11,15 @@ import java.time.LocalDate;
 public class ApprovalEncounterMapper {
 
     public WaseelApprovalEncounter toWaseelEncounter(PatientEncounter encounter, String providerId) {
+        return toWaseelEncounter(encounter, providerId, PreAuthorizationClaimType.PROFESSIONAL_OP);
+    }
+
+    /** A dental (oral) claim only accepts the ambulatory encounter class. */
+    public WaseelApprovalEncounter toWaseelEncounter(
+            PatientEncounter encounter,
+            String providerId,
+            PreAuthorizationClaimType claimType
+    ) {
         if (encounter == null) {
             throw new BadRequestAlertException(
                     "Encounter is required",
@@ -22,7 +32,7 @@ public class ApprovalEncounterMapper {
 
         return new WaseelApprovalEncounter(
                 "planned",
-                "HH",
+                claimType.isOral() ? PreAuthorizationClaimType.ORAL_ENCOUNTER_CLASS : "HH",
                 "acute-care",
                 encounter.getEncounterDate() != null
                         ? encounter.getEncounterDate()

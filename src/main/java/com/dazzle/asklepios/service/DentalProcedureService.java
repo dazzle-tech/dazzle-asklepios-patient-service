@@ -5,6 +5,8 @@ import com.dazzle.asklepios.client.setup.ServiceClient;
 import com.dazzle.asklepios.client.setup.dto.ProcedureSetupDTO;
 import com.dazzle.asklepios.client.setup.dto.ServiceSetupDTO;
 import com.dazzle.asklepios.domain.DentalProcedure;
+import com.dazzle.asklepios.domain.DentalToothApproval;
+import com.dazzle.asklepios.domain.enumeration.DentalToothApprovalStatus;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
@@ -14,6 +16,7 @@ import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.FdiToothNumber;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
+import com.dazzle.asklepios.integration.waseel.service.readiness.PreAuthorizationReadiness;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.DentalProcedureRepository;
@@ -45,9 +48,10 @@ import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
@@ -167,14 +171,10 @@ public class DentalProcedureService {
             reopenSessionAuditContext.applyOpenSession(encounter.getId());
             DentalProcedure saved = dentalProcedureRepository.saveAndFlush(entity);
 
-            PatientServiceAndProduct procedureBilling =
-                    createProcedureBillingItem(saved, setupProcedure, dto.notes(), dto.surface());
-            PatientServiceAndProduct serviceBilling =
-                    createServiceBillingItemIfExists(saved, setupService, dto.notes(), dto.surface());
+            List<PatientServiceAndProduct> billingLines =
+                    createBillingLinesPerTooth(saved, setupProcedure, setupService, dto.notes(), dto.surface());
 
-            saved.setPreAuthorizationPending(
-                    completeDentalBillingFlow(encounter, procedureBilling, serviceBilling)
-            );
+            saved.setPreAuthorizationPending(completeDentalBillingFlow(encounter, billingLines));
 
             return saved;
         } catch (DataIntegrityViolationException | JpaSystemException e) {
@@ -184,9 +184,34 @@ public class DentalProcedureService {
 
     @Transactional(readOnly = true)
     public Page<DentalProcedure> findAllByPatientId(Long patientId, boolean showCancelled, Pageable pageable) {
-        return showCancelled
+        Page<DentalProcedure> page = showCancelled
                 ? dentalProcedureRepository.findByPatientId(patientId, pageable)
                 : dentalProcedureRepository.findByPatientIdAndCancelledFalse(patientId, pageable);
+        attachToothApprovals(page.getContent());
+        return page;
+    }
+
+    /** Each tooth's insurance state from its procedure billing line, read for the whole page at once. */
+    private void attachToothApprovals(List<DentalProcedure> procedures) {
+        if (procedures.isEmpty()) {
+            return;
+        }
+        Map<Long, List<PatientServiceAndProduct>> toothLinesByProcedure = patientServiceAndProductRepository
+                .findByServiceSourceInAndSourceIdIn(
+                        List.of(ServiceSource.DENTAL_PROCEDURE),
+                        procedures.stream().map(DentalProcedure::getId).toList()
+                )
+                .stream()
+                .filter(line -> line.getBillingItemType() == BillingItemTypes.PROCEDURE)
+                .filter(line -> line.getToothNumber() != null)
+                .sorted(Comparator.comparing(PatientServiceAndProduct::getId))
+                .collect(Collectors.groupingBy(PatientServiceAndProduct::getSourceId));
+
+        procedures.forEach(procedure -> procedure.setToothApprovals(
+                toothLinesByProcedure.getOrDefault(procedure.getId(), List.of()).stream()
+                        .map(line -> new DentalToothApproval(line.getToothNumber(), DentalToothApprovalStatus.of(line)))
+                        .toList()
+        ));
     }
 
     public DentalProcedure update(DentalProcedureUpdateDTO dto) {
@@ -201,13 +226,13 @@ public class DentalProcedureService {
             );
         }
 
-        Optional<PatientServiceAndProduct> procedureBillingItem =
-                findBillingItem(entity.getId(), BillingItemTypes.PROCEDURE);
+        List<PatientServiceAndProduct> procedureBillingLines =
+                findBillingLines(entity.getId(), BillingItemTypes.PROCEDURE);
 
-        Optional<PatientServiceAndProduct> serviceBillingItem =
-                findBillingItem(entity.getId(), BillingItemTypes.SERVICE);
+        List<PatientServiceAndProduct> serviceBillingLines =
+                findBillingLines(entity.getId(), BillingItemTypes.SERVICE);
 
-        if (procedureBillingItem.isPresent() && Boolean.TRUE.equals(procedureBillingItem.get().getIsBilled())) {
+        if (anyBilled(procedureBillingLines)) {
             throw new BadRequestAlertException(
                     "procedureAlreadyBilled",
                     "dentalProcedure",
@@ -215,7 +240,7 @@ public class DentalProcedureService {
             );
         }
 
-        if (serviceBillingItem.isPresent() && Boolean.TRUE.equals(serviceBillingItem.get().getIsBilled())) {
+        if (anyBilled(serviceBillingLines)) {
             throw new BadRequestAlertException(
                     "serviceAlreadyBilled",
                     "dentalProcedure",
@@ -232,8 +257,8 @@ public class DentalProcedureService {
             setupService = fetchServiceSetup(dto.serviceId());
         }
 
-        deleteBillingItemIfNotBilled(procedureBillingItem);
-        deleteBillingItemIfNotBilled(serviceBillingItem);
+        deleteUnbilledLines(procedureBillingLines);
+        deleteUnbilledLines(serviceBillingLines);
 
         updateDentalProcedureFields(entity, dto);
 
@@ -241,14 +266,10 @@ public class DentalProcedureService {
             reopenSessionAuditContext.applyOpenSession(ownedEncounterId);
             DentalProcedure updated = dentalProcedureRepository.saveAndFlush(entity);
 
-            PatientServiceAndProduct procedureBilling =
-                    createProcedureBillingItem(updated, setupProcedure, dto.notes(), dto.surface());
-            PatientServiceAndProduct serviceBilling =
-                    createServiceBillingItemIfExists(updated, setupService, dto.notes(), dto.surface());
+            List<PatientServiceAndProduct> billingLines =
+                    createBillingLinesPerTooth(updated, setupProcedure, setupService, dto.notes(), dto.surface());
 
-            updated.setPreAuthorizationPending(
-                    completeDentalBillingFlow(updated.getEncounter(), procedureBilling, serviceBilling)
-            );
+            updated.setPreAuthorizationPending(completeDentalBillingFlow(updated.getEncounter(), billingLines));
 
             return updated;
         } catch (DataIntegrityViolationException | JpaSystemException e) {
@@ -279,13 +300,13 @@ public class DentalProcedureService {
         }
 
 
-        patientServiceAndProductService.cancelBySource(
+        patientServiceAndProductService.cancelAllBySource(
                 ServiceSource.DENTAL_PROCEDURE,
                 entity.getId(),
                 BillingItemTypes.PROCEDURE,
                 cancellationReason
         );
-        patientServiceAndProductService.cancelBySource(
+        patientServiceAndProductService.cancelAllBySource(
                 ServiceSource.DENTAL_PROCEDURE,
                 entity.getId(),
                 BillingItemTypes.SERVICE,
@@ -460,52 +481,40 @@ public class DentalProcedureService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
-    private PatientServiceAndProduct createProcedureBillingItem(
+    /**
+     * One procedure line, and one line of its linked service, for each tooth: the setup price is the
+     * price of one tooth, and Waseel needs the tooth (bodySite) on every tooth-specific item.
+     */
+    private List<PatientServiceAndProduct> createBillingLinesPerTooth(
             DentalProcedure dentalProcedure,
             ProcedureSetupDTO setupProcedure,
-            String notes,
-            String surface
-    ) {
-        PatientServiceAndProduct billingItem = buildProcedureBillingItem(
-                dentalProcedure,
-                setupProcedure,
-                notes,
-                surface
-        );
-
-        return patientServiceAndProductRepository.saveAndFlush(billingItem);
-    }
-
-    private PatientServiceAndProduct createServiceBillingItemIfExists(
-            DentalProcedure dentalProcedure,
             ServiceSetupDTO setupService,
             String notes,
             String surface
     ) {
-        if (setupService == null) {
-            return null;
+        List<PatientServiceAndProduct> billingLines = new ArrayList<>();
+        for (String tooth : dentalProcedure.getToothNumbers()) {
+            billingLines.add(patientServiceAndProductRepository.saveAndFlush(
+                    buildProcedureBillingItem(dentalProcedure, setupProcedure, notes, surface, tooth)));
+            if (setupService != null) {
+                billingLines.add(patientServiceAndProductRepository.saveAndFlush(
+                        buildServiceBillingItem(dentalProcedure, setupService, notes, surface, tooth)));
+            }
         }
-
-        PatientServiceAndProduct billingItem = buildServiceBillingItem(
-                dentalProcedure,
-                setupService,
-                notes,
-                surface
-        );
-
-        return patientServiceAndProductRepository.saveAndFlush(billingItem);
+        return billingLines;
     }
 
     private PatientServiceAndProduct buildProcedureBillingItem(
             DentalProcedure dentalProcedure,
             ProcedureSetupDTO setupProcedure,
             String notes,
-            String surface
+            String surface,
+            String tooth
     ) {
         BigDecimal unitPrice = setupProcedure.price();
         Long quantity = 1L;
         BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
-        String billingNotes = buildBillingNotesValue(notes, surface, dentalProcedure.getToothNumbers());
+        String billingNotes = buildBillingNotesValue(notes, surface, List.of(tooth));
 
         PatientServiceAndProduct.PatientServiceAndProductBuilder builder = PatientServiceAndProduct.builder()
                 .patientId(dentalProcedure.getPatient().getId())
@@ -515,6 +524,7 @@ public class DentalProcedureService {
                 .serviceId(null)
                 .serviceSource(ServiceSource.DENTAL_PROCEDURE)
                 .sourceId(dentalProcedure.getId())
+                .toothNumber(tooth)
                 .quantity(quantity)
                 .unitPrice(unitPrice)
                 .discountAmount(BigDecimal.ZERO)
@@ -545,12 +555,13 @@ public class DentalProcedureService {
             DentalProcedure dentalProcedure,
             ServiceSetupDTO setupService,
             String notes,
-            String surface
+            String surface,
+            String tooth
     ) {
-        BigDecimal unitPrice =setupService.price();
+        BigDecimal unitPrice = setupService.price();
         Long quantity = 1L;
         BigDecimal totalAmount = unitPrice.multiply(BigDecimal.valueOf(quantity));
-        String billingNotes = buildBillingNotesValue(notes, surface, dentalProcedure.getToothNumbers());
+        String billingNotes = buildBillingNotesValue(notes, surface, List.of(tooth));
 
         PatientServiceAndProduct.PatientServiceAndProductBuilder builder = PatientServiceAndProduct.builder()
                 .patientId(dentalProcedure.getPatient().getId())
@@ -560,6 +571,7 @@ public class DentalProcedureService {
                 .serviceId(setupService.id())
                 .serviceSource(ServiceSource.DENTAL_PROCEDURE)
                 .sourceId(dentalProcedure.getId())
+                .toothNumber(tooth)
                 .quantity(quantity)
                 .unitPrice(unitPrice)
                 .discountAmount(BigDecimal.ZERO)
@@ -632,31 +644,30 @@ public class DentalProcedureService {
         );
     }
 
-    private Optional<PatientServiceAndProduct> findBillingItem(
+    /** The lines of a dental procedure of one billing type: one per tooth. */
+    private List<PatientServiceAndProduct> findBillingLines(
             Long dentalProcedureId,
             BillingItemTypes billingItemType
     ) {
-        return patientServiceAndProductRepository.findByServiceSourceAndSourceIdAndBillingItemType(
+        return patientServiceAndProductRepository.findAllByServiceSourceAndSourceIdAndBillingItemTypeOrderByIdAsc(
                 ServiceSource.DENTAL_PROCEDURE,
                 dentalProcedureId,
                 billingItemType
         );
     }
 
-    private void deleteBillingItemIfNotBilled(
-            Optional<PatientServiceAndProduct> billingItemOptional
-    ) {
-        if (billingItemOptional.isEmpty()) {
+    private static boolean anyBilled(List<PatientServiceAndProduct> billingLines) {
+        return billingLines.stream().anyMatch(line -> Boolean.TRUE.equals(line.getIsBilled()));
+    }
+
+    private void deleteUnbilledLines(List<PatientServiceAndProduct> billingLines) {
+        List<PatientServiceAndProduct> unbilled = billingLines.stream()
+                .filter(line -> !Boolean.TRUE.equals(line.getIsBilled()))
+                .toList();
+        if (unbilled.isEmpty()) {
             return;
         }
-
-        PatientServiceAndProduct billingItem = billingItemOptional.get();
-
-        if (Boolean.TRUE.equals(billingItem.getIsBilled())) {
-            return;
-        }
-
-        patientServiceAndProductRepository.delete(billingItem);
+        patientServiceAndProductRepository.deleteAll(unbilled);
         patientServiceAndProductRepository.flush();
     }
 
@@ -769,17 +780,8 @@ public class DentalProcedureService {
      */
     private boolean completeDentalBillingFlow(
             PatientEncounter encounter,
-            PatientServiceAndProduct procedureBilling,
-            PatientServiceAndProduct serviceBilling
+            List<PatientServiceAndProduct> items
     ) {
-        List<PatientServiceAndProduct> items = new ArrayList<>();
-        if (procedureBilling != null) {
-            items.add(procedureBilling);
-        }
-        if (serviceBilling != null) {
-            items.add(serviceBilling);
-        }
-
         boolean needsPreAuth = items.stream().anyMatch(item ->
                 item.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL
         );
@@ -803,8 +805,25 @@ public class DentalProcedureService {
             billDentalItem(item, encounter);
         }
 
-        // Billing can hold a line for pre-approval (coverage contract limit).
-        return items.stream().anyMatch(this::isHeldForPreAuthorization);
+        // Billing can hold a line for pre-approval (coverage contract or eligibility contract limit).
+        boolean held = items.stream().anyMatch(this::isHeldForPreAuthorization);
+        if (held) {
+            submitHeldLines(encounter);
+        }
+        return held;
+    }
+
+    /**
+     * A line held by the eligibility contract goes to Waseel now, in this transaction, so a failure
+     * blocks the save with its message instead of leaving the line waiting with no request.
+     * Local NPHIES holds already have their own request and are left as they are.
+     */
+    private void submitHeldLines(PatientEncounter encounter) {
+        try {
+            encounterPreAuthorizationSyncService.submitPendingPreAuthorizationOrThrow(encounter.getId());
+        } catch (BadRequestAlertException ex) {
+            throw mapPreAuthorizationFailure(ex);
+        }
     }
 
     private boolean isHeldForPreAuthorization(PatientServiceAndProduct item) {
@@ -869,6 +888,8 @@ public class DentalProcedureService {
                 title
         );
 
-        return new BadRequestAlertException(title, "dentalProcedure", errorKey);
+        BadRequestAlertException mapped = new BadRequestAlertException(title, "dentalProcedure", errorKey);
+        PreAuthorizationReadiness.carryMissingFields(ex, mapped);
+        return mapped;
     }
 }

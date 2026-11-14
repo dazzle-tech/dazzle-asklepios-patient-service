@@ -34,12 +34,15 @@ public class ApprovalItemMapper {
 
     private static final String WASEEL_MEDICATION_CODES = "medication-codes";
     private static final String OUTPATIENT_QUANTITY_CODE = "package";
+    /** Item type of dental treatment in a dental (oral) pre-authorization ("PreAuth and Service Type"). */
+    static final String ORAL_HEALTH_OP = "ORAL-HEALTH-OP";
 
     private final WaseelItemMappingClient waseelItemMappingClient;
     private final PriceListSetupItemClient priceListSetupItemClient;
     private final PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository;
     private final PatientDiagnosisRepository patientDiagnosisRepository;
     private final MedicationDaysSupplyResolver medicationDaysSupplyResolver;
+    private final DentalSiteResolver dentalSiteResolver;
 
     public List<WaseelApprovalItem> toWaseelItems(
             List<PatientServiceAndProduct> items,
@@ -59,6 +62,21 @@ public class ApprovalItemMapper {
             PatientEncounter encounter,
             List<WaseelApprovalSupportingInfo> supportingInfo,
             boolean includeBilled
+    ) {
+        return toWaseelItems(items, patientSharePercent, encounter, supportingInfo, includeBilled, false);
+    }
+
+    /**
+     * @param oralClaim true for a dental (oral) pre-authorization: dental treatment lines are sent as
+     *                  {@value #ORAL_HEALTH_OP} with their tooth (bodySite) and surface (subSite)
+     */
+    public List<WaseelApprovalItem> toWaseelItems(
+            List<PatientServiceAndProduct> items,
+            BigDecimal patientSharePercent,
+            PatientEncounter encounter,
+            List<WaseelApprovalSupportingInfo> supportingInfo,
+            boolean includeBilled,
+            boolean oralClaim
     ) {
         if (items == null || items.isEmpty()) {
             return List.of();
@@ -96,7 +114,8 @@ public class ApprovalItemMapper {
                         supportingInfo,
                         supportingInfoSequence,
                         encounter,
-                        priceListCodesCache
+                        priceListCodesCache,
+                        oralClaim
                 ))
                 .toList();
     }
@@ -207,7 +226,8 @@ public class ApprovalItemMapper {
             List<WaseelApprovalSupportingInfo> supportingInfo,
             AtomicInteger supportingInfoSequence,
             PatientEncounter encounter,
-            Map<String, PriceListItemWaseelCodesDTO> priceListCodesCache
+            Map<String, PriceListItemWaseelCodesDTO> priceListCodesCache,
+            boolean oralClaim
     ) {
         BillingItemTypes billingType = item.getBillingItemType();
 
@@ -247,13 +267,33 @@ public class ApprovalItemMapper {
             );
         }
 
-        String waseelItemType = resolveWaseelItemType(
-                billingType,
-                firstNonBlank(
-                        mapping == null ? null : mapping.waseelItemType(),
-                        priceListCodes == null ? null : priceListCodes.waseelItemType()
-                )
+        String sbsDescription = firstNonBlank(
+                mapping == null ? null : mapping.sbsDescription(),
+                priceListCodes == null ? null : priceListCodes.sbsDescription()
         );
+
+        // Waseel rejects an item without "Code-Description" (itemDescription is mandatory).
+        if (sbsDescription == null) {
+            throw new BadRequestAlertException(
+                    "Missing NPHIES description for item code " + sbsCode
+                            + " (item type: " + mappingItemType + ", source ID: " + sourceId + ")."
+                            + " Link the item to its SBS catalog code in Waseel Item Mapping or on the price list.",
+                    "claim",
+                    "waseel.sbsDescription.missing"
+            );
+        }
+
+        boolean oralTreatment = oralClaim && DentalSiteResolver.isDentalTreatment(item);
+        String waseelItemType = oralTreatment
+                ? ORAL_HEALTH_OP
+                : resolveWaseelItemType(
+                        billingType,
+                        firstNonBlank(
+                                mapping == null ? null : mapping.waseelItemType(),
+                                priceListCodes == null ? null : priceListCodes.waseelItemType()
+                        )
+                );
+        DentalSite dentalSite = oralTreatment ? dentalSiteResolver.resolve(item) : DentalSite.NONE;
 
         List<Integer> itemSupportingInfoSequences = new ArrayList<>(supportingInfoSequences);
 
@@ -274,15 +314,13 @@ public class ApprovalItemMapper {
                 sequence,
                 waseelItemType,
                 sbsCode,
-                firstNonBlank(
-                        mapping == null ? null : mapping.sbsDescription(),
-                        priceListCodes == null ? null : priceListCodes.sbsDescription()
-                ),
+                sbsDescription,
                 priceListCodes == null ? null : emptyToNull(priceListCodes.nonStandardCode()),
                 patientSharePercent,
                 itemDate,
                 itemSupportingInfoSequences,
-                resolveDiagnosisSequences(item)
+                resolveDiagnosisSequences(item),
+                dentalSite
         );
     }
 
@@ -296,7 +334,8 @@ public class ApprovalItemMapper {
             BigDecimal patientSharePercent,
             LocalDate itemDate,
             List<Integer> supportingInfoSequences,
-            List<Integer> diagnosisSequences
+            List<Integer> diagnosisSequences,
+            DentalSite dentalSite
     ) {
         Integer quantity = item.getQuantity() == null
                 ? 1
@@ -341,8 +380,8 @@ public class ApprovalItemMapper {
                 null,
                 false,
                 false,
-                null,
-                null,
+                dentalSite.bodySite(),
+                dentalSite.subSite(),
                 quantity,
                 isMedicationCode(type) ? OUTPATIENT_QUANTITY_CODE : null,
                 unitPrice,
