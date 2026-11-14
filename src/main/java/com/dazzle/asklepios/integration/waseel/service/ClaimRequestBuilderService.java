@@ -37,6 +37,7 @@ import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalDiagnosisM
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalItemMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalSubscriberMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalSupportingInfoMapper;
+import com.dazzle.asklepios.integration.waseel.service.mapper.DentalAttachmentSupportingInfoMapper;
 import com.dazzle.asklepios.repository.ClaimEncounterCopyRepository;
 import com.dazzle.asklepios.repository.ClaimEncounterDiagnosisRepository;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
@@ -105,6 +106,7 @@ public class ClaimRequestBuilderService {
     private final ApprovalCareTeamMapper approvalCareTeamMapper;
     private final ApprovalItemMapper approvalItemMapper;
     private final ApprovalSupportingInfoMapper approvalSupportingInfoMapper;
+    private final DentalAttachmentSupportingInfoMapper dentalAttachmentSupportingInfoMapper;
     private final ApprovalSubscriberMapper approvalSubscriberMapper;
 
     private final WaseelApiProperties waseelApiProperties;
@@ -258,9 +260,9 @@ public class ClaimRequestBuilderService {
         }
 
         Map<Integer, LabTestSource> labTestSources = new LinkedHashMap<>();
-        var supportingInfo = approvalSupportingInfoMapper.toClaimSupportingInfo(
-                encounter,
-                labTestSources
+        var supportingInfo = dentalAttachmentSupportingInfoMapper.withDentalAttachments(
+                approvalSupportingInfoMapper.toClaimSupportingInfo(encounter, labTestSources),
+                encounter
         );
 
         List<PatientServiceAndProduct> products = invoiceItems.stream()
@@ -270,12 +272,16 @@ public class ClaimRequestBuilderService {
                 .filter(Objects::nonNull)
                 .toList();
 
+        // A dental (oral) claim sends its dental treatment as ORAL-HEALTH-OP with the tooth, as the pre-authorization does.
+        boolean oralClaim = claimType == WaseelClaimType.DENTAL;
+
         List<WaseelApprovalItem> mappedItems = approvalItemMapper.toWaseelItems(
                 products,
                 snapshot.insurancePlan() == null ? null : snapshot.insurancePlan().patientShare(),
                 encounter,
                 supportingInfo,
-                true
+                true,
+                oralClaim
         );
 
         Map<Long, WaseelApprovalItem> mappedByPspId = alignMappedItemsByProductOrder(
@@ -325,7 +331,8 @@ public class ClaimRequestBuilderService {
                                     : snapshot.insurancePlan().patientShare(),
                             encounter,
                             supportingInfo,
-                            true
+                            true,
+                            oralClaim
                     );
                     base = single.isEmpty() ? null : single.get(0);
                 }
