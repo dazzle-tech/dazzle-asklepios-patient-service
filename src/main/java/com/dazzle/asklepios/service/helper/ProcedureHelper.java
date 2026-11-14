@@ -1,7 +1,7 @@
 package com.dazzle.asklepios.service.helper;
 
 import com.dazzle.asklepios.client.setup.ProcedureClient;
-import com.dazzle.asklepios.client.setup.ServiceClient;
+import com.dazzle.asklepios.client.setup.dto.ProcedureSetupDTO;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.springframework.stereotype.Service;
 
@@ -14,11 +14,15 @@ public class ProcedureHelper {
     }
 
     public void validateProcedureExists(Long procedureId) {
+        getProcedure(procedureId);
+    }
+
+    public ProcedureSetupDTO getProcedure(Long id) {
         try {
-            procedureClient.getProcedure(procedureId);
+            return procedureClient.getProcedure(id);
         } catch (feign.FeignException.NotFound ex) {
             throw new NotFoundAlertException(
-                    "Procedure not found: " + procedureId,
+                    "Procedure not found: " + id,
                     "Procedure",
                     "notfound"
             );

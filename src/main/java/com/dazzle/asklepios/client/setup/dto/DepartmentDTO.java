@@ -15,6 +15,7 @@ public record DepartmentDTO(
         EncounterType encounterType,
         Boolean isActive,
         Integer defaultDurationMinutes,
+        Boolean assignPractitionerOnVisitStart,
         List<WorkingDayJson> workingDays
 
 ) {

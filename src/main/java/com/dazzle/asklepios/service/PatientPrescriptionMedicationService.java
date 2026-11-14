@@ -4,7 +4,6 @@ import com.dazzle.asklepios.client.setup.ActiveIngredientClient;
 import com.dazzle.asklepios.client.setup.PharmaceuticalClient;
 import com.dazzle.asklepios.client.setup.dto.PharmaceuticalDTO;
 import com.dazzle.asklepios.domain.PatientPrescription;
-import com.dazzle.asklepios.integration.nahdi.service.dispensing.NahdiDispensingService;
 import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionStatus;
@@ -40,7 +39,6 @@ public class PatientPrescriptionMedicationService {
     private final PatientPrescriptionRepository patientPrescriptionRepository;
     private final ActiveIngredientClient activeIngredientClient;
     private final PharmaceuticalClient pharmaceuticalClient;
-    private final NahdiDispensingService nahdiDispensingService;
     private final BrandMedicationHelper brandMedicationHelper;
     private final ICDTreeHelper icdTreeHelper;
     private final PatientServiceAndProductService patientServiceAndProductService;
@@ -99,8 +97,7 @@ public class PatientPrescriptionMedicationService {
                 .refillUnit(prescriptionMedicationCreateDTO.refillUnit)
                 .notes(prescriptionMedicationCreateDTO.notes)
                 .extraDocumentation(prescriptionMedicationCreateDTO.extraDocumentation)
-                // A medication added to an already submitted prescription is part of it (sent on the next resend).
-                .status(PrescriptionStatus.SUBMITTED.equals(header.getStatus()) ? PrescriptionStatus.SUBMITTED : PrescriptionStatus.DRAFT)
+                .status(PrescriptionStatus.DRAFT)
                 .build();
 
         reopenSessionAuditContext.applyOpenSession(header.getEncounterId());
@@ -114,8 +111,6 @@ public class PatientPrescriptionMedicationService {
         PatientPrescriptionMedication entity = patientPrescriptionMedicationRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescriptionMedication not found: " + id));
         Long encounterId = entity.getPrescriptionHeader() == null ? null : entity.getPrescriptionHeader().getEncounterId();
-        nahdiDispensingService.assertNotDispensed(entity);
-        validateMedicationIdentityUnchangedAfterSubmit(entity, prescriptionMedicationUpdateDTO);
         if (prescriptionMedicationUpdateDTO.instructionsType != null)
             entity.setInstructionsType(prescriptionMedicationUpdateDTO.instructionsType);
 
@@ -252,7 +247,6 @@ public class PatientPrescriptionMedicationService {
                 .orElseThrow(() -> new EntityNotFoundException("PatientPrescriptionMedication not found: " + id));
 
         Long encounterId = entity.getPrescriptionHeader() == null ? null : entity.getPrescriptionHeader().getEncounterId();
-        nahdiDispensingService.assertNotDispensed(entity);
         patientServiceAndProductService.cancelBySource(
                 ServiceSource.PRESCRIPTION,
                 entity.getId(),
@@ -333,36 +327,6 @@ public class PatientPrescriptionMedicationService {
                     "pharmaceuticalMismatch"
             );
         }
-    }
-
-    /**
-     * Once a prescription is submitted (sent to the pharmacy), a line's medication cannot be replaced:
-     * the doctor cancels the line and adds a new one, so the pharmacy sees the old line cancelled.
-     */
-    private void validateMedicationIdentityUnchangedAfterSubmit(PatientPrescriptionMedication entity, PrescriptionMedicationUpdateDTO dto) {
-        PatientPrescription header = entity.getPrescriptionHeader();
-        if (header == null || !PrescriptionStatus.SUBMITTED.equals(header.getStatus())) {
-            return;
-        }
-        boolean changed = changedId(dto.activeIngredientId, entity.getActiveIngredientId())
-                || changedId(dto.pharmaceuticalId, entity.getPharmaceuticalId())
-                || changedId(dto.medicationsId, entity.getMedicationsId())
-                || (dto.otherMedicationName != null
-                        && !dto.otherMedicationName.trim().equals(entity.getOtherMedicationName() == null ? "" : entity.getOtherMedicationName().trim()));
-        if (changed) {
-            throw new BadRequestAlertException(
-                    "The medication of a submitted prescription cannot be changed. Cancel it and add a new one.",
-                    "patientPrescriptionMedication",
-                    "medicationChangeAfterSubmit"
-            );
-        }
-    }
-
-    /**
-     * A value sent in the update that differs from the stored one (null means "not sent").
-     */
-    private static boolean changedId(Long newValue, Long currentValue) {
-        return newValue != null && !newValue.equals(currentValue);
     }
 
     private <T> T required(T value, String field) {

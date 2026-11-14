@@ -114,6 +114,16 @@ public class PatientEncounterService {
 
     private static final Logger LOG = LoggerFactory.getLogger(PatientEncounterService.class);
 
+    /** Statuses that come before a bed assignment; the generic update must not move a bedded encounter back to them. */
+    private static final Set<TreatmentStatus> PRE_BED_TREATMENT_STATUSES = Set.of(
+            TreatmentStatus.PENDING_PAYMENT,
+            TreatmentStatus.WAITING_TRIAGE,
+            TreatmentStatus.TRIAGE_STARTED,
+            TreatmentStatus.WAITING_LIST,
+            TreatmentStatus.SENT_TO_ER,
+            TreatmentStatus.NEW
+    );
+
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientRepository patientRepository;
     private final EncounterAssessmentRepository encounterAssessmentRepository;
@@ -890,8 +900,13 @@ public class PatientEncounterService {
         }
 
         String username = currentUsername();
-        validateStartedByIsDoctor(username);
+        PractitionerDTO startedByPractitioner = validateStartedByIsDoctor(username);
         encounterPreAuthorizationGuardService.requireNoPendingPreAuthorization(encounterId);
+
+        if (encounter.getPractitionerId() == null) {
+            assignPractitionerOnVisitStartIfConfigured(encounter, startedByPractitioner);
+        }
+
         encounter.setStatus(TreatmentStatus.ONGOING);
         encounter.setStartedBy(currentUsername());
         encounter.setStartedDate(Instant.now());
@@ -917,7 +932,7 @@ public class PatientEncounterService {
         }
     }
 
-    private void validateStartedByIsDoctor(String login) {
+    private PractitionerDTO validateStartedByIsDoctor(String login) {
         PractitionerDTO practitioner;
 
         try {
@@ -966,6 +981,56 @@ public class PatientEncounterService {
                     "startedBy.notDoctor"
             );
         }
+
+        return practitioner;
+    }
+
+    private void assignPractitionerOnVisitStartIfConfigured(
+            PatientEncounter encounter,
+            PractitionerDTO startedByPractitioner
+    ) {
+        Long departmentId = encounter.getDepartmentId();
+        if (departmentId == null) {
+            return;
+        }
+
+        DepartmentDTO department = departmentHelper.getDepartment(departmentId);
+        if (!Boolean.TRUE.equals(department.assignPractitionerOnVisitStart())) {
+            return;
+        }
+
+        if (startedByPractitioner == null || startedByPractitioner.id() == null) {
+            throw new BadRequestAlertException(
+                    "Current user is not linked to a practitioner",
+                    "patientEncounter",
+                    "startedBy.practitioner.notFound"
+            );
+        }
+
+        if (!Boolean.TRUE.equals(startedByPractitioner.isActive())) {
+            throw new BadRequestAlertException(
+                    "Linked practitioner is not active",
+                    "patientEncounter",
+                    "startedBy.practitioner.inactive"
+            );
+        }
+
+        boolean hasDepartmentAccess =
+                practitionerClient.hasDepartmentAccess(startedByPractitioner.id(), departmentId);
+        if (!hasDepartmentAccess) {
+            throw new BadRequestAlertException(
+                    "Linked practitioner does not have access to the encounter department",
+                    "patientEncounter",
+                    "startedBy.practitioner.department.access.denied"
+            );
+        }
+
+        encounter.setPractitionerId(startedByPractitioner.id());
+        LOG.info(
+                "[START] assigned practitionerId={} to encounterId={} from authenticated user",
+                startedByPractitioner.id(),
+                encounter.getId()
+        );
     }
 
     private boolean isBlank(String value) {
@@ -2602,6 +2667,21 @@ public class PatientEncounterService {
             LOG.info(
                     "[UPDATE] PatientEncounter treatment status advanced "
                             + "id={} from={} to={}",
+                    encounter.getId(),
+                    currentStatus,
+                    requestedStatus
+            );
+            return;
+        }
+
+        if (currentStatus == TreatmentStatus.ASSIGNED_TO_BED
+                && PRE_BED_TREATMENT_STATUSES.contains(requestedStatus)) {
+            // A screen opened before the bed assignment (e.g. triage) still holds the old
+            // status and sends it back with unrelated edits. Keep the bed status and save
+            // the rest of the payload.
+            LOG.warn(
+                    "[UPDATE] PatientEncounter ignored stale treatment status "
+                            + "id={} current={} requested={}",
                     encounter.getId(),
                     currentStatus,
                     requestedStatus
