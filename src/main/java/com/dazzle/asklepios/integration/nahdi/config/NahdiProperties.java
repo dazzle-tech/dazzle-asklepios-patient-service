@@ -24,6 +24,8 @@ public record NahdiProperties(
             String typeCash,
             String typeInsurance,
             String itemApprovalStatus,
+            // APP_STATUS of a line cancelled after the prescription was sent.
+            String itemCancelledStatus,
             // "SFDA" or "NPHIES": the item code sent first; the other one is used when it is missing.
             String itemCodePriority
     ) {}

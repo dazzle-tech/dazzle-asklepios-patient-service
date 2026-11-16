@@ -36,6 +36,10 @@ public class NahdiIntegrationLog implements Serializable {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // Prescription this exchange was about (one record per send / resend).
+    @Column(name = "prescription_id")
+    private Long prescriptionId;
+
     @Column(name = "endpoint", nullable = false, length = 500)
     private String endpoint;
 
