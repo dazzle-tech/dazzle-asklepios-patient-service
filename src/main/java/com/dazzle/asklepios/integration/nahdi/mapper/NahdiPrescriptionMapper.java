@@ -68,7 +68,6 @@ import java.time.Period;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -126,7 +125,7 @@ public class NahdiPrescriptionMapper {
                 ? null
                 : patientEncounterRepository.findById(prescription.getEncounterId()).orElse(null);
 
-        List<PatientPrescriptionMedication> lines = sentLines(prescription);
+        List<PatientPrescriptionMedication> lines = NahdiPrescriptionLines.sentLines(prescription);
         List<PatientPrescriptionMedication> activeLines = lines.stream()
                 .filter(medication -> !PrescriptionStatus.CANCELLED.equals(medication.getStatus()))
                 .toList();
@@ -159,7 +158,7 @@ public class NahdiPrescriptionMapper {
         return NahdiPrescriptionHead.builder()
                 .providerId(text(nahdiProperties.providerId()))
                 .providerToken(text(nahdiProperties.providerToken()))
-                .presRefId(firstNonBlank(prescription.getPrescriptionNum(), String.valueOf(prescription.getId())))
+                .presRefId(NahdiPrescriptionLines.reference(prescription))
                 .presDateTime(presDateTime)
                 .presDateTime2(presDateTime)
                 .presStatus(nahdiProperties.prescription().status())
@@ -208,25 +207,6 @@ public class NahdiPrescriptionMapper {
     }
 
     /**
-     * Lines sent to Nahdi, in a fixed order (by id) so each medication keeps its line_No on every resend:
-     * active medications, plus medications cancelled after the prescription was submitted (sent as cancelled).
-     * Medications cancelled before submit were never sent and are left out.
-     */
-    private static List<PatientPrescriptionMedication> sentLines(PatientPrescription prescription) {
-        if (prescription.getMedications() == null) {
-            return List.of();
-        }
-        Instant submittedAt = prescription.getSubmitedDate();
-        return prescription.getMedications().stream()
-                .filter(Objects::nonNull)
-                .filter(medication -> !PrescriptionStatus.CANCELLED.equals(medication.getStatus())
-                        || (submittedAt != null && medication.getCancelledDate() != null
-                        && medication.getCancelledDate().isAfter(submittedAt)))
-                .sorted(Comparator.comparing(PatientPrescriptionMedication::getId, Comparator.nullsLast(Comparator.naturalOrder())))
-                .toList();
-    }
-
-    /**
      * Diagnoses are the indication ICDs of the prescribed items (each ICD sent once), all as "principle".
      */
     private List<NahdiPrescriptionDiagnosis> toDiagnoses(List<PatientPrescriptionMedication> medications) {
@@ -250,6 +230,7 @@ public class NahdiPrescriptionMapper {
 
     private List<NahdiPrescriptionItem> toItems(List<PatientPrescriptionMedication> medications) {
         List<NahdiPrescriptionItem> items = new ArrayList<>();
+        // line_No is the position in NahdiPrescriptionLines.sentLines; sales invoices refer back to it.
         int lineNo = 1;
         for (PatientPrescriptionMedication medication : medications) {
             items.add(toItem(medication, lineNo++));
