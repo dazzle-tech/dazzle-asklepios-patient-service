@@ -253,3 +253,11 @@ nahdi:
     item-cancelled-status: ${NAHDI_ITEM_CANCELLED_STATUS:C}
     # Item code sent first: SFDA or NPHIES; the other one is used when it is missing
     item-code-priority: ${NAHDI_ITEM_CODE_PRIORITY:SFDA}
+  # Dispensing status of a sent prescription (locks dispensed medications)
+  dispensing:
+    # NONE: nothing is marked dispensed; INVOICE: taken from Nahdi sales invoices (GetSalesInvoices)
+    source: ${NAHDI_DISPENSING_SOURCE:NONE}
+    sales-invoices-endpoint: ${NAHDI_SALES_INVOICES_ENDPOINT:/GetSalesInvoices}
+    # Invoice_Type values (to confirm with Nahdi): a sale dispenses the items, a return takes them back
+    sale-invoice-type: ${NAHDI_SALE_INVOICE_TYPE:SALE}
+    return-invoice-type: ${NAHDI_RETURN_INVOICE_TYPE:RETURN}
