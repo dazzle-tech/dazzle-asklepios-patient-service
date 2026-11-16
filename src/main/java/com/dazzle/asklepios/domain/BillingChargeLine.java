@@ -146,6 +146,16 @@ public class BillingChargeLine extends AbstractAuditingEntity<Long>
     @Column(name = "calculated_tax_amount", precision = 19, scale = 4)
     private BigDecimal calculatedTaxAmount;
 
+    /**
+     * Coverage contract discount inside {@code discountAmount}. A recalculation adds it back
+     * so the discount is applied once, on the full item.
+     */
+    @NotNull
+    @Builder.Default
+    @DecimalMin(value = "0.0000")
+    @Column(name = "contract_discount_amount", nullable = false, precision = 19, scale = 4)
+    private BigDecimal contractDiscountAmount = BigDecimal.ZERO;
+
     @NotNull
     @DecimalMin(value = "0.0000")
     @Builder.Default

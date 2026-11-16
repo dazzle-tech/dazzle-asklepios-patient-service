@@ -6,6 +6,7 @@ import com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype;
 import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -17,13 +18,15 @@ import java.util.Optional;
 import java.util.List;
 
 @Repository
-public interface FinancialDocumentRepository extends JpaRepository<FinancialDocument, Long> {
+public interface FinancialDocumentRepository extends JpaRepository<FinancialDocument, Long>, JpaSpecificationExecutor<FinancialDocument> {
 
     // ✅ find document by encounter (أهم method عندك الآن ✅)
     Optional<FinancialDocument> findByEncounterId(Long encounterId);
 
     // ✅ لو بدك أكثر من document لنفس encounter
     List<FinancialDocument> findAllByEncounterId(Long encounterId);
+
+    List<FinancialDocument> findByEncounterIdIn(Collection<Long> encounterIds);
 
     // ✅ find by patient
     List<FinancialDocument> findByPatientId(Long patientId);
@@ -107,9 +110,11 @@ public interface FinancialDocumentRepository extends JpaRepository<FinancialDocu
                   AND fd.document_subtype = 'INSURANCE_CLAIM'
                   AND fd.status IN (:statuses)
                   AND (
-                        (:useNphiesFilter = 1 AND LOWER(pi.payer_nphies_id) IN (:payerNphiesIds))
-                        OR
-                        (:useNphiesFilter = 0 AND pi.payor_id = :payorId)
+                        pi.payor_id = :payorId
+                        OR (
+                             :useNphiesFilter = 1
+                             AND LOWER(pi.payer_nphies_id) IN (:payerNphiesIds)
+                           )
                       )
                   AND fd.created_date >= :fromDate
                   AND fd.created_date < :toDate

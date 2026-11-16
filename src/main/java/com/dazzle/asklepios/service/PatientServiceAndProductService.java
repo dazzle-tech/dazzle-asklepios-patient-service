@@ -41,6 +41,8 @@ import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.dazzle.asklepios.service.event.ServiceCancelledFromAccountEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -65,6 +67,8 @@ public class PatientServiceAndProductService {
 
     private static final Logger LOG = LoggerFactory.getLogger(PatientServiceAndProductService.class);
 
+    private static final String CANCELLED_FROM_ACCOUNT_REASON = "Cancelled from patient account";
+
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
@@ -85,6 +89,7 @@ public class PatientServiceAndProductService {
     private final EncounterReopenGuard encounterReopenGuard;
     private final UomPriceFactorHelper uomPriceFactorHelper;
     private final VaccineBrandHelper vaccineBrandHelper;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     public PatientServiceAndProductService(
             PatientServiceAndProductRepository patientServiceAndProductRepository,
@@ -106,7 +111,8 @@ public class PatientServiceAndProductService {
             InsurancePriceListCoverageService insurancePriceListCoverageService,
             EncounterReopenGuard encounterReopenGuard,
             UomPriceFactorHelper uomPriceFactorHelper,
-            VaccineBrandHelper vaccineBrandHelper
+            VaccineBrandHelper vaccineBrandHelper,
+            ApplicationEventPublisher applicationEventPublisher
     ) {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.patientRepository = patientRepository;
@@ -128,6 +134,7 @@ public class PatientServiceAndProductService {
         this.encounterReopenGuard = encounterReopenGuard;
         this.uomPriceFactorHelper = uomPriceFactorHelper;
         this.vaccineBrandHelper = vaccineBrandHelper;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     public PatientServiceAndProduct create(PatientServiceProductCreateDTO dto) {
@@ -253,8 +260,10 @@ public class PatientServiceAndProductService {
 
             completeItemBillingFlow(saved);
 
-            LOG.debug("Created Patient billing item : {}", saved);
-            return saved;
+            PatientServiceAndProduct persisted = patientServiceAndProductRepository.findById(saved.getId())
+                    .orElse(saved);
+            LOG.debug("Created Patient billing item : {}", persisted);
+            return persisted;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);
@@ -664,6 +673,12 @@ public class PatientServiceAndProductService {
                 ));
         encounterReopenGuard.rejectIfOpenReopenSession(entity.getEncounterId());
         cancel(id, "Service/product item cancelled");
+        applicationEventPublisher.publishEvent(new ServiceCancelledFromAccountEvent(
+                entity.getServiceSource(),
+                entity.getSourceId(),
+                entity.getBillingItemType(),
+                CANCELLED_FROM_ACCOUNT_REASON
+        ));
     }
 
     /**
@@ -718,6 +733,22 @@ public class PatientServiceAndProductService {
     }
 
     @Transactional
+    /** Cancels every line of a source that bills more than one line (a dental procedure on several teeth). */
+    public void cancelAllBySource(
+            ServiceSource serviceSource,
+            Long sourceId,
+            BillingItemTypes billingItemType,
+            String reason
+    ) {
+        if (serviceSource == null || sourceId == null || billingItemType == null) {
+            return;
+        }
+
+        patientServiceAndProductRepository
+                .findAllByServiceSourceAndSourceIdAndBillingItemTypeOrderByIdAsc(serviceSource, sourceId, billingItemType)
+                .forEach(item -> cancel(item.getId(), reason));
+    }
+
     public void cancelBySource(
             ServiceSource serviceSource,
             Long sourceId,
@@ -1257,12 +1288,13 @@ public class PatientServiceAndProductService {
 
     /**
      * Cancels the charge of a cancelled vaccination. A vaccination whose charge is already
-     * paid (or reserved / settled) cannot be cancelled; no charge means nothing to cancel.
+     * paid (or settled) cannot be cancelled; a reserved charge is cancelled and its wallet
+     * reservation released. No charge means nothing to cancel.
      */
     public void cancelVaccinationCharge(Long encounterVaccinationId, String reason) {
         findActiveVaccinationCharge(encounterVaccinationId)
                 .ifPresent(item -> {
-                    if (isPaymentStarted(item)) {
+                    if (isPaymentCollected(item)) {
                         throw new BadRequestAlertException(
                                 "This vaccination is already paid and cannot be cancelled.",
                                 "encounterVaccination",
@@ -1274,11 +1306,14 @@ public class PatientServiceAndProductService {
                 });
     }
 
-    /** True when the vaccination charge is paid (or reserved / settled) */
+    /**
+     * True when the vaccination charge is actually paid (or settled). A reserved charge is not:
+     * editing a vaccination never changes its charge (the vaccine and the brand are locked).
+     */
     @Transactional(readOnly = true)
     public boolean isVaccinationChargePaid(Long encounterVaccinationId) {
         return findActiveVaccinationCharge(encounterVaccinationId)
-                .map(this::isPaymentStarted)
+                .map(this::isPaymentCollected)
                 .orElse(false);
     }
 
@@ -1292,10 +1327,6 @@ public class PatientServiceAndProductService {
                 .filter(item -> item.getPaymentStatus() != PaymentStatus.CANCELLED);
     }
 
-    private boolean isPaymentStarted(PatientServiceAndProduct item) {
-        return isPaymentStatusSettled(item) || hasFundsReservedOrAllocated(item);
-    }
-
     /** Money movement started: reserved, paid, posted to debit or exempted */
     private static boolean isPaymentStatusSettled(PatientServiceAndProduct item) {
         PaymentStatus paymentStatus = item.getPaymentStatus();
@@ -1306,6 +1337,26 @@ public class PatientServiceAndProductService {
                 || paymentStatus == PaymentStatus.DEBIT
                 || paymentStatus == PaymentStatus.PARTIALLY_DEBIT
                 || paymentStatus == PaymentStatus.EXEMPTED;
+    }
+
+    /**
+     * Money actually taken: paid, posted to debit, exempted or allocated. A reservation only
+     * holds wallet funds and is released when the charge is cancelled, so it does not count.
+     */
+    private boolean isPaymentCollected(PatientServiceAndProduct item) {
+        PaymentStatus paymentStatus = item.getPaymentStatus();
+        if (paymentStatus == PaymentStatus.PAID
+                || paymentStatus == PaymentStatus.PARTIALLY_PAID
+                || paymentStatus == PaymentStatus.DEBIT
+                || paymentStatus == PaymentStatus.PARTIALLY_DEBIT
+                || paymentStatus == PaymentStatus.EXEMPTED) {
+            return true;
+        }
+
+        return billingChargeService
+                .findActiveChargeLine(item.getId(), item.getEncounterId())
+                .map(chargeLine -> defaultZero(chargeLine.getAllocatedAmount()).signum() > 0)
+                .orElse(false);
     }
 
     private boolean hasFundsReservedOrAllocated(PatientServiceAndProduct item) {

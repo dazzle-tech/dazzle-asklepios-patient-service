@@ -14,6 +14,7 @@ import com.dazzle.asklepios.repository.PatientProcedureRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.BillingChargeService;
 import com.dazzle.asklepios.service.BillingEngineService;
+import com.dazzle.asklepios.service.DiagnosticPreAuthorizationService;
 import com.dazzle.asklepios.service.DiagnosticOrderTestStatusService;
 import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -21,6 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -49,6 +51,7 @@ public class PreAuthorizationCompletionService {
     private final PatientProcedureRepository patientProcedureRepository;
     private final BillingChargeService billingChargeService;
     private final BillingEngineService billingEngineService;
+    private final DiagnosticPreAuthorizationService diagnosticPreAuthorizationService;
     private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
     private final PreAuthorizationCompletionService self;
 
@@ -58,6 +61,7 @@ public class PreAuthorizationCompletionService {
             PatientProcedureRepository patientProcedureRepository,
             BillingChargeService billingChargeService,
             BillingEngineService billingEngineService,
+            DiagnosticPreAuthorizationService diagnosticPreAuthorizationService,
             DiagnosticOrderTestStatusService diagnosticOrderTestStatusService,
             @Lazy PreAuthorizationCompletionService self
     ) {
@@ -66,6 +70,7 @@ public class PreAuthorizationCompletionService {
         this.patientProcedureRepository = patientProcedureRepository;
         this.billingChargeService = billingChargeService;
         this.billingEngineService = billingEngineService;
+        this.diagnosticPreAuthorizationService = diagnosticPreAuthorizationService;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
         this.self = self;
     }
@@ -85,7 +90,11 @@ public class PreAuthorizationCompletionService {
         self.completeApprovedItems(event.encounterId(), approvedItems);
     }
 
-    @Transactional
+    /**
+     * Runs after the decision transaction committed, so it needs its own transaction:
+     * joining the finished one would drop the charge lines without an error.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void completeApprovedItems(
             Long encounterId,
             List<PatientServiceAndProduct> approvedItems
@@ -121,9 +130,14 @@ public class PreAuthorizationCompletionService {
 
             item.setPaymentStatus(PaymentStatus.PENDING);
 
+            /*
+             * Bill with the event that matches the item's billing rule trigger.
+             * A default service whose rule is not ORDERED would otherwise be skipped.
+             */
             BillingOperationResult result =
-                    billingEngineService.onItemOrdered(
+                    billingEngineService.processWithEventFallback(
                             item.getId(),
+                            encounterId,
                             facilityId,
                             "PREAUTH-APPROVED:" + item.getId()
                     );
@@ -147,6 +161,8 @@ public class PreAuthorizationCompletionService {
                         "billing.afterApproval.failed"
                 );
             }
+
+            diagnosticPreAuthorizationService.releaseHeldTest(item);
         }
     }
 
@@ -184,7 +200,8 @@ public class PreAuthorizationCompletionService {
             return false;
         }
 
-        if (item.getPreAuthorizationStatus() != PreAuthorizationStatus.APPROVED) {
+        if (item.getPreAuthorizationStatus() != PreAuthorizationStatus.APPROVED
+                && !PreAuthorizationResolutionService.isPartiallyApprovedLocally(item)) {
             return false;
         }
 

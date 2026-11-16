@@ -9,6 +9,7 @@ import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
+import com.dazzle.asklepios.domain.enumeration.billing.PricingSource;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
@@ -48,6 +49,9 @@ public class InsurancePriceListCoverageService {
     public static final String ELIGIBILITY_NOT_IN_FORCE =
             "ELIGIBILITY_NOT_IN_FORCE";
 
+    public static final String CONTRACT_EXCLUSION =
+            CoverageContractShareService.CONTRACT_EXCLUSION;
+
     public static final String WARNING_MESSAGE =
             "This item is not covered by the patient's insurance because it is not on the insurance price list. "
                     + "If you continue, it will be charged as cash to the patient.";
@@ -57,6 +61,11 @@ public class InsurancePriceListCoverageService {
                     + "This item will be billed from the self-pay price list, "
                     + "or from setup if no self-pay price exists.";
 
+    public static final String CONTRACT_EXCLUSION_WARNING_MESSAGE =
+            "This item is excluded from the patient's insurance contract coverage. "
+                    + "If you continue, it will be billed as self-pay to the patient "
+                    + "and will not be sent for pre-approval or on a claim.";
+
     private static final String ENTITY_NAME = "insuranceCoverage";
 
     private final EncounterCoverageService encounterCoverageService;
@@ -64,24 +73,31 @@ public class InsurancePriceListCoverageService {
     private final PatientInsuranceRepository patientInsuranceRepository;
     private final InsurancePatientShareCalculator insurancePatientShareCalculator;
     private final BillingEngineService billingEngineService;
+    private final CoverageContractShareService coverageContractShareService;
 
     public InsurancePriceListCoverageService(
             EncounterCoverageService encounterCoverageService,
             PatientEncounterRepository patientEncounterRepository,
             PatientInsuranceRepository patientInsuranceRepository,
             InsurancePatientShareCalculator insurancePatientShareCalculator,
-            @Lazy BillingEngineService billingEngineService
+            @Lazy BillingEngineService billingEngineService,
+            CoverageContractShareService coverageContractShareService
     ) {
         this.encounterCoverageService = encounterCoverageService;
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientInsuranceRepository = patientInsuranceRepository;
         this.insurancePatientShareCalculator = insurancePatientShareCalculator;
         this.billingEngineService = billingEngineService;
+        this.coverageContractShareService = coverageContractShareService;
     }
 
     public static String warningMessageFor(String notCoveredReason) {
         if (ELIGIBILITY_NOT_IN_FORCE.equals(notCoveredReason)) {
             return ELIGIBILITY_WARNING_MESSAGE;
+        }
+
+        if (CONTRACT_EXCLUSION.equals(notCoveredReason)) {
+            return CONTRACT_EXCLUSION_WARNING_MESSAGE;
         }
 
         return WARNING_MESSAGE;
@@ -199,6 +215,63 @@ public class InsurancePriceListCoverageService {
 
         Boolean patientCitizen = encounter.getPatient().getIsCitizen();
         PatientInsurance insurance = loadInsurance(coverage.patientInsuranceId());
+        if (insurancePatientShareCalculator.isLatestCoverageInForce(insurance)
+                && coverageContractShareService.isExcludedByContract(insurance, previewItem)) {
+            LOG.info(
+                    "[INSURANCE_PL] Item is excluded by the coverage contract. "
+                            + "Billing as self-pay. encounterId={} type={} sourceId={} patientInsuranceId={}",
+                    encounterId,
+                    billingItemType,
+                    sourceId,
+                    coverage.patientInsuranceId()
+            );
+            return cashCoverageResult(
+                    previewItem,
+                    encounter.getFacilityId(),
+                    billingItemType,
+                    sourceId,
+                    effectiveCurrency,
+                    coverage.patientInsuranceId(),
+                    CONTRACT_EXCLUSION,
+                    null,
+                    patientCitizen
+            );
+        }
+
+        if (insurancePatientShareCalculator.usesNphiesContractRules(insurance)
+                && insurancePatientShareCalculator.isLatestCoverageInForce(insurance)) {
+            LOG.info(
+                    "[INSURANCE_PL] NPHIES coverage contract rules apply on this visit. "
+                            + "Price-list cash-out is not used. encounterId={} type={} sourceId={} patientInsuranceId={}",
+                    encounterId,
+                    billingItemType,
+                    sourceId,
+                    coverage.patientInsuranceId()
+            );
+            ResolvedBillingPrice contractPrice =
+                    billingEngineService.resolvePricing(
+                            previewItem,
+                            encounter.getFacilityId(),
+                            BillingCoverageType.INSURANCE
+                    );
+            return new InsurancePriceListCoverageCheckResult(
+                    true,
+                    true,
+                    false,
+                    null,
+                    billingItemType,
+                    sourceId,
+                    contractPrice.setupItemName(),
+                    contractPrice.setupItemCode(),
+                    contractPrice.unitPrice(),
+                    contractPrice.currency() != null
+                            ? contractPrice.currency()
+                            : effectiveCurrency,
+                    coverage.patientInsuranceId(),
+                    null
+            );
+        }
+
         if (!insurancePatientShareCalculator.isLatestCoverageInForce(insurance)) {
             LOG.warn(
                     "[INSURANCE_PL] Eligibility is not in-force. "
@@ -230,7 +303,8 @@ public class InsurancePriceListCoverageService {
                         patientCitizen
                 );
 
-        if (insurancePrice.resolvedFromPriceList()) {
+        if (insurancePrice.resolvedFromPriceList()
+                && isInsurancePriceListResult(insurancePrice)) {
             LOG.info(
                     "[INSURANCE_PL] Item is on insurance price list. encounterId={} type={} sourceId={} priceListItemId={}",
                     encounterId,
@@ -449,6 +523,14 @@ public class InsurancePriceListCoverageService {
                 patientInsuranceId,
                 null
         );
+    }
+
+    private boolean isInsurancePriceListResult(ResolvedBillingPrice price) {
+        if (price == null || price.pricingResponse() == null) {
+            return false;
+        }
+        return price.pricingResponse().pricingSource()
+                == PricingSource.INSURANCE_PRICE_LIST;
     }
 
     private Long resolveSourceId(

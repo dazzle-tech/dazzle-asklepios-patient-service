@@ -57,6 +57,7 @@ public class WaseelPreAuthorizationService {
     private final PreAuthorizationTrackRepository preAuthorizationTrackRepository;
     private final PreAuthorizationItemRepository preAuthorizationItemRepository;
     private final PreAuthorizationAttachmentService preAuthorizationAttachmentService;
+    private final PreAuthorizationLineReleaseService preAuthorizationLineReleaseService;
 
     @Transactional
     public PreAuthorizationSearchResponse searchAndUpdate(
@@ -1006,7 +1007,18 @@ public class WaseelPreAuthorizationService {
         );
     }
 
-    @Transactional
+    /**
+     * Cancels a pre-authorization from the pre-authorization screen.
+     *
+     * <p>The request counts as cancelled when NPHIES cancels it, or when it never reached the payer
+     * (its submission outcome was "error", e.g. a validation error such as BV-01265): there is nothing
+     * to cancel at the payer, and NPHIES answers RE-00133 "Task focus is not referring to a valid resource".
+     * Its billing lines then leave it and wait for a new pre-authorization.
+     *
+     * <p>When NPHIES refuses to cancel a request it holds, the request stays active, the attempt is kept
+     * on the request and its track, and the reason is returned to the user.
+     */
+    @Transactional(dontRollbackOn = BadRequestAlertException.class)
     public PreAuthorizationSearchResponse cancel(PreAuthorizationCancelRequest request) {
         if (request.preAuthorizationId() == null) {
             throw new IllegalArgumentException("preAuthorizationId is required");
@@ -1022,16 +1034,21 @@ public class WaseelPreAuthorizationService {
                         "PreAuthorizationRequest not found with id " + request.preAuthorizationId()
                 ));
 
+        boolean notAtPayer = PreAuthorizationCancelOutcome.neverReachedPayer(preAuth.getOutcome());
+
         PreAuthorizationCancelResponse cancelResponse = sendCancelToWaseel(request);
 
         sleepBeforeRefresh();
 
         PreAuthorizationSearchResponse searchResponse = searchFromWaseel(request.approvalRequestId());
+        boolean cancelled = notAtPayer || PreAuthorizationCancelOutcome.cancelledByPayer(cancelResponse, searchResponse);
+
         updatePreAuthorizationAfterCancel(
                 preAuth,
                 request,
                 cancelResponse,
-                searchResponse
+                searchResponse,
+                cancelled
         );
 
         saveCancelRefreshTrack(
@@ -1041,6 +1058,16 @@ public class WaseelPreAuthorizationService {
                 searchResponse
         );
 
+        if (!cancelled) {
+            throw new BadRequestAlertException(
+                    "Waseel did not cancel the pre-authorization: "
+                            + PreAuthorizationCancelOutcome.reason(cancelResponse, searchResponse),
+                    "preAuthorization",
+                    "waseel.cancel.refused"
+            );
+        }
+
+        preAuthorizationLineReleaseService.release(preAuth);
         return searchResponse;
     }
 
@@ -1099,10 +1126,13 @@ public class WaseelPreAuthorizationService {
             PreAuthorizationRequest preAuth,
             PreAuthorizationCancelRequest request,
             PreAuthorizationCancelResponse cancelResponse,
-            PreAuthorizationSearchResponse searchResponse
+            PreAuthorizationSearchResponse searchResponse,
+            boolean cancelled
     ) {
-        preAuth.setIsCancelled(Boolean.TRUE);
-        preAuth.setCancelReason(request.cancelReason());
+        if (cancelled) {
+            preAuth.setIsCancelled(Boolean.TRUE);
+            preAuth.setCancelReason(request.cancelReason());
+        }
 
         if (cancelResponse != null) {
             preAuth.setCancelOutcome(cancelResponse.outcome());
@@ -1121,17 +1151,6 @@ public class WaseelPreAuthorizationService {
             preAuth.setPreAuthRefNo(searchResponse.preAuthRefNo());
 
             preAuth.setOutcome(searchResponse.outcome());
-
-            preAuth.setStatus(
-                    firstNonBlank(
-                            searchResponse.cancelStatus(),
-                            searchResponse.outcome(),
-                            cancelResponse != null ? cancelResponse.outcome() : null,
-                            cancelResponse != null ? cancelResponse.status() : null,
-                            "Cancelled"
-                    )
-            );
-
             preAuth.setDisposition(searchResponse.disposition());
 
             preAuth.setCancelStatus(searchResponse.cancelStatus());
@@ -1142,6 +1161,11 @@ public class WaseelPreAuthorizationService {
             if (searchResponse.paymentAmount() != null) {
                 preAuth.setTotalNet(searchResponse.paymentAmount());
             }
+        }
+
+        // The request status says what the request is; a refused cancel leaves it as it was.
+        if (cancelled) {
+            preAuth.setStatus(PreAuthorizationCancelOutcome.CANCELLED_STATUS);
         }
 
         preAuthorizationRequestRepository.save(preAuth);

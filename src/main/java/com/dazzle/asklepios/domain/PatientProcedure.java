@@ -124,6 +124,18 @@ public class PatientProcedure extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "cancellation_reason")
     private String cancellationReason;
 
+    @Column(name = "consent_form")
+    private String consentForm;
+
+    @Column(name = "registration_date_time")
+    private Instant registrationDateTime;
+
+    @Column(name = "performing_department_id")
+    private Long performingDepartmentId;
+
+    @Column(name = "performing_practitioner_id")
+    private Long performingPractitionerId;
+
     /**
      * True when the procedure was ordered automatically as a default
      * procedure of the visit department/specialty at registration.

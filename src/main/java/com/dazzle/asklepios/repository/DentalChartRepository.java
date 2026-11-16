@@ -13,6 +13,8 @@ public interface DentalChartRepository extends JpaRepository<DentalChart, Long> 
 
     Optional<DentalChart> findByEncounter_Id(Long encounterId);
 
+    List<DentalChart> findByPatient_Id(Long patientId);
+
     List<DentalChart> findByPatient_IdAndIdNotOrderByCreatedDateDesc(Long patientId, Long excludeId);
 
     @Query("select dc from DentalChart dc where dc.patient.id = :patientId and dc.id <> :excludeChartId " +

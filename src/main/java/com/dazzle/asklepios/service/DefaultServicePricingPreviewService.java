@@ -26,6 +26,7 @@ import com.dazzle.asklepios.service.dto.billing.PreviewDefaultServicesPricingReq
 import com.dazzle.asklepios.service.dto.billing.PreviewDefaultServicesPricingResult;
 import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
 import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
+import com.dazzle.asklepios.service.eligibility.EligibilityContractApprovalService;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import feign.FeignException;
@@ -63,6 +64,8 @@ public class DefaultServicePricingPreviewService {
     private final InsurancePatientShareCalculator insurancePatientShareCalculator;
     private final EncounterCoverageService encounterCoverageService;
     private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
+    private final CoveragePreApprovalLimitService coveragePreApprovalLimitService;
+    private final EligibilityContractApprovalService eligibilityContractApprovalService;
     private final EncounterDefaultProcedureService encounterDefaultProcedureService;
 
     @Transactional(readOnly = true)
@@ -294,10 +297,14 @@ public class DefaultServicePricingPreviewService {
                 patientCitizen
         );
 
+        boolean contractRulesCoverVisit =
+                insuranceVisit
+                        && eligibilityInForce
+                        && insurancePatientShareCalculator.usesNphiesContractRules(insurance);
         boolean coveredByInsurance =
                 insuranceVisit
                         && eligibilityInForce
-                        && resolvedPrice.resolvedFromPriceList();
+                        && (contractRulesCoverVisit || resolvedPrice.resolvedFromPriceList());
         boolean requiresCashConfirmation = insuranceVisit && !coveredByInsurance;
         String notCoveredReason = null;
 
@@ -375,8 +382,30 @@ public class DefaultServicePricingPreviewService {
 
         BigDecimal patientShareAmount = BigDecimal.ZERO;
         BigDecimal insuranceShareAmount = BigDecimal.ZERO;
+        BigDecimal contractDiscount = BigDecimal.ZERO;
+        String contractCashReason = null;
 
-        if (insurance != null
+        boolean preAuthorizationRequired =
+                coveredByInsurance
+                        && !Boolean.TRUE.equals(previewItem.getIsExempted())
+                        && (coveragePreApprovalLimitService.requiresApproval(
+                                insurance,
+                                previewItem,
+                                pricing.netAmount()
+                        ) || eligibilityContractApprovalService.requiresPreAuthorization(
+                                insurance,
+                                previewItem,
+                                pricing.netAmount()
+                        ));
+
+        if (preAuthorizationRequired) {
+            // Nothing is collected before the payer decision; shares are calculated after it.
+            LOG.info(
+                    "[PREVIEW_PRICING] Service needs pre-authorization. serviceId={} netAmount={}",
+                    previewItem.getServiceId(),
+                    pricing.netAmount()
+            );
+        } else if (insurance != null
                 && !requiresCashConfirmation
                 && !Boolean.TRUE.equals(previewItem.getIsExempted())) {
             InsuranceSplit split =
@@ -393,6 +422,13 @@ public class DefaultServicePricingPreviewService {
                     );
             patientShareAmount = split.patientShare();
             insuranceShareAmount = split.insuranceShare();
+            contractDiscount = pricing.netAmount()
+                    .subtract(patientShareAmount)
+                    .subtract(insuranceShareAmount)
+                    .max(BigDecimal.ZERO);
+            if (insuranceShareAmount.signum() == 0 && patientShareAmount.signum() > 0) {
+                contractCashReason = insurancePatientShareCalculator.contractCashReason(insurance, previewItem);
+            }
         } else if (!Boolean.TRUE.equals(previewItem.getIsExempted())) {
             patientShareAmount = pricing.netAmount();
         }
@@ -421,9 +457,9 @@ public class DefaultServicePricingPreviewService {
                 resolvedPrice.setupUnitPrice(),
                 pricing.unitPrice(),
                 pricing.grossAmount(),
-                pricing.discountAmount(),
+                pricing.discountAmount().add(contractDiscount),
                 taxDistribution.appliedTaxAmount(),
-                pricing.netAmount().subtract(droppedTax),
+                pricing.netAmount().subtract(droppedTax).subtract(contractDiscount),
                 priceSource,
                 pricingInput.priceListItemCode(),
                 taxDistribution.patientAmount(),
@@ -432,7 +468,9 @@ public class DefaultServicePricingPreviewService {
                 coveredByInsurance,
                 requiresCashConfirmation,
                 notCoveredReason,
-                requiresCashConfirmation ? resolvedPrice.unitPrice() : null
+                requiresCashConfirmation ? resolvedPrice.unitPrice() : null,
+                preAuthorizationRequired,
+                contractCashReason
         );
     }
 

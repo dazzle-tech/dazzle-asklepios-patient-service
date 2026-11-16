@@ -57,6 +57,25 @@ public interface PatientEncounterRepository extends JpaRepository<PatientEncount
             Pageable pageable
     );
 
+    @Query("""
+            select e from PatientEncounter e
+            where e.patient.id = :patientId
+            order by e.createdDate desc
+            """)
+    Page<PatientEncounter> findDashboardPageByPatientId(
+            @Param("patientId") Long patientId,
+            Pageable pageable
+    );
+
+    @EntityGraph(attributePaths = {"appointment", "patient"})
+    List<PatientEncounter> findAllByPatientIdOrderByCreatedDateDesc(
+            Long patientId
+    );
+
+    Optional<PatientEncounter> findFirstByPatientIdOrderByCreatedDateDescIdDesc(
+            Long patientId
+    );
+
     @EntityGraph(attributePaths = "appointment")
     PatientEncounter findByAppointment_Id(Long appointmentId);
 

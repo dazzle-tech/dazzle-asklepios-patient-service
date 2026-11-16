@@ -31,6 +31,7 @@ import com.dazzle.asklepios.service.dto.billing.BillingRefundReversalRequest;
 import com.dazzle.asklepios.service.dto.billing.BillingRefundReversalResult;
 import com.dazzle.asklepios.service.dto.billing.BillingRuleResolveResponse;
 import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
+import com.dazzle.asklepios.service.eligibility.EligibilityContractApprovalService;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.security.SecurityUtils;
@@ -107,6 +108,12 @@ public class BillingTransactionService {
 
     private final PreAuthorizationResolutionService
             preAuthorizationResolutionService;
+
+    private final CoveragePreApprovalLimitService
+            coveragePreApprovalLimitService;
+
+    private final EligibilityContractApprovalService
+            eligibilityContractApprovalService;
 
     private final EncounterTreatmentAdvanceService
             encounterTreatmentAdvanceService;
@@ -190,6 +197,38 @@ public class BillingTransactionService {
         billingPricingService.calculate(
                 context
         );
+
+        /*
+         * A coverage pre-approval limit is known only after the price exists.
+         * A line that crosses it stays pending and is not posted to the patient account.
+         */
+        coveragePreApprovalLimitService.applyIfExceeded(
+                context
+        );
+
+        /*
+         * Waseel payers: the same rule with the patient-level eligibility contract.
+         * A line above its approval limit, or above the maximum benefit for the period,
+         * waits for a Waseel pre-authorization.
+         */
+        eligibilityContractApprovalService.holdIfExceeded(
+                context
+        );
+
+        PatientServiceAndProduct billedItem = context.getPatientServiceProduct();
+        if (preAuthorizationResolutionService.isPendingPreAuthorization(billedItem)
+                && billedItem.getPaymentStatus() == PaymentStatus.SKIPPED_PENDING_PRE_AUTH) {
+            LOG.info(
+                    "[CREATE] Billing deferred — waiting for pre-authorization. pspId={} requestId={}",
+                    billedItem.getId(),
+                    billedItem.getPreAuthorizationRequestId()
+            );
+            return buildResult(
+                    context,
+                    true,
+                    resolveCreateMessage(context)
+            );
+        }
 
         /*
          * 2. Charge header.
@@ -934,6 +973,12 @@ public class BillingTransactionService {
         )) {
 
             return "Exempted billing charge created successfully";
+        }
+
+        if (preAuthorizationResolutionService.isPendingPreAuthorization(
+                context.getPatientServiceProduct()
+        )) {
+            return "This service needs pre-authorization. It was sent to the pre-authorization page and shows as pending pre-authorization on the ledger account.";
         }
 
         return "Billing charge created successfully";

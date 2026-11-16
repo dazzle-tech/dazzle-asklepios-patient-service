@@ -36,12 +36,14 @@ import com.dazzle.asklepios.repository.UserRepository;
 import com.dazzle.asklepios.repository.VitalSignsRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.billing.EncounterHasInvoiceResponse;
+import com.dazzle.asklepios.service.dto.patientEncounter.EncounterPreAuthorizationLockResponse;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterDischargeDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterUpdateDTO;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
 import com.dazzle.asklepios.service.helper.FacilityHelper;
+import com.dazzle.asklepios.service.helper.InsuranceRegistrationGuard;
 import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.service.helper.PractitionerHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -112,6 +114,16 @@ public class PatientEncounterService {
 
     private static final Logger LOG = LoggerFactory.getLogger(PatientEncounterService.class);
 
+    /** Statuses that come before a bed assignment; the generic update must not move a bedded encounter back to them. */
+    private static final Set<TreatmentStatus> PRE_BED_TREATMENT_STATUSES = Set.of(
+            TreatmentStatus.PENDING_PAYMENT,
+            TreatmentStatus.WAITING_TRIAGE,
+            TreatmentStatus.TRIAGE_STARTED,
+            TreatmentStatus.WAITING_LIST,
+            TreatmentStatus.SENT_TO_ER,
+            TreatmentStatus.NEW
+    );
+
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientRepository patientRepository;
     private final EncounterAssessmentRepository encounterAssessmentRepository;
@@ -144,11 +156,13 @@ public class PatientEncounterService {
     private final EncounterDischargeLogRepository encounterDischargeLogRepository;
     private final PatientEncounterFieldAuditRepository auditRepository;
     private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
+    private final EncounterPreAuthorizationGuardService encounterPreAuthorizationGuardService;
     private final ReopenSessionAuditContext reopenSessionAuditContext;
     private final EncounterReopenGuard encounterReopenGuard;
     private final EncounterAmendmentService encounterAmendmentService;
     private final InsuranceCheckoutDiagnosticApprovalService insuranceCheckoutDiagnosticApprovalService;
     private final PatientActivityService patientActivityService;
+    private final InsuranceRegistrationGuard insuranceRegistrationGuard;
 
     public PatientEncounterService(
             PatientEncounterRepository patientEncounterRepository,
@@ -180,11 +194,14 @@ public class PatientEncounterService {
             @Lazy BillingEngineService billingEngineService,
             NotificationHelper notificationHelper, InvoiceGenerationService invoiceGenerationService, UserRepository userRepository, EncounterDischargeLogRepository encounterDischargeLogRepository, PatientEncounterFieldAuditRepository auditRepository,
             FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy,
+            EncounterPreAuthorizationGuardService encounterPreAuthorizationGuardService,
             ReopenSessionAuditContext reopenSessionAuditContext,
             EncounterReopenGuard encounterReopenGuard,
             EncounterAmendmentService encounterAmendmentService,
             InsuranceCheckoutDiagnosticApprovalService insuranceCheckoutDiagnosticApprovalService,
-            @Lazy PatientActivityService patientActivityService) {
+            @Lazy PatientActivityService patientActivityService,
+            InsuranceRegistrationGuard insuranceRegistrationGuard) {
+        this.insuranceRegistrationGuard = insuranceRegistrationGuard;
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientRepository = patientRepository;
         this.entityManager = entityManager;
@@ -222,6 +239,7 @@ public class PatientEncounterService {
         this.encounterDischargeLogRepository = encounterDischargeLogRepository;
         this.auditRepository = auditRepository;
         this.followUpReviewDefaultServicePolicy = followUpReviewDefaultServicePolicy;
+        this.encounterPreAuthorizationGuardService = encounterPreAuthorizationGuardService;
         this.reopenSessionAuditContext = reopenSessionAuditContext;
         this.encounterReopenGuard = encounterReopenGuard;
         this.encounterAmendmentService = encounterAmendmentService;
@@ -321,6 +339,7 @@ public class PatientEncounterService {
         followUpReviewDefaultServicePolicy
                 .coverageMatchingCompletedVisit(encounter)
                 .ifPresent(inherited -> {
+                    insuranceRegistrationGuard.requireRegistrable(inherited.patientInsuranceId());
                     encounter.setCoverageType(inherited.coverageType());
                     encounter.setPatientInsuranceId(inherited.patientInsuranceId());
                     LOG.info(
@@ -450,6 +469,7 @@ public class PatientEncounterService {
                     "Triage can only be started when status is WAITING_TRIAGE."
             );
         }
+        encounterPreAuthorizationGuardService.requireNoPendingPreAuthorization(patientEncounterId);
         existingPatientEncounter.setStatus(TreatmentStatus.TRIAGE_STARTED);
 
 
@@ -856,6 +876,11 @@ public class PatientEncounterService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public EncounterPreAuthorizationLockResponse getPreAuthorizationLock(Long encounterId) {
+        return encounterPreAuthorizationGuardService.lockStatus(encounterId);
+    }
+
     public PatientEncounter startEncounter(Long encounterId) {
         LOG.info("[START] PatientEncounter id={}", encounterId);
 
@@ -875,7 +900,13 @@ public class PatientEncounterService {
         }
 
         String username = currentUsername();
-        validateStartedByIsDoctor(username);
+        PractitionerDTO startedByPractitioner = validateStartedByIsDoctor(username);
+        encounterPreAuthorizationGuardService.requireNoPendingPreAuthorization(encounterId);
+
+        if (encounter.getPractitionerId() == null) {
+            assignPractitionerOnVisitStartIfConfigured(encounter, startedByPractitioner);
+        }
+
         encounter.setStatus(TreatmentStatus.ONGOING);
         encounter.setStartedBy(currentUsername());
         encounter.setStartedDate(Instant.now());
@@ -901,7 +932,7 @@ public class PatientEncounterService {
         }
     }
 
-    private void validateStartedByIsDoctor(String login) {
+    private PractitionerDTO validateStartedByIsDoctor(String login) {
         PractitionerDTO practitioner;
 
         try {
@@ -950,6 +981,56 @@ public class PatientEncounterService {
                     "startedBy.notDoctor"
             );
         }
+
+        return practitioner;
+    }
+
+    private void assignPractitionerOnVisitStartIfConfigured(
+            PatientEncounter encounter,
+            PractitionerDTO startedByPractitioner
+    ) {
+        Long departmentId = encounter.getDepartmentId();
+        if (departmentId == null) {
+            return;
+        }
+
+        DepartmentDTO department = departmentHelper.getDepartment(departmentId);
+        if (!Boolean.TRUE.equals(department.assignPractitionerOnVisitStart())) {
+            return;
+        }
+
+        if (startedByPractitioner == null || startedByPractitioner.id() == null) {
+            throw new BadRequestAlertException(
+                    "Current user is not linked to a practitioner",
+                    "patientEncounter",
+                    "startedBy.practitioner.notFound"
+            );
+        }
+
+        if (!Boolean.TRUE.equals(startedByPractitioner.isActive())) {
+            throw new BadRequestAlertException(
+                    "Linked practitioner is not active",
+                    "patientEncounter",
+                    "startedBy.practitioner.inactive"
+            );
+        }
+
+        boolean hasDepartmentAccess =
+                practitionerClient.hasDepartmentAccess(startedByPractitioner.id(), departmentId);
+        if (!hasDepartmentAccess) {
+            throw new BadRequestAlertException(
+                    "Linked practitioner does not have access to the encounter department",
+                    "patientEncounter",
+                    "startedBy.practitioner.department.access.denied"
+            );
+        }
+
+        encounter.setPractitionerId(startedByPractitioner.id());
+        LOG.info(
+                "[START] assigned practitionerId={} to encounterId={} from authenticated user",
+                startedByPractitioner.id(),
+                encounter.getId()
+        );
     }
 
     private boolean isBlank(String value) {
@@ -2586,6 +2667,21 @@ public class PatientEncounterService {
             LOG.info(
                     "[UPDATE] PatientEncounter treatment status advanced "
                             + "id={} from={} to={}",
+                    encounter.getId(),
+                    currentStatus,
+                    requestedStatus
+            );
+            return;
+        }
+
+        if (currentStatus == TreatmentStatus.ASSIGNED_TO_BED
+                && PRE_BED_TREATMENT_STATUSES.contains(requestedStatus)) {
+            // A screen opened before the bed assignment (e.g. triage) still holds the old
+            // status and sends it back with unrelated edits. Keep the bed status and save
+            // the rest of the payload.
+            LOG.warn(
+                    "[UPDATE] PatientEncounter ignored stale treatment status "
+                            + "id={} current={} requested={}",
                     encounter.getId(),
                     currentStatus,
                     requestedStatus

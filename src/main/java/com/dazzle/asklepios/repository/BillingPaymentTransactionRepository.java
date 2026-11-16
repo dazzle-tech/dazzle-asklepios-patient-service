@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -37,9 +38,20 @@ public interface BillingPaymentTransactionRepository
     );
 
     List<BillingPaymentTransaction>
+    findAllByPayment_IdInOrderByTransactionDateAscIdAsc(
+            List<Long> paymentIds
+    );
+
+    List<BillingPaymentTransaction>
     findAllByPayment_IdAndTransactionTypeAndStatusOrderByTransactionDateAscIdAsc(
             Long paymentId,
             BillingPaymentTransactionType transactionType,
+            BillingPaymentTransactionStatus status
+    );
+
+    List<BillingPaymentTransaction>
+    findAllByProcessorReferenceInAndStatus(
+            Collection<String> processorReferences,
             BillingPaymentTransactionStatus status
     );
 }

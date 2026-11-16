@@ -125,12 +125,15 @@ public class NahdiPrescriptionMapper {
                 ? null
                 : patientEncounterRepository.findById(prescription.getEncounterId()).orElse(null);
 
-        List<PatientPrescriptionMedication> medications = activeMedications(prescription);
+        List<PatientPrescriptionMedication> lines = NahdiPrescriptionLines.sentLines(prescription);
+        List<PatientPrescriptionMedication> activeLines = lines.stream()
+                .filter(medication -> !PrescriptionStatus.CANCELLED.equals(medication.getStatus()))
+                .toList();
 
         return NahdiSendPrescriptionRequest.builder()
                 .presHead(toHead(prescription, encounter))
-                .presDiagnosis(toDiagnoses(medications))
-                .presItem(toItems(medications))
+                .presDiagnosis(toDiagnoses(activeLines))
+                .presItem(toItems(lines))
                 .build();
     }
 
@@ -155,7 +158,7 @@ public class NahdiPrescriptionMapper {
         return NahdiPrescriptionHead.builder()
                 .providerId(text(nahdiProperties.providerId()))
                 .providerToken(text(nahdiProperties.providerToken()))
-                .presRefId(firstNonBlank(prescription.getPrescriptionNum(), String.valueOf(prescription.getId())))
+                .presRefId(NahdiPrescriptionLines.reference(prescription))
                 .presDateTime(presDateTime)
                 .presDateTime2(presDateTime)
                 .presStatus(nahdiProperties.prescription().status())
@@ -203,15 +206,6 @@ public class NahdiPrescriptionMapper {
                 .build();
     }
 
-    private static List<PatientPrescriptionMedication> activeMedications(PatientPrescription prescription) {
-        return prescription.getMedications() == null
-                ? List.of()
-                : prescription.getMedications().stream()
-                        .filter(Objects::nonNull)
-                        .filter(medication -> !PrescriptionStatus.CANCELLED.equals(medication.getStatus()))
-                        .toList();
-    }
-
     /**
      * Diagnoses are the indication ICDs of the prescribed items (each ICD sent once), all as "principle".
      */
@@ -236,6 +230,7 @@ public class NahdiPrescriptionMapper {
 
     private List<NahdiPrescriptionItem> toItems(List<PatientPrescriptionMedication> medications) {
         List<NahdiPrescriptionItem> items = new ArrayList<>();
+        // line_No is the position in NahdiPrescriptionLines.sentLines; sales invoices refer back to it.
         int lineNo = 1;
         for (PatientPrescriptionMedication medication : medications) {
             items.add(toItem(medication, lineNo++));
@@ -276,7 +271,9 @@ public class NahdiPrescriptionMapper {
                 .qty(serviceAndProduct == null || serviceAndProduct.getQuantity() == null ? null : BigDecimal.valueOf(serviceAndProduct.getQuantity()))
                 .dose(toDoseText(medication))
                 .price(text(price))
-                .appStatus(nahdiProperties.prescription().itemApprovalStatus())
+                .appStatus(PrescriptionStatus.CANCELLED.equals(medication.getStatus())
+                        ? nahdiProperties.prescription().itemCancelledStatus()
+                        : nahdiProperties.prescription().itemApprovalStatus())
                 .build();
     }
 

@@ -14,6 +14,7 @@ import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.DiagnosticOrderTestService;
 import com.dazzle.asklepios.service.DiagnosticOrderTestStatusService;
+import com.dazzle.asklepios.service.DiagnosticPreAuthorizationService;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertests.BulkCancelDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.BulkIdsDTO;
 import com.dazzle.asklepios.service.dto.laboratory.diagnosticordertestsresult.BulkRejectDTO;
@@ -93,20 +94,28 @@ public class DiagnosticOrderTestController {
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
 
     /**
+     * Fills the pre-authorization status of listed tests.
+     */
+    private final DiagnosticPreAuthorizationService diagnosticPreAuthorizationService;
+
+    /**
      * Controller constructor.
      *
      * @param diagnosticOrderTestService       business logic for CRUD
      * @param diagnosticOrderTestStatusService business logic for status transitions
      * @param diagnosticOrderTestRepository    persistence/retrieval access
+     * @param diagnosticPreAuthorizationService pre-authorization status of listed tests
      */
     public DiagnosticOrderTestController(
             DiagnosticOrderTestService diagnosticOrderTestService,
             DiagnosticOrderTestStatusService diagnosticOrderTestStatusService,
-            DiagnosticOrderTestRepository diagnosticOrderTestRepository
+            DiagnosticOrderTestRepository diagnosticOrderTestRepository,
+            DiagnosticPreAuthorizationService diagnosticPreAuthorizationService
     ) {
         this.diagnosticOrderTestService = diagnosticOrderTestService;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
+        this.diagnosticPreAuthorizationService = diagnosticPreAuthorizationService;
     }
 
     /**
@@ -286,6 +295,8 @@ public class DiagnosticOrderTestController {
         HttpHeaders paginationHeaders = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), orderTestsPage
         );
+
+        diagnosticPreAuthorizationService.attachStatuses(orderTestsPage.getContent());
 
         // Map entities to response view-models
         List<DiagnosticOrderTestResponseVM> responseBody = orderTestsPage.getContent()

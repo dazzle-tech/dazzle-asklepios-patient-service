@@ -42,20 +42,22 @@ public class PayorPlanHelper {
             return null;
         }
 
-        PayorPlanDTO matchedPlan = findPlanByCchiMatch(
-                payorId,
-                coverageType,
-                networkId,
-                policyClassName
-        );
+        if (hasText(coverageType) || hasText(networkId)) {
+            PayorPlanDTO matchedPlan = findPlanByCchiMatch(
+                    payorId,
+                    coverageType,
+                    networkId,
+                    policyClassName
+            );
 
-        if (matchedPlan != null && matchedPlan.id() != null && matchedPlan.id() > 0) {
-            return matchedPlan.id();
+            if (hasId(matchedPlan)) {
+                return matchedPlan.id();
+            }
         }
 
-        if (networkId != null && !networkId.isBlank()) {
+        if (hasText(networkId)) {
             PayorPlanDTO planByNetwork = findPlanByWaseelPlanId(payorId, networkId.trim());
-            if (planByNetwork != null && planByNetwork.id() != null && planByNetwork.id() > 0) {
+            if (hasId(planByNetwork)) {
                 return planByNetwork.id();
             }
         }
@@ -76,17 +78,37 @@ public class PayorPlanHelper {
                     networkId,
                     policyClassName
             );
-        } catch (feign.FeignException.NotFound ex) {
-            return null;
+        } catch (feign.FeignException ex) {
+            if (isClientMiss(ex)) {
+                return null;
+            }
+            throw ex;
         }
     }
 
     private PayorPlanDTO findPlanByWaseelPlanId(Long payorId, String waseelPlanId) {
         try {
             return payorPlanClient.getPayorPlanByWaseelPlanId(payorId, waseelPlanId);
-        } catch (feign.FeignException.NotFound ex) {
-            return null;
+        } catch (feign.FeignException ex) {
+            if (isClientMiss(ex)) {
+                return null;
+            }
+            throw ex;
         }
     }
 
+    private static boolean hasId(PayorPlanDTO plan) {
+        return plan != null && plan.id() != null && plan.id() > 0;
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private static boolean isClientMiss(feign.FeignException ex) {
+        return ex instanceof feign.FeignException.NotFound
+                || ex instanceof feign.FeignException.BadRequest
+                || ex.status() == 404
+                || ex.status() == 400;
+    }
 }

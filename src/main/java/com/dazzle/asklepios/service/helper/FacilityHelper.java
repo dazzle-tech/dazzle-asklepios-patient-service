@@ -35,20 +35,30 @@ public class FacilityHelper {
      * value can't be resolved to a valid zone.
      */
     public ZoneId getFacilityZoneId(Long facilityId, String fallbackZone) {
+        return resolveZone(facilityId, fallbackZone).zoneId();
+    }
+
+    /**
+     * Resolves the facility time zone and records whether the value came from the facility
+     * or from the fallback. A missing or invalid zone must not be presented as the facility's own.
+     */
+    public ZoneResolution resolveZone(Long facilityId, String fallbackZone) {
         String rawTimeZone = facilityId != null ? getFacility(facilityId).timeZone() : null;
 
         if (rawTimeZone == null || rawTimeZone.isBlank()) {
-            return ZoneId.of(fallbackZone);
+            return new ZoneResolution(ZoneId.of(fallbackZone), "FALLBACK", rawTimeZone);
         }
 
         String ianaZone = ENUM_NAME_TO_IANA_ZONE.getOrDefault(rawTimeZone, rawTimeZone);
 
         try {
-            return ZoneId.of(ianaZone);
+            return new ZoneResolution(ZoneId.of(ianaZone), "FACILITY", rawTimeZone);
         } catch (DateTimeException ex) {
-            return ZoneId.of(fallbackZone);
+            return new ZoneResolution(ZoneId.of(fallbackZone), "FALLBACK", rawTimeZone);
         }
     }
+
+    public record ZoneResolution(ZoneId zoneId, String source, String rawValue) {}
 
     public void validateFacilityExists(Long facilityId) {
         try {

@@ -176,6 +176,12 @@ public class InvoiceGenerationService {
                         ? eligibilitySnapshot.eligibilityResponseId()
                         : resolveLiveEligibilityReference(encounter);
 
+        String coverageType = resolveCoverageType(encounterId);
+        boolean eligibilityFreezeRequired =
+                "INSURANCE".equals(coverageType)
+                        && billingEligibilitySnapshotService.isEligibilityFreezeRequired(encounterId);
+        String displayCoverageType = resolveDisplayCoverageType(encounterId, coverageType);
+
         return new EncounterInvoiceDetailsResponse(
                 encounter.getId(),
                 encounter.getEncounterNumber(),
@@ -185,12 +191,13 @@ public class InvoiceGenerationService {
                 resolveBillingStatus(encounter),
                 encounter.getFinanciallyClosedAt(),
                 encounter.getFinanciallyClosedBy(),
-                resolveCoverageType(encounterId),
+                displayCoverageType,
                 encounter.getPatientInsuranceId(),
                 eligibilityReference,
                 eligibilitySnapshot,
                 mapPatientHeader(patient),
-                billingSummary
+                billingSummary,
+                eligibilityFreezeRequired
         );
     }
 
@@ -381,15 +388,7 @@ public class InvoiceGenerationService {
         }
 
         if ("INSURANCE".equals(resolveCoverageType(encounterId))) {
-            try {
-                billingEligibilitySnapshotService.ensureFrozenForEncounter(encounterId);
-            } catch (NotFoundAlertException exception) {
-                throw new BadRequestAlertException(
-                        "Insurance eligibility is required before financial closure.",
-                        ENTITY_NAME,
-                        "encounter.eligibility.required"
-                );
-            }
+            billingEligibilitySnapshotService.requireReadyForFinancialClose(encounterId);
         }
 
         if (hasFinalInvoice(encounterId)) {
@@ -1084,6 +1083,32 @@ public class InvoiceGenerationService {
                 encounterId,
                 FinancialDocumentSubtype.PATIENT
         );
+    }
+
+    /**
+     * An insurance visit whose lines wait for pre-approval, or for the patient's choice
+     * after a rejection / partial approval, has no insurance responsibility yet.
+     * The billing screen still shows it as insurance so the pre-authorization actions
+     * stay available. Invoice logic keeps using {@link #resolveCoverageType(Long)}.
+     */
+    private String resolveDisplayCoverageType(Long encounterId, String coverageType) {
+        if ("INSURANCE".equals(coverageType)) {
+            return coverageType;
+        }
+
+        boolean hasLineAwaitingApproval =
+                patientServiceAndProductRepository
+                        .existsByEncounterIdAndPatientInsuranceIdIsNotNullAndPreAuthorizationStatusInAndPaymentStatusNot(
+                                encounterId,
+                                EnumSet.of(
+                                        PreAuthorizationStatus.PENDING_APPROVAL,
+                                        PreAuthorizationStatus.PARTIAL,
+                                        PreAuthorizationStatus.REJECTED
+                                ),
+                                PaymentStatus.CANCELLED
+                        );
+
+        return hasLineAwaitingApproval ? "INSURANCE" : coverageType;
     }
 
     private String resolveCoverageType(Long encounterId) {

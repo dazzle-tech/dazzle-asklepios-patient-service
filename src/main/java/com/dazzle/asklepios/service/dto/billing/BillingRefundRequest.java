@@ -17,6 +17,8 @@ public record BillingRefundRequest(
 
         Long encounterId,
 
+        Long facilityId,
+
         /*
          * Required only for ORIGINAL_PAYMENT refunds.
          */

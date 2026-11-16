@@ -23,6 +23,7 @@ import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.EncounterPriority;
 import com.dazzle.asklepios.domain.enumeration.EncounterReason;
+import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.TemplateType;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
@@ -825,6 +826,17 @@ public class AppointmentService {
         } else if (appointmentDTO.resourceType() == TemplateType.PRACTITIONER) {
             PractitionerDTO practitioner = practitionerHelper.getPractitioner(appointmentDTO.resourceId());
             validatePractitionerWorkingDay(practitioner);
+        }
+
+        boolean allowsNullPractitioner =
+                EncounterType.EMERGENCY.equals(department.encounterType())
+                        || Boolean.TRUE.equals(department.assignPractitionerOnVisitStart());
+        if (appointmentDTO.defaultPractitionerId() == null && !allowsNullPractitioner) {
+            throw new BadRequestAlertException(
+                    "Practitioner is required for this department",
+                    "appointment",
+                    "practitioner.required"
+            );
         }
 
         if (department.defaultDurationMinutes() == null || department.defaultDurationMinutes() <= 0) {
@@ -2418,6 +2430,9 @@ public class AppointmentService {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Completed appointment cannot be cancelled");
         } else if (appointment.getStatus() == AppointmentStatus.NO_SHOW) {
             throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "no-show appointment cannot be cancelled");
+        }
+        else if(appointment.getStatus() == AppointmentStatus.CONFIRMED) {
+            throw new BadRequestAlertException("invalidstatus", ENTITY_NAME, "Confirmed appointment cannot be cancelled");
         }
 
     }

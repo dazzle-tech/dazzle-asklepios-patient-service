@@ -47,7 +47,7 @@ public class PatientOtpAuthenticationService {
     private final NotificationHelper notificationHelper;
 
 
-    public String requestOtp(PatientOtpRequestDTO request) {
+    public void requestOtp(PatientOtpRequestDTO request) {
 
         if (request == null
                 || request.primaryDocumentNumber() == null
@@ -145,7 +145,6 @@ LOG.info(
                 "Patient OTP generated successfully. patientId={}",
                 patient.getId()
         );
-        return otp;
     }
 
     public Long verifyOtp(PatientOtpVerifyDTO request) {

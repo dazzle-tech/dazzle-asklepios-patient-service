@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
@@ -51,6 +52,24 @@ public interface DiagnosticOrderTestRepository extends JpaRepository<DiagnosticO
 """)
     int bulkUpdateStatusForOrder(Long orderId, DiagnosticOrderTestStatus newStatus);
 
+    /**
+     * Same as {@link #bulkUpdateStatusForOrder} but leaves the given tests unchanged
+     * (radiology tests held for pre-authorization on submit).
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+    update DiagnosticOrderTest t
+       set t.status = :newStatus
+     where t.orderId = :orderId
+       and t.status <> com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus.CANCELLED
+       and t.id not in :excludedIds
+""")
+    int bulkUpdateStatusForOrderExcluding(
+            @Param("orderId") Long orderId,
+            @Param("newStatus") DiagnosticOrderTestStatus newStatus,
+            @Param("excludedIds") Collection<Long> excludedIds
+    );
+
 
     boolean existsByOrderIdAndTestIdAndStatusNot(Long orderId, Long testId, DiagnosticOrderTestStatus status);
 
@@ -69,4 +88,30 @@ public interface DiagnosticOrderTestRepository extends JpaRepository<DiagnosticO
         where t.id in :orderTestIds
     """)
     List<Object[]> findIdAndOrderIdByIdIn(List<Long> orderTestIds);
+
+    @Query("""
+            select t
+            from DiagnosticOrderTest t, DiagnosticOrder o
+            where t.orderId = o.id
+              and o.encounterId = :encounterId
+              and t.testId in :testIds
+              and t.status <> com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus.CANCELLED
+            order by t.id desc
+            """)
+    List<DiagnosticOrderTest> findActiveByEncounterIdAndTestIdIn(
+            @Param("encounterId") Long encounterId,
+            @Param("testIds") Collection<Long> testIds
+    );
+
+    @Query("""
+            select t
+            from DiagnosticOrderTest t, DiagnosticOrder o
+            where t.orderId = o.id
+              and o.encounterId = :encounterId
+              and t.status <> com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus.CANCELLED
+            order by t.id desc
+            """)
+    List<DiagnosticOrderTest> findActiveByEncounterId(
+            @Param("encounterId") Long encounterId
+    );
 }

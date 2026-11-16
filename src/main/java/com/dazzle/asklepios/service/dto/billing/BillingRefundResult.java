@@ -41,7 +41,11 @@ public record BillingRefundResult(
 
         BillingRefundSourceType refundSourceType,
 
-        BillingRefundStatus status
+        BillingRefundStatus status,
+
+        Long financialDocumentId,
+
+        String documentNumber
 
 ) implements Serializable {
 }

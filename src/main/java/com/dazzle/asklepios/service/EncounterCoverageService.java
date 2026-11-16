@@ -14,6 +14,7 @@ import com.dazzle.asklepios.repository.PatientPaymentsRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.dto.billing.EncounterCoverageDTO;
 import com.dazzle.asklepios.service.dto.billing.UpdateEncounterCoverageRequest;
+import com.dazzle.asklepios.service.helper.InsuranceRegistrationGuard;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +42,7 @@ public class EncounterCoverageService {
     private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
     private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
     private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
+    private final InsuranceRegistrationGuard insuranceRegistrationGuard;
 
     /**
      * Walk-in preview/prepare often send SELF_PAY as the form default.
@@ -308,6 +310,7 @@ public class EncounterCoverageService {
                                     ENTITY_NAME,
                                     "patientInsurance.notfound"
                             ));
+            insuranceRegistrationGuard.requireRegistrable(insurance);
         } else if (request.patientInsuranceId() != null) {
             throw new BadRequestAlertException(
                     "patientInsuranceId must be null when coverageType is SELF_PAY",

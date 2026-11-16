@@ -5,6 +5,7 @@ import com.dazzle.asklepios.domain.enumeration.PrescriptionStatus;
 import com.dazzle.asklepios.domain.enumeration.PrescriptionUrgencyLevel;
 import com.dazzle.asklepios.integration.nahdi.service.NahdiIntegrationService;
 import com.dazzle.asklepios.service.PatientPrescriptionService;
+import com.dazzle.asklepios.service.SubmittedPrescriptionEditPolicy;
 import com.dazzle.asklepios.service.dto.patientPrescription.PatientPrescriptionCreateDto;
 import com.dazzle.asklepios.service.dto.patientPrescription.PatientPrescriptionUpdateDTO;
 import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
@@ -36,6 +37,15 @@ public class PatientPrescriptionController {
             LoggerFactory.getLogger(PatientPrescriptionController.class);
     private final PatientPrescriptionService patientPrescriptionService;
     private final NahdiIntegrationService nahdiIntegrationService;
+    private final SubmittedPrescriptionEditPolicy submittedPrescriptionEditPolicy;
+
+    /** Whether the current user may change a submitted prescription (the UI locks it otherwise). */
+    public record EditAfterSubmitAccess(boolean allowed) {}
+
+    @GetMapping("/patient-prescriptions/edit-after-submit-access")
+    public ResponseEntity<EditAfterSubmitAccess> editAfterSubmitAccess() {
+        return ResponseEntity.ok(new EditAfterSubmitAccess(submittedPrescriptionEditPolicy.canCurrentUserEdit()));
+    }
 
 
     @PostMapping("/patient-prescriptions/create-or-get")

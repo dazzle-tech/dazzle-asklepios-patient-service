@@ -3,6 +3,7 @@ package com.dazzle.asklepios.integration.waseel.service;
 import com.dazzle.asklepios.domain.ClaimEncounterCopy;
 import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.BillingPayment;
+import com.dazzle.asklepios.domain.BillingPricingSnapshot;
 import com.dazzle.asklepios.domain.EmergencyTriage;
 import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
@@ -15,6 +16,8 @@ import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.RelationType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPricingSnapshotStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.TaxType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimSubType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimType;
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
@@ -34,10 +37,12 @@ import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalDiagnosisM
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalItemMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalSubscriberMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalSupportingInfoMapper;
+import com.dazzle.asklepios.integration.waseel.service.mapper.DentalAttachmentSupportingInfoMapper;
 import com.dazzle.asklepios.repository.ClaimEncounterCopyRepository;
 import com.dazzle.asklepios.repository.ClaimEncounterDiagnosisRepository;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.BillingPaymentRepository;
+import com.dazzle.asklepios.repository.BillingPricingSnapshotRepository;
 import com.dazzle.asklepios.repository.EmergencyTriageRepository;
 import com.dazzle.asklepios.repository.FinancialDocumentItemRepository;
 import com.dazzle.asklepios.repository.PatientDiagnosisRepository;
@@ -56,6 +61,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -91,6 +97,7 @@ public class ClaimRequestBuilderService {
     private final FinancialDocumentItemRepository financialDocumentItemRepository;
     private final BillingChargeLineRepository billingChargeLineRepository;
     private final BillingPaymentRepository billingPaymentRepository;
+    private final BillingPricingSnapshotRepository billingPricingSnapshotRepository;
     private final PreAuthorizationRequestRepository preAuthorizationRequestRepository;
     private final EmergencyTriageRepository emergencyTriageRepository;
 
@@ -99,6 +106,7 @@ public class ClaimRequestBuilderService {
     private final ApprovalCareTeamMapper approvalCareTeamMapper;
     private final ApprovalItemMapper approvalItemMapper;
     private final ApprovalSupportingInfoMapper approvalSupportingInfoMapper;
+    private final DentalAttachmentSupportingInfoMapper dentalAttachmentSupportingInfoMapper;
     private final ApprovalSubscriberMapper approvalSubscriberMapper;
 
     private final WaseelApiProperties waseelApiProperties;
@@ -213,6 +221,14 @@ public class ClaimRequestBuilderService {
                 ? List.of()
                 : billingChargeLineRepository.findAllById(chargeLineIds);
 
+        Map<Long, BigDecimal> taxPercentByChargeLine = chargeLineIds.isEmpty()
+                ? Map.of()
+                : taxPercentByChargeLine(billingPricingSnapshotRepository
+                        .findAllByChargeLine_IdInAndStatusOrderByIdDesc(
+                                chargeLineIds,
+                                BillingPricingSnapshotStatus.ACTIVE
+                        ));
+
         List<BillingPayment> payments =
                 billingPaymentRepository.findAllByEncounter_IdOrderByIdAsc(encounterId);
 
@@ -244,9 +260,9 @@ public class ClaimRequestBuilderService {
         }
 
         Map<Integer, LabTestSource> labTestSources = new LinkedHashMap<>();
-        var supportingInfo = approvalSupportingInfoMapper.toClaimSupportingInfo(
-                encounter,
-                labTestSources
+        var supportingInfo = dentalAttachmentSupportingInfoMapper.withDentalAttachments(
+                approvalSupportingInfoMapper.toClaimSupportingInfo(encounter, labTestSources),
+                encounter
         );
 
         List<PatientServiceAndProduct> products = invoiceItems.stream()
@@ -256,12 +272,16 @@ public class ClaimRequestBuilderService {
                 .filter(Objects::nonNull)
                 .toList();
 
+        // A dental (oral) claim sends its dental treatment as ORAL-HEALTH-OP with the tooth, as the pre-authorization does.
+        boolean oralClaim = claimType == WaseelClaimType.DENTAL;
+
         List<WaseelApprovalItem> mappedItems = approvalItemMapper.toWaseelItems(
                 products,
                 snapshot.insurancePlan() == null ? null : snapshot.insurancePlan().patientShare(),
                 encounter,
                 supportingInfo,
-                true
+                true,
+                oralClaim
         );
 
         Map<Long, WaseelApprovalItem> mappedByPspId = alignMappedItemsByProductOrder(
@@ -311,7 +331,8 @@ public class ClaimRequestBuilderService {
                                     : snapshot.insurancePlan().patientShare(),
                             encounter,
                             supportingInfo,
-                            true
+                            true,
+                            oralClaim
                     );
                     base = single.isEmpty() ? null : single.get(0);
                 }
@@ -404,6 +425,7 @@ public class ClaimRequestBuilderService {
                     invoiceItem.getGrossAmount(),
                     invoiceItem.getDiscountAmount(),
                     invoiceItem.getTaxAmount(),
+                    taxPercentByChargeLine.get(invoiceItem.getBillingChargeLineId()),
                     net,
                     patientShare,
                     payerShare,
@@ -494,6 +516,25 @@ public class ClaimRequestBuilderService {
                 claimType,
                 claimSubType
         );
+    }
+
+    /**
+     * The applied tax rate of each charge line, from its latest active pricing snapshot.
+     * Fixed-amount tax has no rate, so it is left out.
+     */
+    static Map<Long, BigDecimal> taxPercentByChargeLine(List<BillingPricingSnapshot> latestFirst) {
+        Map<Long, BigDecimal> rates = new HashMap<>();
+        for (BillingPricingSnapshot snapshot : latestFirst) {
+            Long chargeLineId = snapshot.getChargeLine().getId();
+            if (rates.containsKey(chargeLineId)) {
+                continue;
+            }
+            rates.put(
+                    chargeLineId,
+                    snapshot.getTaxType() == TaxType.PERCENTAGE ? snapshot.getTaxRate() : BigDecimal.ZERO
+            );
+        }
+        return rates;
     }
 
     private Map<Long, WaseelApprovalItem> alignMappedItemsByProductOrder(

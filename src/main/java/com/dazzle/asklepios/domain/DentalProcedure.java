@@ -1,7 +1,6 @@
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.converter.ToothNumberListConverter;
-import com.dazzle.asklepios.domain.enumeration.ToothNumber;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
@@ -50,7 +49,7 @@ public class DentalProcedure extends AbstractAuditingEntity<Long> implements Ser
     @Convert(converter = ToothNumberListConverter.class)
     @Column(name = "tooth_number", nullable = false, columnDefinition = "TEXT")
     @Builder.Default
-    private List<ToothNumber> toothNumbers = new ArrayList<>();
+    private List<String> toothNumbers = new ArrayList<>();
 
     @Column(name = "surface", nullable = false)
     private String surface;
@@ -80,6 +79,13 @@ public class DentalProcedure extends AbstractAuditingEntity<Long> implements Ser
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
 
+    @Column(name = "informed_consent_obtained", nullable = false)
+    @Builder.Default
+    private boolean informedConsentObtained = false;
+
+    @Column(name = "treatment_outcome", columnDefinition = "TEXT")
+    private String treatmentOutcome;
+
     @Column(name = "is_cancelled", nullable = false)
     private boolean cancelled = false;
 
@@ -91,5 +97,17 @@ public class DentalProcedure extends AbstractAuditingEntity<Long> implements Ser
 
     @Column(name = "cancellation_reason", columnDefinition = "TEXT")
     private String cancellationReason;
+
+    /**
+     * Response only (not stored): true when a billing line of this procedure
+     * waits for pre-authorization, so the screen can show the alert.
+     * Java {@code transient}, not JPA {@code @Transient}: the Hibernate Jackson module
+     * drops {@code @Transient} fields from the JSON, so the screen would never see it.
+     */
+    private transient boolean preAuthorizationPending;
+
+    /** Response only (not stored): the insurance state of each tooth, from its billing line. */
+    @Builder.Default
+    private transient List<DentalToothApproval> toothApprovals = new ArrayList<>();
 }
 

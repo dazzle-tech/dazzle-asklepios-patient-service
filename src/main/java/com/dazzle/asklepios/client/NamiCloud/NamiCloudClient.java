@@ -113,6 +113,38 @@ public class NamiCloudClient {
                 );
     }
 
+    public NamiTerminalStatusResponse getTerminalBySerialNumber(
+            PointOfSaleConfiguration configuration
+    ) {
+
+        LOG.info(
+                "Fetching Terminal Status. TerminalSerialNo={}, ClientId={}",
+                configuration.getTerminalSerialNo(),
+                configuration.getClientId()
+        );
+
+        String token =
+                namiAuthenticationService.getToken(
+                        configuration.getClientId(),
+                        configuration.getClientSecret()
+                );
+
+        return restClient()
+                .post()
+                .uri(
+                        namiProperties.terminalBySerialNumberEndpoint(),
+                        configuration.getTerminalSerialNo()
+                )
+                .header(
+                        "Authorization",
+                        token
+                )
+                .retrieve()
+                .body(
+                        NamiTerminalStatusResponse.class
+                );
+    }
+
     public NamiGenerateWebhookUrlResponse generateWebhookUrl(
             PointOfSaleConfiguration configuration
     ) {

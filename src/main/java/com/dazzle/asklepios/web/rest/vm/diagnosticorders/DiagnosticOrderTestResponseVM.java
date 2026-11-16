@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.TestType;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 
 import java.io.Serializable;
 import java.time.Instant;
@@ -51,6 +52,9 @@ public record DiagnosticOrderTestResponseVM(
 
         String confirmedBy,
         Instant confirmedAt,
+        Boolean coveragePreApprovalPending,
+        PreAuthorizationStatus preAuthorizationStatus,
+        Boolean preAuthorizationBlocked,
 
         String printNumber,
 
@@ -126,6 +130,9 @@ public record DiagnosticOrderTestResponseVM(
 
                 orderTest.getConfirmedBy(),
                 orderTest.getConfirmedAt(),
+                orderTest.getCoveragePreApprovalPending(),
+                orderTest.getPreAuthorizationStatus(),
+                orderTest.getPreAuthorizationBlocked(),
 
                 orderTest.getPrintNumber(),
 

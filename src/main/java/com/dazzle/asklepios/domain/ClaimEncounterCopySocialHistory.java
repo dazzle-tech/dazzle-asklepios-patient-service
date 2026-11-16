@@ -1,8 +1,22 @@
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.PatientHistoryStatus;
-import jakarta.persistence.*;
-import lombok.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.Temporal;
+import jakarta.persistence.TemporalType;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
 
 import java.io.Serial;
 import java.io.Serializable;
@@ -101,4 +115,11 @@ public class ClaimEncounterCopySocialHistory
 
     @Column(name = "cancellation_reason", columnDefinition = "text")
     private String cancellationReason;
+
+    // Who wrote the original record and when; createdBy/createdDate are the copy's own
+    @Column(name = "original_created_by", length = 50, updatable = false)
+    private String originalCreatedBy;
+
+    @Column(name = "original_created_date", updatable = false)
+    private Instant originalCreatedDate;
 }

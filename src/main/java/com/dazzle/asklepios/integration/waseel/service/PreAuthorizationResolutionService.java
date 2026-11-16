@@ -16,6 +16,8 @@ import com.dazzle.asklepios.integration.waseel.client.WaseelItemMappingClient;
 import com.dazzle.asklepios.integration.waseel.client.dto.WaseelItemMappingSetupDTO;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
+import com.dazzle.asklepios.service.CoverageApprovalRoutingService;
+import com.dazzle.asklepios.service.CoverageContractShareService;
 import com.dazzle.asklepios.service.helper.NphiesPayerHelper;
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +48,10 @@ public class PreAuthorizationResolutionService {
     private final PatientInsuranceRepository patientInsuranceRepository;
 
     private final NphiesPayerHelper nphiesPayerHelper;
+
+    private final CoverageContractShareService coverageContractShareService;
+
+    private final CoverageApprovalRoutingService coverageApprovalRoutingService;
 
     public record Resolution(
             PreAuthorizationStatus status,
@@ -186,6 +192,21 @@ public class PreAuthorizationResolutionService {
             return;
         }
 
+        /*
+         * A line that already has a pre-approval request keeps its hold or decision.
+         * Re-preparing the visit (walk-in confirm) must not reset it to not required,
+         * otherwise the line is charged and reserved before approval.
+         */
+        if (shouldPreserveExistingPreAuthorizationDecision(entity)) {
+            LOG.info(
+                    "[PREAUTH] Keeping existing pre-approval decision. pspId={} status={} requestId={}",
+                    entity.getId(),
+                    entity.getPreAuthorizationStatus(),
+                    entity.getPreAuthorizationRequestId()
+            );
+            return;
+        }
+
         entity.setPreAuthorizationStatus(resolution.status());
         entity.setPreAuthorizationRequired(resolution.required());
         entity.setPaymentStatus(
@@ -213,8 +234,30 @@ public class PreAuthorizationResolutionService {
                 );
     }
 
+    /**
+     * The payer rejected the line. The patient pays it as cash or the line is cancelled.
+     */
+    public static boolean isDeclinedByPayer(PatientServiceAndProduct item) {
+        return item != null && item.getPreAuthorizationStatus() == PreAuthorizationStatus.REJECTED;
+    }
+
+    /**
+     * Partial approval recorded on a local (NPHIES contract) request: the line is billed,
+     * insurance covers the approved amount and the patient the rest.
+     * A Waseel partial approval stays held (required = true) until communication ends.
+     */
+    public static boolean isPartiallyApprovedLocally(PatientServiceAndProduct item) {
+        return item != null
+                && item.getPreAuthorizationStatus() == PreAuthorizationStatus.PARTIAL
+                && !Boolean.TRUE.equals(item.getPreAuthorizationRequired());
+    }
+
+    private static boolean hasFinalPayerDecision(PatientServiceAndProduct item) {
+        return isDeclinedByPayer(item) || isPartiallyApprovedLocally(item);
+    }
+
     public boolean isPendingPreAuthorization(PatientServiceAndProduct item) {
-        if (item == null || item.isUncoveredCashItem()) {
+        if (item == null || item.isUncoveredCashItem() || hasFinalPayerDecision(item)) {
             return false;
         }
 
@@ -241,6 +284,10 @@ public class PreAuthorizationResolutionService {
 
         if (item.getPaymentStatus() == PaymentStatus.SKIPPED_PENDING_PRE_AUTH) {
             return true;
+        }
+
+        if (hasFinalPayerDecision(item)) {
+            return false;
         }
 
         PreAuthorizationStatus status = item.getPreAuthorizationStatus();
@@ -339,8 +386,8 @@ public class PreAuthorizationResolutionService {
     }
 
     /**
-     * Keeps Waseel decisions (approved / rejected / cancelled) after payer response.
-     * Price-list pre-auth flags must not reset submitted items back to pending.
+     * Keeps payer decisions and coverage holds that already opened a request.
+     * Price-list flags must not reset a pending coverage pre-approval back to not required.
      */
     private boolean shouldPreserveExistingPreAuthorizationDecision(
             PatientServiceAndProduct item
@@ -354,7 +401,9 @@ public class PreAuthorizationResolutionService {
         return status == PreAuthorizationStatus.APPROVED
                 || status == PreAuthorizationStatus.REJECTED
                 || status == PreAuthorizationStatus.CANCELLED
-                || status == PreAuthorizationStatus.PARTIAL;
+                || status == PreAuthorizationStatus.PARTIAL
+                || status == PreAuthorizationStatus.PENDING_APPROVAL
+                || item.getPaymentStatus() == PaymentStatus.SKIPPED_PENDING_PRE_AUTH;
     }
 
     private boolean isInsurancePreAuthorizationContext(
@@ -639,6 +688,26 @@ public class PreAuthorizationResolutionService {
             return false;
         }
 
+        /*
+         * NPHIES contracts: only the contract pre-approval decides.
+         * Price-list and payor-plan flags belong to the Waseel flow and are skipped.
+         */
+        if (coverageApprovalRoutingService.encounterUsesLocalApproval(encounterId)) {
+            return requiresPreAuthorizationFromCoverageContract(
+                    encounterId,
+                    billingItemType,
+                    itemId
+            );
+        }
+
+        if (requiresPreAuthorizationFromCoverageContract(
+                encounterId,
+                billingItemType,
+                itemId
+        )) {
+            return true;
+        }
+
         if (requiresPreAuthorizationFromPriceList(
                 encounterId,
                 billingItemType,
@@ -652,6 +721,68 @@ public class PreAuthorizationResolutionService {
                 billingItemType,
                 itemId
         );
+    }
+
+    private boolean requiresPreAuthorizationFromCoverageContract(
+            Long encounterId,
+            BillingItemTypes billingItemType,
+            Long itemId
+    ) {
+        Long patientInsuranceId =
+                encounterInsuranceEligibilityService.resolveEncounterPatientInsuranceId(encounterId);
+        if (patientInsuranceId == null) {
+            return false;
+        }
+        PatientInsurance insurance = patientInsuranceRepository.findById(patientInsuranceId).orElse(null);
+        if (insurance == null) {
+            return false;
+        }
+        PatientServiceAndProduct item = coverageContractItem(encounterId, billingItemType, itemId);
+        try {
+            boolean required = coverageContractShareService.requiresPreApproval(insurance, item);
+            LOG.info(
+                    "[PREAUTH] Coverage contract result. encounterId={} billingItemType={} itemId={} requiresPreAuth={}",
+                    encounterId,
+                    billingItemType,
+                    itemId,
+                    required
+            );
+            return required;
+        } catch (RuntimeException exception) {
+            LOG.warn(
+                    "[PREAUTH] Coverage contract pre-approval check failed. encounterId={} billingItemType={} itemId={}",
+                    encounterId,
+                    billingItemType,
+                    itemId,
+                    exception
+            );
+            return false;
+        }
+    }
+
+    private PatientServiceAndProduct coverageContractItem(
+            Long encounterId,
+            BillingItemTypes billingItemType,
+            Long itemId
+    ) {
+        PatientServiceAndProduct.PatientServiceAndProductBuilder builder = PatientServiceAndProduct.builder()
+                .encounterId(encounterId)
+                .billingItemType(billingItemType);
+        if (billingItemType == BillingItemTypes.PROCEDURE) {
+            return builder.procedureId(itemId).build();
+        }
+        if (billingItemType == BillingItemTypes.SERVICE) {
+            return builder.serviceId(itemId).build();
+        }
+        if (billingItemType == BillingItemTypes.LABORATORY
+                || billingItemType == BillingItemTypes.RADIOLOGY
+                || billingItemType == BillingItemTypes.PATHOLOGY) {
+            return builder.diagnosticTestId(itemId).build();
+        }
+        if (billingItemType == BillingItemTypes.MEDICATION) {
+            return builder.brandMedicationId(itemId).build();
+        }
+        return builder.build();
     }
 
     private boolean requiresPreAuthorizationFromPriceList(

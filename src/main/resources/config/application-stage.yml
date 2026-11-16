@@ -32,6 +32,12 @@ waseel:
     system-type: ${WASEEL_SYSTEM_TYPE:1}
     timeout-seconds: 90
 
+# Changing a prescription after it was submitted (add/edit/cancel a medication, resend to the pharmacy),
+# in the visit and from the EMR on a closed visit. false = nobody; true = users who have the permission.
+prescription:
+  edit-after-submit:
+    enabled: ${PRESCRIPTION_EDIT_AFTER_SUBMIT_ENABLED:true}
+
 # Nahdi pharmacy integration (prescriptions are sent to Nahdi on submit)
 nahdi:
   enabled: ${NAHDI_ENABLED:false}
@@ -45,7 +51,13 @@ nahdi:
     type-cash: ${NAHDI_PRESCRIPTION_TYPE_CASH:1}
     type-insurance: ${NAHDI_PRESCRIPTION_TYPE_INSURANCE:2}
     item-approval-status: ${NAHDI_ITEM_APPROVAL_STATUS:A}
+    item-cancelled-status: ${NAHDI_ITEM_CANCELLED_STATUS:C}
     item-code-priority: ${NAHDI_ITEM_CODE_PRIORITY:SFDA}
+  dispensing:
+    source: ${NAHDI_DISPENSING_SOURCE:NONE}
+    sales-invoices-endpoint: ${NAHDI_SALES_INVOICES_ENDPOINT:/GetSalesInvoices}
+    sale-invoice-type: ${NAHDI_SALE_INVOICE_TYPE:SALE}
+    return-invoice-type: ${NAHDI_RETURN_INVOICE_TYPE:RETURN}
 
 application:
   asklepios-application-url: http://asklepios.nereuscloud.de//#
@@ -59,6 +71,7 @@ application:
       refund-endpoint: /api/payments/performTransaction
       reversal-endpoint: /api/payments/performTransaction
       register-endpoint: /api/terminals/register
+      terminal-by-serial-number-endpoint: ${NAMI_TERMINAL_BY_SERIAL_NUMBER_ENDPOINT:/api/terminals/terminalBySerialNo/{terminalSerialNumber}}
       webhook-generate-url-endpoint: ${NAMI_WEBHOOK_GENERATE_URL_ENDPOINT:/api/webhooks/generate-url}
       webhook-register-endpoint: ${NAMI_WEBHOOK_REGISTER_ENDPOINT:/api/webhooks/register}
       webhook-base-url: ${NAMI_WEBHOOK_BASE_URL:https://api-tst.onehealth.com.sa}

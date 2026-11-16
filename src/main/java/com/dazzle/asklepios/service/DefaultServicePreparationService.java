@@ -16,6 +16,7 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPricingSnapshotStatus;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
@@ -360,6 +361,18 @@ public class DefaultServicePreparationService {
                     .advanceFromPendingPaymentAfterRegistrationAcknowledged(
                             encounterId
                     );
+        } else if (processed) {
+            // Nothing left for the patient to pay: a fully covered insurance visit opens the encounter.
+            // A remaining patient share keeps it in pending payment.
+            encounterTreatmentAdvanceService
+                    .advanceFromPendingPaymentWhenNothingToBill(
+                            encounterId
+                    );
+        } else {
+            encounterTreatmentAdvanceService
+                    .tryAdvanceFromPendingPayment(
+                            encounterId
+                    );
         }
 
         LOG.info(
@@ -374,7 +387,9 @@ public class DefaultServicePreparationService {
         );
 
         String message =
-                skipDefaultServices
+                hasPendingPreAuth
+                        ? "This service needs pre-authorization. It was sent to the pre-authorization page and shows as pending pre-authorization on the ledger account."
+                        : skipDefaultServices
                         ? "Follow-up review within 14 days. Default services were not billed."
                         : nothingToBill
                                 ? "Encounter billing completed. No default services to bill."
@@ -486,14 +501,22 @@ public class DefaultServicePreparationService {
             );
         }
 
-        return new PreparedBilling(
+        BillingOperationResult billingResult =
                 billingEngineService.processWithEventFallback(
                         item.getId(),
                         encounterId,
                         request.facilityId(),
                         billingRequestId
-                ),
-                false
+                );
+        boolean heldByMessage = billingResult != null
+                && billingResult.message() != null
+                && billingResult.message().toLowerCase().contains("pre-authorization");
+
+        return new PreparedBilling(
+                billingResult,
+                heldByMessage
+                        || item.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL
+                        || item.getPaymentStatus() == PaymentStatus.SKIPPED_PENDING_PRE_AUTH
         );
     }
 
@@ -583,6 +606,13 @@ public class DefaultServicePreparationService {
                 insurancePriceListCoverageService.applyUncoveredCash(existing, coverageCheck);
                 existing = patientServiceAndProductRepository.saveAndFlush(existing);
             } else if (insurance != null) {
+                if (existing.getCoverageStatus() == CoverageStatus.NOT_COVERED
+                        && (InsurancePriceListCoverageService.ELIGIBILITY_NOT_IN_FORCE.equals(existing.getNotCoveredReason())
+                        || InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST.equals(existing.getNotCoveredReason())
+                        || InsurancePriceListCoverageService.CONTRACT_EXCLUSION.equals(existing.getNotCoveredReason()))) {
+                    existing.setCoverageStatus(CoverageStatus.COVERED);
+                    existing.setNotCoveredReason(null);
+                }
                 PreAuthorizationResolutionService.Resolution preAuthorizationResolution =
                         preAuthorizationResolutionService.resolve(
                                 encounter.getId(),

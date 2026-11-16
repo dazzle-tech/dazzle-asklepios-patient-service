@@ -4,10 +4,13 @@ import com.dazzle.asklepios.client.setup.dto.FacilityDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.Facility;
+import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.TestType;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
@@ -76,6 +79,7 @@ public class DiagnosticOrderTestService {
 
     private final BillingRuleEvaluationService billingRuleEvaluationService;
     private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
+    private final DiagnosticPreAuthorizationService diagnosticPreAuthorizationService;
     private final EncounterReopenGuard encounterReopenGuard;
 
     /**
@@ -94,6 +98,7 @@ public class DiagnosticOrderTestService {
             ICDTreeHelper icdTreeHelper, FacilityHelper facilityHelper,
             BillingRuleEvaluationService billingRuleEvaluationService,
             @org.springframework.context.annotation.Lazy DiagnosticOrderTestStatusService diagnosticOrderTestStatusService,
+            DiagnosticPreAuthorizationService diagnosticPreAuthorizationService,
             EncounterReopenGuard encounterReopenGuard
     ) {
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
@@ -107,6 +112,7 @@ public class DiagnosticOrderTestService {
         this.facilityHelper = facilityHelper;
         this.billingRuleEvaluationService = billingRuleEvaluationService;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
+        this.diagnosticPreAuthorizationService = diagnosticPreAuthorizationService;
         this.encounterReopenGuard = encounterReopenGuard;
     }
 
@@ -174,7 +180,16 @@ public class DiagnosticOrderTestService {
                 saved.getId(), saved.getOrderId(), saved.getTestId(), saved.getStatus(), saved.getProcessingStatus());
 
         // Create billing + submit pre-auth immediately when the test is added (not on accept).
-        diagnosticOrderTestStatusService.onTestAddedToOrder(saved, dto.acceptUncoveredAsCash());
+        PatientServiceAndProduct billed =
+                diagnosticOrderTestStatusService.onTestAddedToOrder(saved, dto.acceptUncoveredAsCash());
+        // Read the billing line again: billing may have held it for pre-approval.
+        diagnosticPreAuthorizationService.attachStatuses(List.of(saved));
+        saved.setCoveragePreApprovalPending(
+                saved.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL
+                        || (billed != null
+                        && (billed.getPaymentStatus() == PaymentStatus.SKIPPED_PENDING_PRE_AUTH
+                        || billed.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL))
+        );
 
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
         LOG.debug("[DiagnosticOrderTestService] CREATE - recompute status done. orderId={}", saved.getOrderId());
@@ -295,6 +310,7 @@ public class DiagnosticOrderTestService {
 
         Page<DiagnosticOrderTest> page =
                 diagnosticOrderTestRepository.findAll(spec, pageable);
+        diagnosticPreAuthorizationService.attachStatuses(page.getContent());
 
         List<Long> orderTestIds = page.getContent()
                 .stream()

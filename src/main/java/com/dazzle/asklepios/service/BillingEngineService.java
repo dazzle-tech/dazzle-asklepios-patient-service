@@ -5,6 +5,8 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.EncounterType;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.PatientActivityType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
@@ -104,6 +106,8 @@ public class BillingEngineService {
     private final EncounterPreAuthorizationSyncService
             encounterPreAuthorizationSyncService;
 
+    private final com.dazzle.asklepios.client.setup.PriceListSetupClient
+            priceListSetupClient;
     private final PatientActivityService patientActivityService;
 
     /*
@@ -318,6 +322,7 @@ public class BillingEngineService {
         );
 
         submitPreAuthorizationAfterBilling(item.getEncounterId(), result);
+        lockVisitTypeAfterUse(resolvedPrice, result);
 
         return result;
     }
@@ -493,6 +498,23 @@ public class BillingEngineService {
                         patientServiceProductId,
                         eventType,
                         result.chargeLineId()
+                );
+
+                return result;
+            }
+
+            /*
+             * The rule matched but the line is held for pre-approval, so no charge
+             * line exists yet. Trying the remaining events would replace this result
+             * with a trigger mismatch and hide the pre-approval hold.
+             */
+            if (result.processed()
+                    && isHeldForPreAuthorization(patientServiceProductId)) {
+                LOG.info(
+                        "[PREPARE_FALLBACK] Billing deferred for pre-authorization "
+                                + "pspId={} eventType={}",
+                        patientServiceProductId,
+                        eventType
                 );
 
                 return result;
@@ -920,8 +942,31 @@ public class BillingEngineService {
         );
 
         submitPreAuthorizationAfterBilling(item.getEncounterId(), result);
+        lockVisitTypeAfterUse(resolvedPrice, result);
 
         return result;
+    }
+
+    private void lockVisitTypeAfterUse(
+            ResolvedBillingPrice resolvedPrice,
+            BillingOperationResult result
+    ) {
+        if (result == null
+                || !result.processed()
+                || resolvedPrice == null
+                || resolvedPrice.priceListItemId() == null) {
+            return;
+        }
+
+        try {
+            priceListSetupClient.lockVisitType(resolvedPrice.priceListItemId());
+        } catch (RuntimeException exception) {
+            LOG.warn(
+                    "Unable to lock price-list visit type for itemId={}",
+                    resolvedPrice.priceListItemId(),
+                    exception
+            );
+        }
     }
 
     private void submitPreAuthorizationAfterBilling(
@@ -1244,6 +1289,7 @@ public class BillingEngineService {
                         item
                 ),
                 LocalDate.now(),
+                resolveEncounterType(item),
                 patientCitizen != null
                         ? patientCitizen
                         : findIsCitizen(item.getPatientId())
@@ -1257,6 +1303,17 @@ public class BillingEngineService {
 
         return patientRepository.findById(patientId)
                 .map(Patient::getIsCitizen)
+                .orElse(null);
+    }
+
+    private EncounterType resolveEncounterType(PatientServiceAndProduct item) {
+        if (item == null || item.getEncounterId() == null) {
+            return null;
+        }
+
+        return patientEncounterRepository
+                .findById(item.getEncounterId())
+                .map(PatientEncounter::getEncounterType)
                 .orElse(null);
     }
 
@@ -1328,6 +1385,14 @@ public class BillingEngineService {
      * ENTITY LOADERS
      * ============================================================
      */
+
+    private boolean isHeldForPreAuthorization(
+            Long patientServiceProductId
+    ) {
+        return findPatientServiceProduct(
+                patientServiceProductId
+        ).getPaymentStatus() == PaymentStatus.SKIPPED_PENDING_PRE_AUTH;
+    }
 
     private PatientServiceAndProduct findPatientServiceProduct(
             Long id

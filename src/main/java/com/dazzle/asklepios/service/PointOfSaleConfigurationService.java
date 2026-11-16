@@ -4,6 +4,7 @@ import com.dazzle.asklepios.client.NamiCloud.NamiCloudClient;
 import com.dazzle.asklepios.client.NamiCloud.dto.NamiGenerateWebhookUrlResponse;
 import com.dazzle.asklepios.client.NamiCloud.dto.NamiRegisterTerminalResponse;
 import com.dazzle.asklepios.client.NamiCloud.dto.NamiRegisterWebhookResponse;
+import com.dazzle.asklepios.client.NamiCloud.dto.NamiTerminalStatusResponse;
 import com.dazzle.asklepios.domain.PointOfSaleConfiguration;
 import com.dazzle.asklepios.repository.PointOfSaleCheckInRepository;
 import com.dazzle.asklepios.repository.PointOfSaleConfigurationRepository;
@@ -212,6 +213,26 @@ public class PointOfSaleConfigurationService {
                         );
 
         return namiCloudClient.registerTerminal(
+                configuration
+        );
+    }
+
+    public NamiTerminalStatusResponse getTerminalStatus(
+            Long configurationId
+    ) {
+
+        PointOfSaleConfiguration configuration =
+                pointOfSaleConfigurationRepository
+                        .findById(configurationId)
+                        .orElseThrow(() ->
+                                new BadRequestAlertException(
+                                        "POS configuration not found",
+                                        "pointOfSaleConfiguration",
+                                        "notFound"
+                                )
+                        );
+
+        return namiCloudClient.getTerminalBySerialNumber(
                 configuration
         );
     }

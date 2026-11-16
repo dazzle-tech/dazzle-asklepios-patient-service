@@ -16,6 +16,7 @@ import com.dazzle.asklepios.service.PatientEncounterService;
 import com.dazzle.asklepios.service.PatientPrescriptionService;
 import com.dazzle.asklepios.service.dto.patientEncounter.EncounterAmendmentDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.EncounterHistoryOfPresentIllnessDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.EncounterPreAuthorizationLockResponse;
 import com.dazzle.asklepios.service.dto.patientEncounter.EncounterListFilterDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCancelDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCompletionValidationDTO;
@@ -625,6 +626,16 @@ public class PatientEncounterController {
                 );
 
         return new ResponseEntity<>(page.getContent(), headers, HttpStatus.OK);
+    }
+
+    /**
+     * Whether the visit is locked until pre-authorization (used by the nurse station).
+     */
+    @GetMapping("/encounter/{id}/pre-authorization-lock")
+    public ResponseEntity<EncounterPreAuthorizationLockResponse> getPreAuthorizationLock(
+            @PathVariable("id") @NotNull Long encounterId
+    ) {
+        return ResponseEntity.ok(patientEncounterService.getPreAuthorizationLock(encounterId));
     }
 
     @PostMapping("/encounter/{id}/start")
