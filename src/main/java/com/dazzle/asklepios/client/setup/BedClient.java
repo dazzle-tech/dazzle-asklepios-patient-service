@@ -29,6 +29,9 @@ public interface BedClient {
     @PostMapping("/api/setup/bed/{id}/occupy")
     BedDTO markAsOccupied(@PathVariable("id") @NotNull Long bedId);
 
+    @PostMapping("/api/setup/bed/{id}/release-occupied")
+    BedDTO releaseOccupied(@PathVariable("id") @NotNull Long bedId);
+
     @PostMapping("/api/setup/bed/{id}/mark-in-cleaning")
     BedDTO markAsInCleaning(@PathVariable("id") @NotNull Long bedId);
 }
