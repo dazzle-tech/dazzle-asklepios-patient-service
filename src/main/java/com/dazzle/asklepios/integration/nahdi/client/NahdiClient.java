@@ -56,4 +56,24 @@ public class NahdiClient {
                 .retrieve()
                 .body(String.class);
     }
+
+    /**
+     * Calls the GetSalesInvoices endpoint for one prescription (filtered by our prescription reference).
+     *
+     * @return the raw response body.
+     * @throws org.springframework.web.client.RestClientException on transport errors or non-2xx responses.
+     */
+    public String getSalesInvoices(String prescriptionRef) {
+        String endpoint = nahdiProperties.dispensing().salesInvoicesEndpoint();
+        LOG.debug("[NahdiClient] GET {} prescriptionId={}", endpoint, prescriptionRef);
+        return restClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path(endpoint)
+                        .queryParam("provider_ID", "{providerId}")
+                        .queryParam("provider_Token", "{providerToken}")
+                        .queryParam("PrescriptionID", "{prescriptionRef}")
+                        .build(nahdiProperties.providerId(), nahdiProperties.providerToken(), prescriptionRef))
+                .retrieve()
+                .body(String.class);
+    }
 }
