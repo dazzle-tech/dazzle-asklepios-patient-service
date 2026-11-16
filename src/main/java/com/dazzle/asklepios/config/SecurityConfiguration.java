@@ -40,6 +40,7 @@ public class SecurityConfiguration {
                                 .requestMatchers(HttpMethod.POST, "/api/patient/patient-satisfaction-survey/submit").permitAll()
                                 .requestMatchers(HttpMethod.POST, "/api/patient/patient-complaints/submit").permitAll()
                                 .requestMatchers(HttpMethod.POST, "/api/patient/patient-complaints/lookup-by-document").permitAll()
+                                .requestMatchers(HttpMethod.GET, "/api/patient/patient-complaints/form-lookups").permitAll()
                                 .requestMatchers(HttpMethod.POST, "/api/patient/patient-complaints/mobile/submit")
                                     .hasAuthority(AuthoritiesConstants.PATIENT)
                                 .requestMatchers(HttpMethod.GET, "/api/patient/survey/form").permitAll()

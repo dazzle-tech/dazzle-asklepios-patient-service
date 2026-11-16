@@ -2,6 +2,7 @@ package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.ToothAction;
 import com.dazzle.asklepios.domain.enumeration.ToothSurface;
+import com.dazzle.asklepios.repository.projection.VisitNumberView;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -18,4 +19,11 @@ public interface ToothActionRepository extends JpaRepository<ToothAction, Long> 
     List<ToothAction> findByToothIdInAndCancelledFalse(List<Long> toothIds);
 
     Optional<ToothAction> findByToothIdAndDentalActionIdAndSurfaceAndCancelledFalse(Long toothId, Long dentalActionId, ToothSurface surface);
+
+    /**
+     * Action holding the highest Visit Number among the given chart teeth (including cancelled).
+     */
+    Optional<ToothAction> findFirstByToothIdInAndVisitNumberNotNullOrderByVisitNumberDesc(List<Long> toothIds);
+
+    List<VisitNumberView> findDistinctByToothIdInAndVisitNumberNotNull(List<Long> toothIds);
 }

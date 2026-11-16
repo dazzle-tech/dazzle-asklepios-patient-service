@@ -31,6 +31,7 @@ import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.service.EncounterInsuranceEligibilityService;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationItemMatcher;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -1054,8 +1055,9 @@ public class BillingResponsibilityService {
     }
 
     /**
-     * Insurance amount approved on a local partial pre-approval, stored as the payer share
-     * of the request line; {@code null} when the line is not partially approved.
+     * Insurance amount approved on a partial approval (local decision, or a Waseel partial the patient
+     * accepted), stored as the payer share of the request line for this billing line;
+     * {@code null} when the line is not partially approved.
      */
     private BigDecimal partiallyApprovedInsuranceAmount(PatientServiceAndProduct item) {
         if (!PreAuthorizationResolutionService.isPartiallyApprovedLocally(item)
@@ -1063,10 +1065,8 @@ public class BillingResponsibilityService {
             return null;
         }
 
-        return preAuthorizationItemRepository
-                .findByPreAuthorizationIdOrderBySequenceAsc(item.getPreAuthorizationRequestId())
-                .stream()
-                .findFirst()
+        return PreAuthorizationItemMatcher
+                .find(preAuthorizationItemRepository.findByPreAuthorizationIdOrderBySequenceAsc(item.getPreAuthorizationRequestId()), item)
                 .map(PreAuthorizationItem::getPayerShare)
                 .map(this::money)
                 .orElse(null);

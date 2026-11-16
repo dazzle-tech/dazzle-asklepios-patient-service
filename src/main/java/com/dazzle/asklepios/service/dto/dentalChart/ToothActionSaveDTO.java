@@ -14,5 +14,7 @@ public record ToothActionSaveDTO(
         Long cdtCodeId,
         boolean existing,
         String anesthesiaUsed,
-        String dose
+        String dose,
+        Long treatmentPlanId,
+        Long treatmentSessionId
 ) implements Serializable {}

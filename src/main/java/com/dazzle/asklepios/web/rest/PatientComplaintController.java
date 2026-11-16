@@ -1,6 +1,10 @@
 package com.dazzle.asklepios.web.rest;
 
+import com.dazzle.asklepios.domain.enumeration.DocumentType;
+import com.dazzle.asklepios.domain.enumeration.PatientComplaintFeedbackType;
+import com.dazzle.asklepios.domain.enumeration.PatientComplaintPreferredContactMethod;
 import com.dazzle.asklepios.domain.enumeration.PatientComplaintStatus;
+import com.dazzle.asklepios.domain.enumeration.PatientComplaintType;
 import com.dazzle.asklepios.service.PatientComplaintPublicLookupService;
 import com.dazzle.asklepios.service.PatientComplaintService;
 import com.dazzle.asklepios.service.dto.patientComplaint.PatientComplaintActionCompleteDTO;
@@ -17,13 +21,17 @@ import com.dazzle.asklepios.web.rest.Helper.PaginationUtil;
 import com.dazzle.asklepios.web.rest.vm.PatientComplaintAttachmentDownloadVM;
 import com.dazzle.asklepios.web.rest.vm.PatientComplaintDetailVM;
 import com.dazzle.asklepios.web.rest.vm.PatientComplaintListVM;
+import com.dazzle.asklepios.web.rest.vm.PatientComplaintPublicFormLookupsVM;
 import com.dazzle.asklepios.web.rest.vm.PatientComplaintPublicLookupVM;
 import com.dazzle.asklepios.web.rest.vm.PatientComplaintSubmitResponseVM;
 import com.dazzle.asklepios.web.rest.vm.PatientComplaintSummaryVM;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -54,6 +62,29 @@ public class PatientComplaintController {
 
     private final PatientComplaintService patientComplaintService;
     private final PatientComplaintPublicLookupService patientComplaintPublicLookupService;
+
+    /** Narrow public enum options for the anonymous web complaint form. */
+    @GetMapping("/patient-complaints/form-lookups")
+    public ResponseEntity<PatientComplaintPublicFormLookupsVM> formLookups() {
+        EnumSet<DocumentType> excludedDocumentTypes = EnumSet.of(
+            DocumentType.NO_DOCUMENT,
+            DocumentType.DRIVING_LICENSE,
+            DocumentType.SOCIAL_CARD
+        );
+        List<String> documentTypes = Arrays.stream(DocumentType.values())
+            .filter(type -> !excludedDocumentTypes.contains(type))
+            .map(Enum::name)
+            .collect(Collectors.toList());
+
+        return ResponseEntity.ok(
+            new PatientComplaintPublicFormLookupsVM(
+                Arrays.stream(PatientComplaintFeedbackType.values()).map(Enum::name).collect(Collectors.toList()),
+                Arrays.stream(PatientComplaintType.values()).map(Enum::name).collect(Collectors.toList()),
+                Arrays.stream(PatientComplaintPreferredContactMethod.values()).map(Enum::name).collect(Collectors.toList()),
+                documentTypes
+            )
+        );
+    }
 
     /**
      * Web complaint form autofill by document.

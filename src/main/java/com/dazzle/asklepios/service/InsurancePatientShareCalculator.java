@@ -15,6 +15,8 @@ import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.helper.PayorHelper;
 import com.dazzle.asklepios.service.dto.InsuranceBenefitRule;
 import com.dazzle.asklepios.service.dto.InsuranceSplit;
+import com.dazzle.asklepios.service.eligibility.EligibilityContractReader;
+import com.dazzle.asklepios.service.eligibility.EligibilityContractRules;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +27,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -44,6 +47,7 @@ public class InsurancePatientShareCalculator {
     private final ServiceClient serviceClient;
     private final PayorHelper payorHelper;
     private final CoverageContractShareService coverageContractShareService;
+    private final EligibilityContractReader eligibilityContractReader;
 
     public InsuranceSplit calculateSplit(
             PatientInsurance insurance,
@@ -254,6 +258,17 @@ public class InsurancePatientShareCalculator {
                 coverageContractShareService.usesNphiesApprovalCoverage(insurance, item);
 
         if (isWaseelCoverage(insurance) && !nphiesContractRules) {
+            Optional<InsuranceSplit> eligibilityContractSplit =
+                    eligibilityContractSplit(insurance, item, normalizedNet);
+            if (eligibilityContractSplit.isPresent()) {
+                return coverageContractShareService.capWithCoverage(
+                        insurance,
+                        item,
+                        normalizedNet,
+                        eligibilityContractSplit.get()
+                );
+            }
+
             InsuranceSplit waseelSplit = calculateSplitFromRules(
                     insurance,
                     serviceCategory,
@@ -308,6 +323,40 @@ public class InsurancePatientShareCalculator {
                         normalizedNet
                 )
         );
+    }
+
+    /**
+     * Patient share from the patient-level eligibility contract: the copayment of the line scope
+     * (dental, medicines, outpatient, policy) in the visit network, e.g. 20% with at most 75 per service.
+     * Empty when the insurance has no contract in force yet; the older benefit rules then apply.
+     */
+    private Optional<InsuranceSplit> eligibilityContractSplit(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            BigDecimal normalizedNet
+    ) {
+        Optional<InsuranceBenefitRule> copayment = EligibilityContractRules.copaymentFor(
+                eligibilityContractReader.activeRules(insurance),
+                EligibilityContractRules.scopeOf(item),
+                EligibilityContractRules.visitNetwork(insurance.getSiteEligibility())
+        );
+        if (copayment.isEmpty()) {
+            return Optional.empty();
+        }
+
+        LOG.debug(
+                "[INSURANCE] Eligibility contract copayment patientInsuranceId={} benefit=\"{}\" network={} percent={} maximum={}",
+                insurance.getId(),
+                copayment.get().itemName(),
+                copayment.get().networkType(),
+                copayment.get().patientCopaymentPercentage(),
+                copayment.get().patientMaximumCopayment()
+        );
+        return Optional.of(insuranceCalculationService.calculateSplit(
+                normalizedNet,
+                copayment.get().patientCopaymentPercentage(),
+                copayment.get().patientMaximumCopayment()
+        ));
     }
 
     private BigDecimal billedNetOf(InsuranceSplit split, BigDecimal fallbackNet) {
