@@ -32,15 +32,16 @@ public record NahdiSalesInvoicesResponse(
             // "yyyy-MM-dd HH:mm:ss", Saudi time
             @JsonProperty("Invoice_Time") String invoiceTime,
             @JsonProperty("Tran_No") String tranNo,
+            // Our pres_RefID (the prescription number)
             @JsonProperty("Provider_Referance") String providerReference
     ) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Item(
+            // Our line_No: identifies the prescription line, even for a substitute product
             @JsonProperty("Item_LineNo") String lineNo,
             @JsonProperty("Item_Code") String nahdiCode,
             @JsonProperty("Item_SFDA") String sfda,
-            // GTIN, the same code as NPHIES (our pharmaceutical Billing Code)
             @JsonProperty("Item_GTIN") String gtin,
             @JsonProperty("GenericCode") String genericCode,
             @JsonProperty("Item_Description") String description,
