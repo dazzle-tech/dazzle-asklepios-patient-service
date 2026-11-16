@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 
@@ -43,6 +44,8 @@ public class NahdiIntegrationService {
     private static final Logger LOG = LoggerFactory.getLogger(NahdiIntegrationService.class);
 
     private static final String MASKED = "***";
+    // Medications saved by the submit itself land a moment after the submit time; they are not later edits.
+    private static final Duration SUBMIT_SAVE_WINDOW = Duration.ofMinutes(1);
 
     private final NahdiProperties nahdiProperties;
     private final NahdiClient nahdiClient;
@@ -140,7 +143,8 @@ public class NahdiIntegrationService {
                 .orElse(null);
         String lastAttemptStatus = lastAttempt.map(log -> log.getStatus().name()).orElse(null);
 
-        if (!PrescriptionStatus.SUBMITTED.equals(prescription.getStatus())) {
+        // Nothing is waiting to be sent when the prescription is not submitted, or when the integration is off.
+        if (!PrescriptionStatus.SUBMITTED.equals(prescription.getStatus()) || !nahdiProperties.enabled()) {
             return new NahdiSyncStatus(false, lastSentAt, lastAttemptStatus);
         }
 
@@ -150,8 +154,10 @@ public class NahdiIntegrationService {
                 // Attempts exist but none was accepted: the prescription still has to reach Nahdi.
                 return new NahdiSyncStatus(true, null, lastAttemptStatus);
             }
-            // Sent before sends were linked to prescriptions: the submit time is the last send.
-            baseline = prescription.getSubmitedDate();
+            // Sent before sends were linked to prescriptions: the submit time is the last send. Submit saves the
+            // medications just after setting the submit time, so changes in that short window are part of the submit.
+            Instant submittedAt = prescription.getSubmitedDate();
+            baseline = submittedAt == null ? null : submittedAt.plus(SUBMIT_SAVE_WINDOW);
         }
         if (baseline == null) {
             return new NahdiSyncStatus(false, null, lastAttemptStatus);
