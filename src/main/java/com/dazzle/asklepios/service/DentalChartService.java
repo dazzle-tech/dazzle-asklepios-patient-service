@@ -1,20 +1,23 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.DentalChartAgeRuleClient;
+import com.dazzle.asklepios.client.setup.dto.DentalActionSetupDTO;
 import com.dazzle.asklepios.client.setup.dto.DentalChartAgeRuleDTO;
 import com.dazzle.asklepios.domain.DentalChart;
-import com.dazzle.asklepios.domain.DentalChartProgressNote;
 import com.dazzle.asklepios.domain.DentalChartTooth;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.ToothAction;
-import com.dazzle.asklepios.domain.ToothActionLog;
 import com.dazzle.asklepios.domain.enumeration.DentalChartStatus;
+import com.dazzle.asklepios.domain.enumeration.DentalChartToothInventoryStatus;
 import com.dazzle.asklepios.domain.enumeration.DentalChartType;
+import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.ToothNumberingSystem;
+import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.repository.DentalChartProgressNoteRepository;
 import com.dazzle.asklepios.repository.DentalChartRepository;
 import com.dazzle.asklepios.repository.DentalChartToothRepository;
+import com.dazzle.asklepios.repository.DentalPlannedTreatmentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.ToothActionLogRepository;
 import com.dazzle.asklepios.repository.ToothActionRepository;
@@ -28,11 +31,17 @@ import com.dazzle.asklepios.service.dto.dentalChart.ToothActionDTO;
 import com.dazzle.asklepios.service.dto.dentalChart.ToothActionLogDTO;
 import com.dazzle.asklepios.service.dto.dentalChart.ToothCdtDTO;
 import com.dazzle.asklepios.service.dto.dentalChart.ToothServiceDTO;
+import com.dazzle.asklepios.service.helper.DentalActionHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.ConflictAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import feign.FeignException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -46,8 +55,10 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -55,6 +66,11 @@ public class DentalChartService {
 
     private static final Logger LOG = LoggerFactory.getLogger(DentalChartService.class);
     private static final String ENTITY_NAME = "dentalChart";
+    private static final ObjectMapper LABEL_MAPPER = new ObjectMapper();
+
+    /** Encounter statuses that count as a finished visit; cancelled and still-open encounters never qualify. */
+    private static final List<TreatmentStatus> ELIGIBLE_SOURCE_STATUSES =
+            List.of(TreatmentStatus.COMPLETED, TreatmentStatus.DISCHARGED, TreatmentStatus.CLOSED);
 
     private final DentalChartRepository dentalChartRepository;
     private final DentalChartToothRepository dentalChartToothRepository;
@@ -65,6 +81,9 @@ public class DentalChartService {
     private final DentalChartProgressNoteRepository dentalChartProgressNoteRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final DentalChartAgeRuleClient dentalChartAgeRuleClient;
+    private final DentalActionHelper dentalActionHelper;
+    private final DentalPlannedTreatmentRepository dentalPlannedTreatmentRepository;
+    private final DentalToothProtectionService dentalToothProtectionService;
 
     public DentalChartService(
             DentalChartRepository dentalChartRepository,
@@ -75,7 +94,10 @@ public class DentalChartService {
             ToothServiceRepository toothServiceRepository,
             DentalChartProgressNoteRepository dentalChartProgressNoteRepository,
             PatientEncounterRepository patientEncounterRepository,
-            DentalChartAgeRuleClient dentalChartAgeRuleClient
+            DentalChartAgeRuleClient dentalChartAgeRuleClient,
+            DentalActionHelper dentalActionHelper,
+            DentalPlannedTreatmentRepository dentalPlannedTreatmentRepository,
+            DentalToothProtectionService dentalToothProtectionService
     ) {
         this.dentalChartRepository = dentalChartRepository;
         this.dentalChartToothRepository = dentalChartToothRepository;
@@ -86,12 +108,55 @@ public class DentalChartService {
         this.dentalChartProgressNoteRepository = dentalChartProgressNoteRepository;
         this.patientEncounterRepository = patientEncounterRepository;
         this.dentalChartAgeRuleClient = dentalChartAgeRuleClient;
+        this.dentalActionHelper = dentalActionHelper;
+        this.dentalPlannedTreatmentRepository = dentalPlannedTreatmentRepository;
+        this.dentalToothProtectionService = dentalToothProtectionService;
+    }
+
+    /**
+     * Takes the chart row lock for the chart that owns the tooth, so clinical writes on the tooth and
+     * inventory saves on its chart are serialized. Callers must be inside a transaction.
+     */
+    public void lockChartOfTooth(Long toothId) {
+        Long chartId = dentalChartToothRepository.findChartIdById(toothId)
+                .orElseThrow(() -> new NotFoundAlertException("Tooth not found", "dentalChartTooth", "tooth.notfound"));
+        dentalChartRepository.findByIdForUpdate(chartId);
+    }
+
+    /**
+     * The chart of an encounter. One is expected; several (legacy data) are never resolved by picking
+     * one: a 409 lists them and nothing is changed.
+     */
+    public Optional<DentalChart> findChartByEncounterId(Long encounterId) {
+        List<DentalChart> charts = dentalChartRepository.findAllByEncounter_IdOrderByIdAsc(encounterId);
+        if (charts.size() > 1) {
+            String ids = charts.stream().map(c -> String.valueOf(c.getId())).collect(Collectors.joining(", "));
+            throw new ConflictAlertException(
+                    "Several dental charts exist for this encounter (ids " + ids + "). Nothing was changed; have them reviewed.",
+                    ENTITY_NAME,
+                    "chart.duplicate"
+            );
+        }
+        return charts.stream().findFirst();
     }
 
     public DentalChartResponseDTO getOrCreateChartForEncounter(Long encounterId) {
         PatientEncounter encounter = getEncounter(encounterId);
 
-        return dentalChartRepository.findByEncounter_Id(encounterId)
+        Optional<DentalChart> existing = findChartByEncounterId(encounterId);
+        if (existing.isPresent()) {
+            return assembleChart(existing.get());
+        }
+
+        // First open: serialize creators per encounter on the encounter row, then re-check, so two
+        // concurrent first opens produce a single chart (the unique index is only a backstop).
+        patientEncounterRepository.findByIdForUpdate(encounterId)
+                .orElseThrow(() -> new BadRequestAlertException(
+                        "Encounter not found with id " + encounterId,
+                        ENTITY_NAME,
+                        "encounterNotFound"
+                ));
+        return findChartByEncounterId(encounterId)
                 .map(this::assembleChart)
                 .orElseGet(() -> createChartForEncounter(encounter));
     }
@@ -107,7 +172,7 @@ public class DentalChartService {
      */
     @Transactional(readOnly = true)
     public Optional<DentalChartResponseDTO> findExistingChartForEncounter(Long encounterId) {
-        return dentalChartRepository.findByEncounter_Id(encounterId).map(this::assembleChart);
+        return findChartByEncounterId(encounterId).map(this::assembleChart);
     }
 
     public DentalChartResponseDTO updateChart(Long chartId, ChartUpdateDTO dto) {
@@ -118,11 +183,25 @@ public class DentalChartService {
         chart.setStatus(dto.status());
         chart.setTreatmentPlan(dto.treatmentPlan());
 
-        DentalChart saved = dentalChartRepository.saveAndFlush(chart);
+        DentalChart saved;
+        try {
+            saved = dentalChartRepository.saveAndFlush(chart);
+        } catch (OptimisticLockingFailureException e) {
+            throw new ConflictAlertException(
+                "The dental chart was changed by someone else. Refresh the chart and try again.",
+                "dentalChart", "chart.stale");
+        }
         return assembleChart(saved);
     }
 
     private DentalChartResponseDTO createChartForEncounter(PatientEncounter encounter) {
+        // Later visits inherit the inventory and numbering snapshot of the latest eligible chart.
+        // A failing lookup propagates: it must never fall back to Setup and change the inventory.
+        Optional<DentalChart> previousChart = findEligiblePreviousChart(encounter);
+        if (previousChart.isPresent()) {
+            return createChartFromPreviousChart(encounter, previousChart.get());
+        }
+
         Patient patient = encounter.getPatient();
         DentalChartAgeRuleDTO rule = resolveActiveSetupRule(patient, encounter);
 
@@ -137,12 +216,17 @@ public class DentalChartService {
             );
         }
 
+        // Snapshot the resolved custom labels (null = legacy enum numbering).
+        String snapshotLabels = serializeLabels(rule.numberingLabels());
+
         DentalChart newChart = DentalChart.builder()
                 .patient(patient)
                 .encounter(encounter)
                 .chartType(chartType)
                 .numberingSystem(numberingSystem)
                 .ageRuleId(rule.id())
+                .numberingMethodId(snapshotLabels != null ? rule.numberingMethodId() : null)
+                .numberingLabels(snapshotLabels)
                 .status(DentalChartStatus.NEW)
                 .chartDate(Instant.now())
                 .build();
@@ -162,85 +246,120 @@ public class DentalChartService {
         dentalChartToothRepository.saveAll(teeth);
         dentalChartToothRepository.flush();
 
-        List<DentalChart> previousClosedCharts = dentalChartRepository.findMostRecentClosedEncounterChart(
-                patient.getId(),
-                newChart.getId(),
+        return assembleChart(newChart);
+    }
+
+    /** Latest chart of an earlier, finished, non-cancelled encounter of the same patient. */
+    private Optional<DentalChart> findEligiblePreviousChart(PatientEncounter encounter) {
+        LocalDate asOfDate = encounter.getEncounterDate() != null
+                ? encounter.getEncounterDate()
+                : LocalDate.now();
+        return dentalChartRepository.findEligiblePreviousCharts(
+                encounter.getPatient().getId(),
+                encounter.getId(),
+                asOfDate,
+                ELIGIBLE_SOURCE_STATUSES,
                 PageRequest.of(0, 1)
+        ).stream().findFirst();
+    }
+
+    /**
+     * New chart for a later visit: inventory, missing state and the complete numbering snapshot come
+     * from the source chart. Only persistent conditions are carried as existing findings; performed
+     * actions, action logs and progress notes stay on the source chart (Previous Chart).
+     */
+    private DentalChartResponseDTO createChartFromPreviousChart(PatientEncounter encounter, DentalChart source) {
+        List<DentalChartTooth> sourceTeeth = dentalChartToothRepository.findByChartIdAndInventoryStatus(
+                source.getId(),
+                DentalChartToothInventoryStatus.ACTIVE
+        );
+        if (sourceTeeth.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "The previous dental chart has no active teeth to carry forward. Review it before opening this visit.",
+                    ENTITY_NAME,
+                    "inventory.sourceEmpty"
+            );
+        }
+        LOG.info("Creating dental chart from previous chart. sourceChartId={}, encounterId={}", source.getId(), encounter.getId());
+
+        DentalChart newChart = dentalChartRepository.saveAndFlush(
+                DentalChart.builder()
+                        .patient(encounter.getPatient())
+                        .encounter(encounter)
+                        .chartType(source.getChartType())
+                        .numberingSystem(source.getNumberingSystem() != null
+                                ? source.getNumberingSystem()
+                                : ToothNumberingSystem.UNIVERSAL)
+                        .ageRuleId(source.getAgeRuleId())
+                        .numberingMethodId(source.getNumberingMethodId())
+                        .numberingLabels(source.getNumberingLabels())
+                        .status(DentalChartStatus.NEW)
+                        .chartDate(Instant.now())
+                        .build()
         );
 
-        if (!previousClosedCharts.isEmpty()) {
-            cloneClinicalDataOntoTemplate(previousClosedCharts.get(0), newChart);
+        Map<String, DentalChartTooth> newByNumber = new HashMap<>();
+        for (DentalChartTooth sourceTooth : sourceTeeth) {
+            DentalChartTooth created = dentalChartToothRepository.save(
+                    DentalChartTooth.builder()
+                            .chartId(newChart.getId())
+                            .toothNumber(sourceTooth.getToothNumber())
+                            .missing(sourceTooth.isMissing())
+                            .build()
+            );
+            newByNumber.put(created.getToothNumber(), created);
         }
+        dentalChartToothRepository.flush();
 
+        carryForwardPersistentConditions(sourceTeeth, newByNumber);
         return assembleChart(newChart);
     }
 
     /**
-     * Copy clinical state from a prior chart onto matching teeth in the new template.
-     * Does not delete or recreate template teeth, and does not restore teeth excluded by Setup.
+     * Persistent conditions keep their clinical meaning as existing findings on the same tooth.
+     * Actions that are already existing findings, and CONDITION-type actions, qualify; performed
+     * treatments do not (they remain on the source chart and are never re-recorded as new work).
      */
-    private void cloneClinicalDataOntoTemplate(DentalChart sourceChart, DentalChart newChart) {
-        LOG.info(
-                "Cloning dental chart clinical data onto template. sourceChartId={}, newChartId={}",
-                sourceChart.getId(),
-                newChart.getId()
-        );
-
-        List<DentalChartTooth> templateTeeth = dentalChartToothRepository.findByChartId(newChart.getId());
-        Map<String, DentalChartTooth> templateByNumber = new HashMap<>();
-        for (DentalChartTooth tooth : templateTeeth) {
-            templateByNumber.put(tooth.getToothNumber(), tooth);
-        }
-
-        List<DentalChartTooth> sourceTeeth = dentalChartToothRepository.findByChartId(sourceChart.getId());
+    private void carryForwardPersistentConditions(
+            List<DentalChartTooth> sourceTeeth,
+            Map<String, DentalChartTooth> newByNumber
+    ) {
+        Map<Long, Boolean> conditionByAction = new HashMap<>();
         for (DentalChartTooth sourceTooth : sourceTeeth) {
-            DentalChartTooth targetTooth = templateByNumber.get(sourceTooth.getToothNumber());
-            if (targetTooth == null) {
-                // Tooth was excluded by the active Setup inventory — do not restore it.
+            DentalChartTooth target = newByNumber.get(sourceTooth.getToothNumber());
+            if (target == null) {
                 continue;
             }
-
-            targetTooth.setMissing(sourceTooth.isMissing());
-            targetTooth = dentalChartToothRepository.saveAndFlush(targetTooth);
-
-            List<ToothAction> sourceActions = toothActionRepository.findByToothIdAndCancelledFalse(sourceTooth.getId());
-            for (ToothAction sourceAction : sourceActions) {
-                ToothAction clonedAction = ToothAction.builder()
-                        .toothId(targetTooth.getId())
-                        .dentalActionId(sourceAction.getDentalActionId())
-                        .note(sourceAction.getNote())
-                        .surface(sourceAction.getSurface())
-                        .existing(sourceAction.isExisting())
-                        .imageName(sourceAction.getImageName())
-                        .toothNumber(sourceAction.getToothNumber())
-                        .anesthesiaUsed(sourceAction.getAnesthesiaUsed())
-                        .dose(sourceAction.getDose())
-                        .cancelled(false)
-                        .build();
-                toothActionRepository.save(clonedAction);
+            for (ToothAction sourceAction : toothActionRepository.findByToothIdAndCancelledFalse(sourceTooth.getId())) {
+                boolean persistent = sourceAction.isExisting() || conditionByAction.computeIfAbsent(
+                        sourceAction.getDentalActionId(),
+                        id -> {
+                            DentalActionSetupDTO action = dentalActionHelper.getDentalAction(id);
+                            return action != null && "CONDITION".equalsIgnoreCase(String.valueOf(action.type()));
+                        }
+                );
+                if (!persistent) {
+                    continue;
+                }
+                toothActionRepository.save(
+                        ToothAction.builder()
+                                .toothId(target.getId())
+                                .dentalActionId(sourceAction.getDentalActionId())
+                                .note(sourceAction.getNote())
+                                .surface(sourceAction.getSurface())
+                                .existing(true)
+                                .carriedFromActionId(sourceAction.getCarriedFromActionId() != null
+                                        ? sourceAction.getCarriedFromActionId()
+                                        : sourceAction.getId())
+                                .sourcePlannedTreatmentId(sourceAction.getSourcePlannedTreatmentId())
+                                .imageName(sourceAction.getImageName())
+                                .toothNumber(sourceAction.getToothNumber())
+                                .anesthesiaUsed(sourceAction.getAnesthesiaUsed())
+                                .dose(sourceAction.getDose())
+                                .cancelled(false)
+                                .build()
+                );
             }
-
-            List<ToothActionLog> sourceLogs = toothActionLogRepository.findByToothIdOrderByLogTimeDesc(sourceTooth.getId());
-            for (ToothActionLog sourceLog : sourceLogs) {
-                ToothActionLog clonedLog = ToothActionLog.builder()
-                        .toothId(targetTooth.getId())
-                        .dentalActionId(sourceLog.getDentalActionId())
-                        .logType(sourceLog.getLogType())
-                        .logTime(sourceLog.getLogTime())
-                        .logOwner(sourceLog.getLogOwner())
-                        .build();
-                toothActionLogRepository.save(clonedLog);
-            }
-        }
-
-        List<DentalChartProgressNote> sourceNotes =
-                dentalChartProgressNoteRepository.findByChartIdAndDeletedAtIsNullOrderByCreatedDateDesc(sourceChart.getId());
-        for (DentalChartProgressNote sourceNote : sourceNotes) {
-            DentalChartProgressNote clonedNote = DentalChartProgressNote.builder()
-                    .chartId(newChart.getId())
-                    .note(sourceNote.getNote())
-                    .build();
-            dentalChartProgressNoteRepository.save(clonedNote);
         }
     }
 
@@ -319,6 +438,28 @@ public class DentalChartService {
         }
     }
 
+    private static String serializeLabels(Map<String, String> labels) {
+        if (labels == null || labels.isEmpty()) {
+            return null;
+        }
+        try {
+            return LABEL_MAPPER.writeValueAsString(labels);
+        } catch (JsonProcessingException ex) {
+            return null;
+        }
+    }
+
+    private static Map<String, String> parseLabels(String json) {
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        try {
+            return LABEL_MAPPER.readValue(json, new TypeReference<Map<String, String>>() {});
+        } catch (JsonProcessingException ex) {
+            return null;
+        }
+    }
+
     private static ToothNumberingSystem parseNumberingSystem(String value) {
         if (value == null || value.isBlank()) {
             return ToothNumberingSystem.UNIVERSAL;
@@ -351,14 +492,21 @@ public class DentalChartService {
 
     private DentalChartResponseDTO assembleChart(DentalChart chart) {
         List<DentalChartTooth> teeth = dentalChartToothRepository.findByChartId(chart.getId());
-
+        Map<Long, Integer> openTreatments = openTreatmentCounts(teeth);
+        Map<Long, String> protection = dentalToothProtectionService.reasonsByToothId(chart, teeth);
         List<DentalChartToothDTO> toothDTOs = new ArrayList<>();
+        List<DentalChartToothDTO> inactiveToothDTOs = new ArrayList<>();
         List<ToothActionDTO> chartActions = new ArrayList<>();
-
         for (DentalChartTooth tooth : teeth) {
-            List<ToothActionDTO> actions = toothActionRepository.findByToothIdAndCancelledFalse(tooth.getId())
-                    .stream()
-                    .map(ToothActionDTO::fromEntity)
+            List<ToothAction> actionEntities = toothActionRepository.findByToothIdAndCancelledFalse(tooth.getId());
+            Map<Long, ToothAction> origins = new HashMap<>();
+            List<Long> originIds = actionEntities.stream()
+                    .map(ToothAction::getCarriedFromActionId).filter(Objects::nonNull).distinct().toList();
+            if (!originIds.isEmpty()) {
+                toothActionRepository.findAllById(originIds).forEach(o -> origins.put(o.getId(), o));
+            }
+            List<ToothActionDTO> actions = actionEntities.stream()
+                    .map(a -> ToothActionDTO.fromEntity(a, origins.get(a.getCarriedFromActionId())))
                     .toList();
             List<ToothActionLogDTO> history = toothActionLogRepository.findByToothIdOrderByLogTimeDesc(tooth.getId())
                     .stream()
@@ -372,11 +520,18 @@ public class DentalChartService {
                     .stream()
                     .map(ToothCdtDTO::fromEntity)
                     .toList();
-
-            toothDTOs.add(DentalChartToothDTO.fromEntity(tooth, actions, history, services, cdts));
-            chartActions.addAll(actions);
+            DentalChartToothDTO toothDTO = DentalChartToothDTO.fromEntity(
+                    tooth, actions, history, services, cdts,
+                    openTreatments.getOrDefault(tooth.getId(), 0), protection.get(tooth.getId()));
+            // Removed/replaced teeth stay out of the active inventory but keep their history.
+            if (tooth.getInventoryStatus() == null
+                    || tooth.getInventoryStatus() == DentalChartToothInventoryStatus.ACTIVE) {
+                toothDTOs.add(toothDTO);
+                chartActions.addAll(actions);
+            } else {
+                inactiveToothDTOs.add(toothDTO);
+            }
         }
-
         List<DentalChartSummaryDTO> historyCharts = dentalChartRepository
                 .findByPatient_IdAndIdNotOrderByCreatedDateDesc(chart.getPatient().getId(), chart.getId())
                 .stream()
@@ -397,10 +552,27 @@ public class DentalChartService {
                 chart.getTreatmentPlan(),
                 numberingSystem,
                 chart.getAgeRuleId(),
+                chart.getNumberingLabels() != null ? chart.getNumberingMethodId() : null,
+                parseLabels(chart.getNumberingLabels()),
+                chart.getVersion(),
                 toothDTOs,
+                inactiveToothDTOs,
                 chartActions,
                 historyCharts
         );
+    }
+
+    /** Open planned treatments per tooth id, from one grouped query. */
+    private Map<Long, Integer> openTreatmentCounts(List<DentalChartTooth> teeth) {
+        if (teeth.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, Integer> counts = new HashMap<>();
+        for (Object[] row : dentalPlannedTreatmentRepository.countOpenByToothIds(
+                teeth.stream().map(DentalChartTooth::getId).toList(), PlannedTreatmentStatus.COMPLETED)) {
+            counts.put((Long) row[0], ((Number) row[1]).intValue());
+        }
+        return counts;
     }
 
     private PatientEncounter getEncounter(Long encounterId) {

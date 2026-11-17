@@ -14,6 +14,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -72,6 +73,17 @@ public class DentalChart extends AbstractAuditingEntity<Long> implements Seriali
     private ToothNumberingSystem numberingSystem = ToothNumberingSystem.UNIVERSAL;
 
     /**
+     * Snapshot of the custom Tooth Numbering method (id) and its resolved labels (JSON, tooth id -> label)
+     * taken when this chart was created. Both are null for legacy charts, which keep using
+     * {@link #numberingSystem}. Later method edits or deactivation never change them.
+     */
+    @Column(name = "numbering_method_id")
+    private Long numberingMethodId;
+
+    @Column(name = "numbering_labels", columnDefinition = "TEXT")
+    private String numberingLabels;
+
+    /**
      * Snapshot of the DentalChartAgeRule id that seeded this chart (nullable for legacy charts).
      */
     @Column(name = "age_rule_id")
@@ -79,4 +91,12 @@ public class DentalChart extends AbstractAuditingEntity<Long> implements Seriali
 
     @Column(name = "treatment_plan", columnDefinition = "TEXT")
     private String treatmentPlan;
+
+    /**
+     * Optimistic lock. Every chart save, including an inventory edit, increments it, so a stale
+     * inventory save is rejected whichever path changed the chart in between.
+     */
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version;
 }

@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -21,25 +22,36 @@ public interface ToothActionRepository extends JpaRepository<ToothAction, Long> 
 
     Optional<ToothAction> findByToothIdAndDentalActionIdAndSurfaceAndCancelledFalse(Long toothId, Long dentalActionId, ToothSurface surface);
 
+    Optional<ToothAction> findBySourcePlannedTreatmentIdAndToothIdAndCancelledFalse(Long sourcePlannedTreatmentId, Long toothId);
+
+    /** Teeth that carry at least one non-cancelled action (finding, treatment or carried-forward finding). */
+    @Query("""
+            select distinct ta.toothId
+            from ToothAction ta
+            where ta.toothId in :toothIds
+              and ta.cancelled = false
+            """)
+    List<Long> findToothIdsWithActiveActions(@Param("toothIds") Collection<Long> toothIds);
+
     /**
      * Highest Visit Number on tooth actions for the patient (any chart, including cancelled).
      */
-    @Query(value = """
-            select max(ta.visit_number)
-            from tooth_action ta
-            join dental_chart_tooth dct on dct.id = ta.tooth_id
-            join dental_chart dc on dc.id = dct.chart_id
-            where dc.patient_id = :patientId
-            """, nativeQuery = true)
+    @Query("""
+            select max(ta.visitNumber)
+            from ToothAction ta, DentalChartTooth dct, DentalChart dc
+            where dct.id = ta.toothId
+              and dc.id = dct.chartId
+              and dc.patient.id = :patientId
+            """)
     Integer findMaxVisitNumberByPatientId(@Param("patientId") Long patientId);
 
-    @Query(value = """
-            select distinct ta.visit_number
-            from tooth_action ta
-            join dental_chart_tooth dct on dct.id = ta.tooth_id
-            join dental_chart dc on dc.id = dct.chart_id
-            where dc.patient_id = :patientId
-              and ta.visit_number is not null
-            """, nativeQuery = true)
+    @Query("""
+            select distinct ta.visitNumber
+            from ToothAction ta, DentalChartTooth dct, DentalChart dc
+            where dct.id = ta.toothId
+              and dc.id = dct.chartId
+              and dc.patient.id = :patientId
+              and ta.visitNumber is not null
+            """)
     List<Integer> findDistinctVisitNumbersByPatientId(@Param("patientId") Long patientId);
 }

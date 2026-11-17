@@ -78,12 +78,20 @@ public class ToothServiceAttachmentService {
     }
 
     public DentalChartResponseDTO saveManualToothService(ToothServiceSaveDTO dto) {
+        dentalChartService.lockChartOfTooth(dto.toothId());
         DentalChartTooth tooth = getTooth(dto.toothId());
         if (tooth.isMissing()) {
             throw new BadRequestAlertException(
                     "Cannot modify a missing tooth",
                     "toothService",
                     "toothMissing"
+            );
+        }
+        if (!tooth.isActiveInventory()) {
+            throw new BadRequestAlertException(
+                    "This tooth was removed or replaced in the chart inventory. Its history is kept, but new services cannot be recorded on it.",
+                    "toothService",
+                    "toothNotActive"
             );
         }
 

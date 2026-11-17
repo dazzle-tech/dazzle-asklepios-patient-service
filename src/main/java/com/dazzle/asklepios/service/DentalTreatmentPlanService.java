@@ -89,10 +89,7 @@ public class DentalTreatmentPlanService {
 
     public DentalTreatmentPlanSummaryDTO create(DentalTreatmentPlanSaveDTO dto) {
         PatientEncounter encounter = requireEncounterForPatient(dto.originEncounterId(), dto.patientId());
-        String title = dto.title() == null ? "" : dto.title().trim();
-        if (title.isEmpty()) {
-            throw new BadRequestAlertException("Title is required", ENTITY, "titleRequired");
-        }
+        String title = requiredTitle(dto);
 
         DentalTreatmentPlan plan = DentalTreatmentPlan.builder()
                 .planNumber(nextPlanNumber())
@@ -119,10 +116,7 @@ public class DentalTreatmentPlanService {
         }
         PatientEncounter originEncounter =
                 requireEncounterForPatient(dto.originEncounterId(), plan.getPatientId());
-        String title = dto.title() == null ? "" : dto.title().trim();
-        if (title.isEmpty()) {
-            throw new BadRequestAlertException("Title is required", ENTITY, "titleRequired");
-        }
+        String title = requiredTitle(dto);
         plan.setOriginEncounterId(originEncounter.getId());
         plan.setTitle(title);
         plan.setNotes(blankToNull(dto.notes()));
@@ -340,12 +334,8 @@ public class DentalTreatmentPlanService {
         if (active.isEmpty()) {
             return;
         }
-        boolean allCompleted = active.stream().allMatch(t ->
-                t.getStatus() == PlannedTreatmentStatus.COMPLETED
-                        || t.getPatientServiceAndProductId() != null);
-        boolean anyCompleted = active.stream().anyMatch(t ->
-                t.getStatus() == PlannedTreatmentStatus.COMPLETED
-                        || t.getPatientServiceAndProductId() != null);
+        boolean allCompleted = active.stream().allMatch(DentalTreatmentPlanService::isDone);
+        boolean anyCompleted = active.stream().anyMatch(DentalTreatmentPlanService::isDone);
         if (allCompleted && anyCompleted) {
             plan.setCompletedBy(currentUser());
             plan.setCompletedAt(Instant.now());
@@ -454,8 +444,7 @@ public class DentalTreatmentPlanService {
                 continue;
             }
             active++;
-            if (row.getStatus() == PlannedTreatmentStatus.COMPLETED
-                    || row.getPatientServiceAndProductId() != null) {
+            if (isDone(row)) {
                 completed++;
             }
         }
@@ -501,6 +490,20 @@ public class DentalTreatmentPlanService {
                         ENTITY,
                         "notfound"
                 ));
+    }
+
+    private String requiredTitle(DentalTreatmentPlanSaveDTO dto) {
+        String title = dto.title() == null ? "" : dto.title().trim();
+        if (title.isEmpty()) {
+            throw new BadRequestAlertException("Title is required", ENTITY, "titleRequired");
+        }
+        return title;
+    }
+
+    /** Completed through the plan, or already charged through the patient service record. */
+    private static boolean isDone(DentalPlannedTreatment treatment) {
+        return treatment.getStatus() == PlannedTreatmentStatus.COMPLETED
+                || treatment.getPatientServiceAndProductId() != null;
     }
 
     private String requiredReason(DentalTreatmentPlanReasonDTO dto) {

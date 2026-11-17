@@ -7,6 +7,7 @@ import com.dazzle.asklepios.domain.DentalChart;
 import com.dazzle.asklepios.domain.DentalChartTooth;
 import com.dazzle.asklepios.domain.DentalPlannedTreatment;
 import com.dazzle.asklepios.domain.DentalPlannedTreatmentStatusLog;
+import com.dazzle.asklepios.domain.DentalTreatmentSession;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.ToothAction;
 import com.dazzle.asklepios.domain.ToothCdt;
@@ -37,6 +38,7 @@ import com.dazzle.asklepios.service.helper.DentalActionHelper;
 import com.dazzle.asklepios.service.helper.ProcedureHelper;
 import com.dazzle.asklepios.service.helper.ServiceHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.ConflictAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,6 +48,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -68,12 +71,14 @@ public class DentalPlannedTreatmentService {
     private final DentalPlannedTreatmentRepository dentalPlannedTreatmentRepository;
     private final DentalChartToothRepository dentalChartToothRepository;
     private final DentalChartRepository dentalChartRepository;
+    private final DentalChartService dentalChartService;
     private final PatientEncounterRepository patientEncounterRepository;
     private final ToothServiceRepository toothServiceRepository;
     private final ToothActionRepository toothActionRepository;
     private final ToothCdtRepository toothCdtRepository;
     private final DentalActionHelper dentalActionHelper;
     private final DentalVisitNumberService dentalVisitNumberService;
+    private final PlannedTreatmentChartEffectService plannedTreatmentChartEffectService;
     private final ServiceHelper serviceHelper;
     private final DentalTreatmentPlanService dentalTreatmentPlanService;
     private final CDTCodeHelper cdtCodeHelper;
@@ -84,12 +89,14 @@ public class DentalPlannedTreatmentService {
             DentalPlannedTreatmentRepository dentalPlannedTreatmentRepository,
             DentalChartToothRepository dentalChartToothRepository,
             DentalChartRepository dentalChartRepository,
+            DentalChartService dentalChartService,
             PatientEncounterRepository patientEncounterRepository,
             ToothServiceRepository toothServiceRepository,
             ToothActionRepository toothActionRepository,
             ToothCdtRepository toothCdtRepository,
             DentalActionHelper dentalActionHelper,
             DentalVisitNumberService dentalVisitNumberService,
+            PlannedTreatmentChartEffectService plannedTreatmentChartEffectService,
             ServiceHelper serviceHelper,
             DentalTreatmentPlanService dentalTreatmentPlanService,
             CDTCodeHelper cdtCodeHelper,
@@ -99,12 +106,14 @@ public class DentalPlannedTreatmentService {
         this.dentalPlannedTreatmentRepository = dentalPlannedTreatmentRepository;
         this.dentalChartToothRepository = dentalChartToothRepository;
         this.dentalChartRepository = dentalChartRepository;
+        this.dentalChartService = dentalChartService;
         this.patientEncounterRepository = patientEncounterRepository;
         this.toothServiceRepository = toothServiceRepository;
         this.toothActionRepository = toothActionRepository;
         this.toothCdtRepository = toothCdtRepository;
         this.dentalActionHelper = dentalActionHelper;
         this.dentalVisitNumberService = dentalVisitNumberService;
+        this.plannedTreatmentChartEffectService = plannedTreatmentChartEffectService;
         this.serviceHelper = serviceHelper;
         this.dentalTreatmentPlanService = dentalTreatmentPlanService;
         this.cdtCodeHelper = cdtCodeHelper;
@@ -213,9 +222,9 @@ public class DentalPlannedTreatmentService {
 
     public List<PlannedTreatmentDTO> listForPlan(Long planId) {
         return dentalPlannedTreatmentRepository.findByTreatmentPlanId(planId).stream()
-                .sorted(java.util.Comparator
-                        .comparing(DentalPlannedTreatment::getVisitNumber, java.util.Comparator.nullsLast(Integer::compareTo))
-                        .thenComparing(DentalPlannedTreatment::getId, java.util.Comparator.nullsLast(Long::compareTo)))
+                .sorted(Comparator
+                        .comparing(DentalPlannedTreatment::getVisitNumber, Comparator.nullsLast(Integer::compareTo))
+                        .thenComparing(DentalPlannedTreatment::getId, Comparator.nullsLast(Long::compareTo)))
                 .map(this::toDTO)
                 .toList();
     }
@@ -230,7 +239,7 @@ public class DentalPlannedTreatmentService {
                 quantity,
                 dto.discount()
         );
-        com.dazzle.asklepios.domain.DentalTreatmentSession session = requirePlanSession(
+        DentalTreatmentSession session = requirePlanSession(
                 dto.patientId(),
                 dto.treatmentPlanId(),
                 dto.treatmentSessionId()
@@ -298,7 +307,7 @@ public class DentalPlannedTreatmentService {
 
         PatientEncounter encounter = assertEncounterOwnership(dto.patientId(), dto.encounterId());
         DentalChart chart = requireChart(encounter.getId());
-        assertTeethOnChart(chart, toothIds);
+        assertTeethOnChart(chart, toothIds, true);
 
         PlannedTreatmentSaveDTO validationDto = new PlannedTreatmentSaveDTO(
                 dto.patientId(),
@@ -335,7 +344,7 @@ public class DentalPlannedTreatmentService {
                 dto.discount()
         );
 
-        com.dazzle.asklepios.domain.DentalTreatmentSession session = requirePlanSession(
+        DentalTreatmentSession session = requirePlanSession(
                 dto.patientId(),
                 dto.treatmentPlanId(),
                 dto.treatmentSessionId()
@@ -396,7 +405,7 @@ public class DentalPlannedTreatmentService {
             );
         }
 
-        com.dazzle.asklepios.domain.DentalTreatmentSession session = null;
+        DentalTreatmentSession session = null;
         if (dto.treatmentPlanId() != null) {
             session = requirePlanSession(dto.patientId(), dto.treatmentPlanId(), dto.treatmentSessionId());
         }
@@ -594,6 +603,7 @@ public class DentalPlannedTreatmentService {
 
         DentalPlannedTreatment saved = dentalPlannedTreatmentRepository.save(entity);
         recordHistory(saved, PlannedTreatmentHistoryAction.COMPLETED);
+        String chartEffect = plannedTreatmentChartEffectService.apply(saved, coveredTeeth, currentUser);
         dentalTreatmentPlanService.markInProgressIfAccepted(saved.getTreatmentPlanId());
         dentalTreatmentPlanService.evaluateCompletion(saved.getTreatmentPlanId());
         LOG.info(
@@ -602,7 +612,7 @@ public class DentalPlannedTreatmentService {
                 scope,
                 financials.quantity()
         );
-        return toDTO(saved);
+        return toDTO(saved, chartEffect);
     }
 
     /**
@@ -733,7 +743,7 @@ public class DentalPlannedTreatmentService {
                 );
             }
             if (dto.toothId() != null) {
-                assertTeethOnChart(chart, List.of(dto.toothId()));
+                assertTeethOnChart(chart, List.of(dto.toothId()), creating);
             }
             if (dto.coveredToothIds() != null && !dto.coveredToothIds().isEmpty()) {
                 throw new BadRequestAlertException(
@@ -765,7 +775,7 @@ public class DentalPlannedTreatmentService {
             );
         }
 
-        assertTeethOnChart(chart, covered);
+        assertTeethOnChart(chart, covered, false);
 
         // Grouped rows: no single-tooth linkage, no surface.
         return new ResolvedScope(scope, null, covered, null);
@@ -845,17 +855,17 @@ public class DentalPlannedTreatmentService {
         if (unitPrice == null) {
             throw new BadRequestAlertException("Unit price is required", ENTITY, "priceRequired");
         }
-        BigDecimal price = unitPrice.setScale(2, java.math.RoundingMode.HALF_UP);
+        BigDecimal price = unitPrice.setScale(2, RoundingMode.HALF_UP);
         if (price.compareTo(BigDecimal.ZERO) < 0) {
             throw new BadRequestAlertException("Unit price cannot be negative", ENTITY, "invalidPrice");
         }
         long qty = quantity != null && quantity > 0 ? quantity : 1L;
         BigDecimal discountAmount = (discount != null ? discount : BigDecimal.ZERO)
-                .setScale(2, java.math.RoundingMode.HALF_UP);
+                .setScale(2, RoundingMode.HALF_UP);
         if (discountAmount.compareTo(BigDecimal.ZERO) < 0) {
             throw new BadRequestAlertException("Discount amount cannot be negative", ENTITY, "invalidDiscount");
         }
-        BigDecimal lineGross = price.multiply(BigDecimal.valueOf(qty)).setScale(2, java.math.RoundingMode.HALF_UP);
+        BigDecimal lineGross = price.multiply(BigDecimal.valueOf(qty)).setScale(2, RoundingMode.HALF_UP);
         if (discountAmount.compareTo(lineGross) > 0) {
             throw new BadRequestAlertException(
                     "Discount amount cannot exceed unit price × quantity",
@@ -863,7 +873,7 @@ public class DentalPlannedTreatmentService {
                     "discountExceedsLine"
             );
         }
-        BigDecimal net = lineGross.subtract(discountAmount).setScale(2, java.math.RoundingMode.HALF_UP);
+        BigDecimal net = lineGross.subtract(discountAmount).setScale(2, RoundingMode.HALF_UP);
         return new ValidatedFinancials(price, qty, discountAmount, net);
     }
 
@@ -876,6 +886,7 @@ public class DentalPlannedTreatmentService {
 
     private List<Long> resolveChartScopeToothIds(DentalChart chart, TreatmentScope scope) {
         List<DentalChartTooth> teeth = dentalChartToothRepository.findByChartId(chart.getId()).stream()
+                .filter(DentalChartTooth::isActiveInventory)
                 .sorted(Comparator.comparingInt(t -> toothIndexFromEnum(t.getToothNumber())))
                 .toList();
         if (teeth.isEmpty()) {
@@ -948,12 +959,23 @@ public class DentalPlannedTreatmentService {
             return List.of(tooth);
         }
 
-        List<Long> coveredIds = PlannedTreatmentDTO.parseCoveredToothIds(entity.getCoveredToothIds());
-        if (coveredIds.isEmpty()) {
-            coveredIds = resolveChartScopeToothIds(chart, scope);
-        }
-        assertTeethOnChart(chart, coveredIds);
+        List<Long> coveredIds = requireSavedGroupedCoverage(entity);
+        assertTeethOnChart(chart, coveredIds, false);
         return dentalChartToothRepository.findAllById(coveredIds);
+    }
+
+    /** Grouped coverage is only ever the saved teeth; a row without it is never re-derived from the current chart. */
+    private List<Long> requireSavedGroupedCoverage(DentalPlannedTreatment entity) {
+        List<Long> saved = DentalToothProtectionService.savedGroupedToothIds(entity);
+        if (saved.isEmpty()) {
+            throw new ConflictAlertException(
+                    "This multi-tooth, arch or full-mouth treatment has no saved tooth coverage. "
+                            + "Review and re-save its teeth before starting or completing it.",
+                    ENTITY,
+                    "coverageNeedsReview"
+            );
+        }
+        return saved;
     }
 
     private PatientEncounter assertEncounterOwnership(Long patientId, Long encounterId) {
@@ -969,7 +991,7 @@ public class DentalPlannedTreatmentService {
     }
 
     private DentalChart requireChart(Long encounterId) {
-        return dentalChartRepository.findByEncounter_Id(encounterId)
+        return dentalChartService.findChartByEncounterId(encounterId)
                 .orElseThrow(() -> new BadRequestAlertException(
                         "No dental chart found for this encounter",
                         ENTITY,
@@ -977,7 +999,7 @@ public class DentalPlannedTreatmentService {
                 ));
     }
 
-    private void assertTeethOnChart(DentalChart chart, List<Long> toothIds) {
+    private void assertTeethOnChart(DentalChart chart, List<Long> toothIds, boolean requireActive) {
         if (toothIds == null || toothIds.isEmpty()) {
             return;
         }
@@ -995,6 +1017,14 @@ public class DentalPlannedTreatmentService {
                         "Selected tooth does not belong to the current encounter chart",
                         ENTITY,
                         "toothNotOnEncounterChart"
+                );
+            }
+            // New treatment cannot target a tooth removed/replaced in the inventory; existing plans keep their reference.
+            if (requireActive && !tooth.isActiveInventory()) {
+                throw new BadRequestAlertException(
+                        "This tooth was removed or replaced in the chart inventory and cannot receive new treatment.",
+                        ENTITY,
+                        "toothNotActive"
                 );
             }
         }
@@ -1127,7 +1157,7 @@ public class DentalPlannedTreatmentService {
             PatientEncounter encounter,
             Set<Long> linkedToothActionIds
     ) {
-        Optional<DentalChart> chartOpt = dentalChartRepository.findByEncounter_Id(encounter.getId());
+        Optional<DentalChart> chartOpt = dentalChartService.findChartByEncounterId(encounter.getId());
         if (chartOpt.isEmpty()) {
             return List.of();
         }
@@ -1152,6 +1182,10 @@ public class DentalPlannedTreatmentService {
                 continue;
             }
             if (action.getId() != null && linkedToothActionIds.contains(action.getId())) {
+                continue;
+            }
+            // Recorded by a completed plan item: that item is already listed, not an extra chart-only row.
+            if (action.getSourcePlannedTreatmentId() != null) {
                 continue;
             }
 
@@ -1248,6 +1282,7 @@ public class DentalPlannedTreatmentService {
                     null,
                     null,
                     null,
+                    null,
                     null
             ));
         }
@@ -1256,13 +1291,17 @@ public class DentalPlannedTreatmentService {
     }
 
     private PlannedTreatmentDTO toDTO(DentalPlannedTreatment treatment) {
+        return toDTO(treatment, null);
+    }
+
+    private PlannedTreatmentDTO toDTO(DentalPlannedTreatment treatment, String chartEffect) {
         DentalChartToothSummaryDTO toothSummary = null;
         if (treatment.getToothId() != null) {
             toothSummary = dentalChartToothRepository.findById(treatment.getToothId())
                     .map(DentalChartToothSummaryDTO::fromEntity)
                     .orElse(null);
         }
-        return PlannedTreatmentDTO.fromEntity(treatment, toothSummary);
+        return PlannedTreatmentDTO.fromEntity(treatment, toothSummary, chartEffect);
     }
 
     private PatientEncounter getEncounter(Long encounterId) {
@@ -1274,7 +1313,7 @@ public class DentalPlannedTreatmentService {
                 ));
     }
 
-    private com.dazzle.asklepios.domain.DentalTreatmentSession requirePlanSession(
+    private DentalTreatmentSession requirePlanSession(
             Long patientId,
             Long planId,
             Long sessionId
@@ -1298,11 +1337,16 @@ public class DentalPlannedTreatmentService {
                     "planRequired"
             );
         }
+        if (effectiveScope(entity) != TreatmentScope.SPECIFIC_TOOTH) {
+            requireSavedGroupedCoverage(entity);
+        }
         Long encounterId = executionEncounterId != null ? executionEncounterId : entity.getEncounterId();
         dentalTreatmentPlanService.requireExecutable(entity.getTreatmentPlanId(), entity.getPatientId());
         PatientEncounter executionEncounter =
                 dentalTreatmentPlanService.requireEncounterForPatient(encounterId, entity.getPatientId());
         DentalChart chart = requireChart(encounterId);
+        // Serialize with inventory saves on the execution chart (they re-check tooth protection under this lock).
+        dentalChartRepository.findByIdForUpdate(chart.getId());
         resolveExecutionTeeth(entity, chart, effectiveScope(entity));
         if (entity.getExecutionEncounterId() == null) {
             entity.setExecutionEncounterId(encounterId);
@@ -1318,15 +1362,14 @@ public class DentalPlannedTreatmentService {
             DentalChart executionChart,
             TreatmentScope scope
     ) {
-        List<DentalChartTooth> planned = resolvePersistedCoverage(
-                entity,
-                requireChart(entity.getEncounterId()),
-                scope
-        );
-        if (Objects.equals(executionChart.getId(), requireChart(entity.getEncounterId()).getId())) {
+        DentalChart planningChart = requireChart(entity.getEncounterId());
+        List<DentalChartTooth> planned = resolvePersistedCoverage(entity, planningChart, scope);
+        if (Objects.equals(executionChart.getId(), planningChart.getId())) {
             return planned;
         }
-        List<DentalChartTooth> currentTeeth = dentalChartToothRepository.findByChartId(executionChart.getId());
+        List<DentalChartTooth> currentTeeth = dentalChartToothRepository.findByChartId(executionChart.getId()).stream()
+                .filter(DentalChartTooth::isActiveInventory)
+                .toList();
         List<DentalChartTooth> resolved = new ArrayList<>();
         List<String> missing = new ArrayList<>();
         for (DentalChartTooth plannedTooth : planned) {
@@ -1401,7 +1444,7 @@ public class DentalPlannedTreatmentService {
                 || !sameIds(PlannedTreatmentDTO.parseCoveredToothIds(entity.getCoveredToothIds()), resolved.coveredToothIds());
     }
 
-    private boolean moneyEquals(java.math.BigDecimal left, java.math.BigDecimal right) {
+    private boolean moneyEquals(BigDecimal left, BigDecimal right) {
         if (left == null && right == null) {
             return true;
         }

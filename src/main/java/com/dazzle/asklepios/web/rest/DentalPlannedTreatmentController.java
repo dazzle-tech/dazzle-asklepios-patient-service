@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.net.URI;
 import java.util.List;
 
 @RestController
@@ -67,7 +68,7 @@ public class DentalPlannedTreatmentController {
         LOG.debug("REST create planned treatment payload={}", dto);
         PlannedTreatmentDTO saved = dentalPlannedTreatmentService.createPlannedTreatment(dto);
         return ResponseEntity
-                .created(java.net.URI.create("/api/patient/dental/treatment-plan/" + saved.id()))
+                .created(URI.create("/api/patient/dental/treatment-plan/" + saved.id()))
                 .body(saved);
     }
 
@@ -78,7 +79,7 @@ public class DentalPlannedTreatmentController {
         LOG.debug("REST create planned treatment batch toothCount={}", dto.toothIds() != null ? dto.toothIds().size() : 0);
         List<PlannedTreatmentDTO> saved = dentalPlannedTreatmentService.createPlannedTreatmentsBatch(dto);
         return ResponseEntity
-                .created(java.net.URI.create("/api/patient/dental/treatment-plan/batch"))
+                .created(URI.create("/api/patient/dental/treatment-plan/batch"))
                 .body(saved);
     }
 

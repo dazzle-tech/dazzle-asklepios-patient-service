@@ -57,10 +57,18 @@ public record PlannedTreatmentDTO(
         Instant completedAt,
         Long treatmentPlanId,
         Long treatmentSessionId,
-        Long executionEncounterId
+        Long executionEncounterId,
+        /** Outcome of the chart visual effect on completion; null outside the completion response. */
+        String chartEffect
 ) implements Serializable {
 
     public static PlannedTreatmentDTO fromEntity(DentalPlannedTreatment entity, DentalChartToothSummaryDTO tooth) {
+        return fromEntity(entity, tooth, null);
+    }
+
+    public static PlannedTreatmentDTO fromEntity(
+            DentalPlannedTreatment entity, DentalChartToothSummaryDTO tooth, String chartEffect
+    ) {
         PlannedTreatmentClinicalDetails clinical =
                 PlannedTreatmentClinicalDetails.fromJson(entity.getClinicalDetails());
         TreatmentScope scope = entity.getTreatmentScope() != null
@@ -102,7 +110,8 @@ public record PlannedTreatmentDTO(
                 entity.getCompletedAt(),
                 entity.getTreatmentPlanId(),
                 entity.getTreatmentSessionId(),
-                entity.getExecutionEncounterId()
+                entity.getExecutionEncounterId(),
+                chartEffect
         );
     }
 
