@@ -9,6 +9,7 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientProcedure;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.User;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
@@ -26,6 +27,8 @@ import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.repository.UserRepository;
+import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.billing.BillingOperationResult;
 import com.dazzle.asklepios.service.dto.billing.InsurancePriceListCoverageCheckResult;
 import com.dazzle.asklepios.service.dto.billing.PrepareDefaultProcedureItem;
@@ -85,6 +88,7 @@ public class DefaultServicePreparationService {
     private final FollowUpReviewDefaultServicePolicy followUpReviewDefaultServicePolicy;
     private final InsuranceVisitEligibilityGuard insuranceVisitEligibilityGuard;
     private final EncounterDefaultProcedureService encounterDefaultProcedureService;
+    private final UserRepository userRepository;
 
     /**
      * Creates/reuses selected default-service PSP records, orders the selected
@@ -98,6 +102,10 @@ public class DefaultServicePreparationService {
             PrepareDefaultServicesRequest request
     ) {
         validateRequest(encounterId, request);
+
+        if (Boolean.TRUE.equals(request.payZeroNow())) {
+            requireCollectZeroPermission();
+        }
 
         Patient patient = loadPatient(request.patientId());
         PatientEncounter encounter = loadAndValidateEncounter(
@@ -918,6 +926,36 @@ public class DefaultServicePreparationService {
         }
 
         return encounter;
+    }
+
+    /**
+     * "Collect zero now" leaves the whole amount on the remaining balance, so only users
+     * allowed in their Encounters Access may use it.
+     */
+    private void requireCollectZeroPermission() {
+        String login =
+                SecurityUtils.getCurrentUserLogin()
+                        .orElseThrow(() ->
+                                new BadRequestAlertException(
+                                        "Current user is not authenticated.",
+                                        ENTITY_NAME,
+                                        "user.notAuthenticated"
+                                )
+                        );
+
+        boolean allowed =
+                userRepository
+                        .findByLogin(login)
+                        .map(User::isCanCollectZeroPayment)
+                        .orElse(false);
+
+        if (!allowed) {
+            throw new BadRequestAlertException(
+                    "You do not have permission to collect zero now.",
+                    ENTITY_NAME,
+                    "collectZero.permissionDenied"
+            );
+        }
     }
 
     private void validateRequest(
