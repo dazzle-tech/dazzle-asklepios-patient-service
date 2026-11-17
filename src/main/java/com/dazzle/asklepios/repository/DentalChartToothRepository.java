@@ -9,5 +9,7 @@ public interface DentalChartToothRepository extends JpaRepository<DentalChartToo
 
     List<DentalChartTooth> findByChartId(Long chartId);
 
+    List<DentalChartTooth> findByChartIdIn(List<Long> chartIds);
+
     void deleteByChartId(Long chartId);
 }

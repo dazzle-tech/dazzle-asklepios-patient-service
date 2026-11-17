@@ -207,6 +207,10 @@ public class PatientServiceAndProduct extends AbstractAuditingEntity<Long> imple
     @Column(name = "waseel_sbs_code", length = 100)
     private String waseelSbsCode;
 
+    /** FDI tooth of a dental procedure line: a procedure on several teeth is billed one line per tooth. */
+    @Column(name = "tooth_number", length = 10)
+    private String toothNumber;
+
     @NotNull
     @Column(name = "pre_authorization_required", nullable = false)
     @Builder.Default
@@ -231,6 +235,12 @@ public class PatientServiceAndProduct extends AbstractAuditingEntity<Long> imple
      * the Hibernate Jackson module drops {@code @Transient} fields from the JSON.
      */
     private transient String preAuthorizationReason;
+
+    /**
+     * Insurance amount the payer approved on a partial approval; the patient pays the rest if they
+     * accept. Populated only on list responses (Java {@code transient}, see above).
+     */
+    private transient BigDecimal preAuthorizationApprovedAmount;
 
     /**
      * Insurance visit item that is not on the insurance price list and was

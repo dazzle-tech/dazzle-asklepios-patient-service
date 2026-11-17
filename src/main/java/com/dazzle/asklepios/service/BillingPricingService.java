@@ -34,6 +34,8 @@ public class BillingPricingService {
 
     private static final int MONEY_SCALE = 4;
 
+    private static final int RATIO_SCALE = 10;
+
     public void calculate(
             BillingProcessingContext context
     ) {
@@ -260,6 +262,31 @@ public class BillingPricingService {
                 insuranceTax,
                 patient.subtract(patientTaxPortion).add(patientTax),
                 insurance.subtract(insuranceTaxPortion).add(insuranceTax)
+        );
+    }
+
+    /**
+     * Part of a patient share the patient actually pays: 1 when the Patient
+     * Copayment toggle keeps the tax, otherwise the share without its
+     * proportional tax portion ({@code 1 - tax / net}), as {@link #distributeTax}
+     * removes it.
+     */
+    public BigDecimal patientPayableRatio(
+            BigDecimal calculatedTax,
+            BigDecimal netAmount,
+            Boolean taxOnPatientCopayment
+    ) {
+        BigDecimal tax = money(calculatedTax);
+        BigDecimal net = money(netAmount);
+
+        if (isApplied(taxOnPatientCopayment)
+                || tax.signum() <= 0
+                || net.compareTo(tax) <= 0) {
+            return BigDecimal.ONE;
+        }
+
+        return BigDecimal.ONE.subtract(
+                tax.divide(net, RATIO_SCALE, RoundingMode.HALF_UP)
         );
     }
 

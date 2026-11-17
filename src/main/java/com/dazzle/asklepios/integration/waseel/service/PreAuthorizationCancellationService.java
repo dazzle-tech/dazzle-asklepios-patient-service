@@ -2,6 +2,7 @@ package com.dazzle.asklepios.integration.waseel.service;
 
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.PreAuthorizationRequest;
+import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.CancelReason;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.dto.preAuthorization.request.PreAuthorizationCancelRequest;
@@ -16,6 +17,7 @@ import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClientException;
 
 import java.util.List;
+import java.util.Objects;
 
 @Slf4j
 @Service
@@ -28,7 +30,8 @@ public class PreAuthorizationCancellationService {
 
     /**
      * Cancels Waseel pre-authorization linked to a patient service/product item (if any).
-     * Waseel cancel is at approval-request level, so all items sharing that request are marked cancelled locally.
+     * Waseel cancels a whole request, so the request is cancelled only with the last line relying on it;
+     * the other lines of a cancelled request are released by {@link PreAuthorizationLineReleaseService}.
      */
     @Transactional
     public void cancelForItem(PatientServiceAndProduct item, CancelReason cancelReason) {
@@ -37,7 +40,7 @@ public class PreAuthorizationCancellationService {
         }
 
         PreAuthorizationStatus status = item.getPreAuthorizationStatus();
-        if (!requiresPreAuthorizationCancel(status)) {
+        if (!reliesOnApproval(status)) {
             return;
         }
 
@@ -62,7 +65,22 @@ public class PreAuthorizationCancellationService {
                     preAuth.getId(),
                     item.getId()
             );
-            markLinkedItemsCancelled(preAuth, item);
+            markItemCancelled(item, preAuth);
+            return;
+        }
+
+        /*
+         * The payer cancels a whole request, not one of its items. While other lines still rely on
+         * the request, only this line is cancelled: their approval stays, and this line is left out
+         * of the claim. The request is cancelled with its last line.
+         */
+        if (otherLinesRelyOn(patientServiceAndProductRepository.findByPreAuthorizationRequestId(preAuth.getId()), item)) {
+            log.info(
+                    "[PREAUTH_CANCEL] Other lines still rely on the request — cancelling the line only. preAuthId={} pspId={}",
+                    preAuth.getId(),
+                    item.getId()
+            );
+            markItemCancelled(item);
             return;
         }
 
@@ -76,7 +94,7 @@ public class PreAuthorizationCancellationService {
             preAuth.setCancelReason(reason);
             preAuth.setStatus("CANCELLED");
             preAuthorizationRequestRepository.save(preAuth);
-            markLinkedItemsCancelled(preAuth, item);
+            markItemCancelled(item, preAuth);
             return;
         }
 
@@ -115,10 +133,22 @@ public class PreAuthorizationCancellationService {
             );
         }
 
-        markLinkedItemsCancelled(preAuth, item);
+        markItemCancelled(item, preAuth);
     }
 
-    private boolean requiresPreAuthorizationCancel(PreAuthorizationStatus status) {
+    /**
+     * A line relies on its request while it waits for, or holds, an approval and is not cancelled.
+     * A rejected line does not: the payer authorized nothing for it.
+     */
+    static boolean otherLinesRelyOn(List<PatientServiceAndProduct> requestLines, PatientServiceAndProduct item) {
+        return requestLines.stream()
+                .filter(line -> !Objects.equals(line.getId(), item.getId()))
+                .filter(line -> line.getPaymentStatus() != PaymentStatus.CANCELLED)
+                .map(PatientServiceAndProduct::getPreAuthorizationStatus)
+                .anyMatch(PreAuthorizationCancellationService::reliesOnApproval);
+    }
+
+    private static boolean reliesOnApproval(PreAuthorizationStatus status) {
         return status == PreAuthorizationStatus.PENDING_APPROVAL
                 || status == PreAuthorizationStatus.APPROVED
                 || status == PreAuthorizationStatus.PARTIAL;
@@ -132,23 +162,6 @@ public class PreAuthorizationCancellationService {
         return preAuthorizationRequestRepository
                 .findById(item.getPreAuthorizationRequestId())
                 .orElse(null);
-    }
-
-    private void markLinkedItemsCancelled(
-            PreAuthorizationRequest preAuth,
-            PatientServiceAndProduct triggeringItem
-    ) {
-        List<PatientServiceAndProduct> linkedItems =
-                patientServiceAndProductRepository.findByPreAuthorizationRequestId(preAuth.getId());
-
-        for (PatientServiceAndProduct linked : linkedItems) {
-            markItemCancelled(linked, preAuth);
-        }
-
-        if (triggeringItem.getId() != null
-                && linkedItems.stream().noneMatch(linked -> triggeringItem.getId().equals(linked.getId()))) {
-            markItemCancelled(triggeringItem, preAuth);
-        }
     }
 
     private void markItemCancelled(PatientServiceAndProduct item) {

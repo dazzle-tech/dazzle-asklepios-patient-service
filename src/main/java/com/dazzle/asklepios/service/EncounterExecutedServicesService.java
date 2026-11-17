@@ -258,7 +258,8 @@ public class EncounterExecutedServicesService {
                 discountPercentage(line.getDiscountAmount(), lineGross),
                 ExecutedServiceAmounts.zeroIfNull(line.getTaxAmount()),
                 pricing == null ? null : pricing.taxRate(),
-                coverageStatus(item, insuranceShare)
+                coverageStatus(item, insuranceShare),
+                pricing == null ? null : pricing.priceListName()
         );
     }
 
@@ -323,13 +324,15 @@ public class EncounterExecutedServicesService {
                 discountPercentage(item.getDiscountAmount(), itemGross),
                 ExecutedServiceAmounts.zeroIfNull(item.getTaxAmount()),
                 null,
-                coverageStatus(item, insuranceShare)
+                coverageStatus(item, insuranceShare),
+                null
         );
     }
 
     private record ChargeLinePricing(
             BigDecimal cashPrice,
-            BigDecimal taxRate
+            BigDecimal taxRate,
+            String priceListName
     ) {
     }
 
@@ -355,7 +358,8 @@ public class EncounterExecutedServicesService {
                     snapshot.getChargeLine().getId(),
                     new ChargeLinePricing(
                             readSetupUnitPrice(snapshot),
-                            snapshot.getTaxRate()
+                            snapshot.getTaxRate(),
+                            priceListName(snapshot)
                     )
             );
         }
@@ -375,6 +379,16 @@ public class EncounterExecutedServicesService {
         return discount
                 .multiply(BigDecimal.valueOf(100))
                 .divide(gross, 2, RoundingMode.HALF_UP);
+    }
+
+    private String priceListName(BillingPricingSnapshot snapshot) {
+        if (snapshot.getPriceListName() != null && !snapshot.getPriceListName().isBlank()) {
+            return snapshot.getPriceListName().trim();
+        }
+
+        return snapshot.getPriceListCode() == null || snapshot.getPriceListCode().isBlank()
+                ? null
+                : snapshot.getPriceListCode().trim();
     }
 
     private BigDecimal readSetupUnitPrice(BillingPricingSnapshot snapshot) {

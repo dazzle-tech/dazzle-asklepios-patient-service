@@ -145,8 +145,7 @@ public class BillingDebitTransaction extends AbstractAuditingEntity<Long> implem
     @Column(name = "reference_number", length = 150)
     private String referenceNumber;
 
-    @Size(max = 500)
-    @Column(name = "reason", length = 500)
+    @Column(name = "reason", columnDefinition = "text")
     private String reason;
 
     @Size(max = 50)
