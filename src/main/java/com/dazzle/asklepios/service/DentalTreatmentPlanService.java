@@ -19,6 +19,7 @@ import com.dazzle.asklepios.service.dto.dentalChart.DentalTreatmentPlanStatusLog
 import com.dazzle.asklepios.service.dto.dentalChart.DentalTreatmentPlanSummaryDTO;
 import com.dazzle.asklepios.service.dto.dentalChart.DentalTreatmentSessionDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.ConflictAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import jakarta.persistence.EntityManager;
 import org.springframework.context.annotation.Lazy;
@@ -313,6 +314,45 @@ public class DentalTreatmentPlanService {
         DentalTreatmentPlan plan = getPlan(planId);
         if (plan.getStatus() == DentalTreatmentPlanStatus.ACCEPTED) {
             transition(plan, DentalTreatmentPlanStatus.IN_PROGRESS, null);
+        }
+    }
+
+    /**
+     * A completed treatment returned to In Progress reopens its plan through the normal lifecycle:
+     * a Completed plan goes back to In Progress (logged with the reason), an Accepted plan starts.
+     * Plans that are on hold, cancelled or not yet accepted are rejected before anything changes.
+     */
+    public void reopenForReturnedTreatment(Long planId, Long patientId, String reason) {
+        lockPlan(planId);
+        DentalTreatmentPlan plan = getPlan(planId);
+        if (!Objects.equals(plan.getPatientId(), patientId)) {
+            throw new BadRequestAlertException(
+                    "Treatment plan does not belong to this patient",
+                    ENTITY,
+                    "planPatientMismatch"
+            );
+        }
+        switch (plan.getStatus()) {
+            case IN_PROGRESS -> {
+                // Already open.
+            }
+            case ACCEPTED -> transition(plan, DentalTreatmentPlanStatus.IN_PROGRESS, null);
+            case COMPLETED -> {
+                plan.setCompletedAt(null);
+                plan.setCompletedBy(null);
+                transition(plan, DentalTreatmentPlanStatus.IN_PROGRESS, reason);
+            }
+            case ON_HOLD -> throw new BadRequestAlertException(
+                    "This plan is on hold. Resume it before returning a treatment to In Progress.",
+                    ENTITY,
+                    "planOnHold"
+            );
+            default -> throw new ConflictAlertException(
+                    "Treatments of a " + plan.getStatus().name().toLowerCase().replace('_', ' ')
+                            + " plan cannot be returned to In Progress.",
+                    ENTITY,
+                    "planNotReopenable"
+            );
         }
     }
 

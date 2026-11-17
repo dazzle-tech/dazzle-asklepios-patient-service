@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentHistoryAction;
+import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -50,6 +51,17 @@ public class DentalPlannedTreatmentStatusLog implements Serializable {
     @Enumerated(EnumType.STRING)
     @Column(name = "action", nullable = false, length = 30)
     private PlannedTreatmentHistoryAction action;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "previous_status", length = 30)
+    private PlannedTreatmentStatus previousStatus;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "new_status", length = 30)
+    private PlannedTreatmentStatus newStatus;
+
+    @Column(name = "reason", columnDefinition = "TEXT")
+    private String reason;
 
     @NotNull
     @Column(name = "changed_by", nullable = false, length = 50)

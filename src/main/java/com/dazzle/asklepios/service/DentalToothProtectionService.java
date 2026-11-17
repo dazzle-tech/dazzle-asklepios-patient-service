@@ -72,14 +72,10 @@ public class DentalToothProtectionService {
      * from the same saved ids, so the two always agree. A grouped legacy row with no saved ids is not
      * re-derived from the current chart; it yields no teeth here.
      */
-    public static List<Long> savedCoverageToothIds(DentalPlannedTreatment plan) {
+    private static List<Long> savedCoverageToothIds(DentalPlannedTreatment plan) {
         if (plan.getTreatmentScope() == null || plan.getTreatmentScope() == TreatmentScope.SPECIFIC_TOOTH) {
             return plan.getToothId() == null ? List.of() : List.of(plan.getToothId());
         }
-        return savedGroupedToothIds(plan);
-    }
-
-    public static List<Long> savedGroupedToothIds(DentalPlannedTreatment plan) {
         return PlannedTreatmentDTO.parseCoveredToothIds(plan.getCoveredToothIds());
     }
 
@@ -91,7 +87,7 @@ public class DentalToothProtectionService {
         Long encounterId = chart.getEncounter().getId();
         for (DentalPlannedTreatment plan : dentalPlannedTreatmentRepository.findTouchingEncounter(encounterId, WORK_STATUSES)) {
             boolean grouped = plan.getTreatmentScope() != null && plan.getTreatmentScope() != TreatmentScope.SPECIFIC_TOOTH;
-            if (grouped && savedGroupedToothIds(plan).isEmpty()) {
+            if (grouped && PlannedTreatmentDTO.parseCoveredToothIds(plan.getCoveredToothIds()).isEmpty()) {
                 throw new ConflictAlertException(
                         "A started or completed multi-tooth, arch or full-mouth treatment on this chart has no saved "
                                 + "tooth coverage. Review its coverage before removing or replacing teeth.",

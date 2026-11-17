@@ -53,8 +53,8 @@ public class DentalChartInventoryService {
     private static final Logger LOG = LoggerFactory.getLogger(DentalChartInventoryService.class);
     private static final String ENTITY_NAME = "dentalChartInventory";
 
-    static final int MAX_TEETH_PER_ARCH = 16;
-    static final int MAX_TEETH_TOTAL = 32;
+    private static final int MAX_TEETH_PER_ARCH = 16;
+    private static final int MAX_TEETH_TOTAL = 32;
     private static final int MAX_REASON_LENGTH = 500;
 
     /** Encounters in these states are not editable; an open amendment returns the encounter to ONGOING. */
@@ -274,8 +274,6 @@ public class DentalChartInventoryService {
         }
     }
 
-    // ---- change application -------------------------------------------------------------------
-
     /** Adds the tooth, reusing its existing row (one row per chart and tooth) when it was removed before. */
     private void activate(
             DentalChart chart, Long chartId, String tooth, String relatedTooth, DentalChartInventoryAction action,
@@ -340,8 +338,6 @@ public class DentalChartInventoryService {
                 .build();
     }
 
-    // ---- validation ---------------------------------------------------------------------------
-
     private static String requireToothId(String raw) {
         String id = raw == null ? "" : raw.trim();
         if (!PERMANENT_ID.matcher(id).matches() && !PRIMARY_ID.matcher(id).matches()) {
@@ -404,7 +400,7 @@ public class DentalChartInventoryService {
      * Primary ToothA..ToothJ sit at upper permanent Tooth4..Tooth13; ToothK..ToothT at lower
      * Tooth20..Tooth29. Returns the tooth of the other dentition at the same position, or null.
      */
-    static String counterpartOf(String id) {
+    private static String counterpartOf(String id) {
         if (PRIMARY_ID.matcher(id).matches()) {
             int index = id.charAt(5) - 'A';
             return "Tooth" + (index <= 9 ? 4 + index : 20 + (index - 10));

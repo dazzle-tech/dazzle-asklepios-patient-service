@@ -24,6 +24,9 @@ public interface ToothActionRepository extends JpaRepository<ToothAction, Long> 
 
     Optional<ToothAction> findBySourcePlannedTreatmentIdAndToothIdAndCancelledFalse(Long sourcePlannedTreatmentId, Long toothId);
 
+    /** Chart effects recorded by a planned treatment's completion, with their carried-forward copies. */
+    List<ToothAction> findBySourcePlannedTreatmentIdAndCancelledFalse(Long sourcePlannedTreatmentId);
+
     /** Teeth that carry at least one non-cancelled action (finding, treatment or carried-forward finding). */
     @Query("""
             select distinct ta.toothId

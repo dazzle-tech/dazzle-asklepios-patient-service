@@ -17,6 +17,7 @@ import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentType;
 import com.dazzle.asklepios.domain.enumeration.ToothSurface;
 import com.dazzle.asklepios.domain.enumeration.TreatmentScope;
+import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.repository.DentalChartRepository;
 import com.dazzle.asklepios.repository.DentalChartToothRepository;
 import com.dazzle.asklepios.repository.DentalPlannedTreatmentRepository;
@@ -67,6 +68,13 @@ public class DentalPlannedTreatmentService {
 
     private static final Logger LOG = LoggerFactory.getLogger(DentalPlannedTreatmentService.class);
     private static final String ENTITY = "dentalPlannedTreatment";
+    /** Same encounter states the chart treats as closed; an amendment reopens the encounter to Ongoing. */
+    private static final Set<TreatmentStatus> LOCKED_ENCOUNTER_STATUSES = Set.of(
+            TreatmentStatus.COMPLETED,
+            TreatmentStatus.DISCHARGED,
+            TreatmentStatus.CLOSED,
+            TreatmentStatus.CANCELLED
+    );
 
     private final DentalPlannedTreatmentRepository dentalPlannedTreatmentRepository;
     private final DentalChartToothRepository dentalChartToothRepository;
@@ -500,12 +508,12 @@ public class DentalPlannedTreatmentService {
     }
 
     /**
-     * Completes a PENDING/IN_PROGRESS planned treatment clinically.
+     * Completes a PENDING/IN_PROGRESS planned treatment clinically with the selected dental action.
      * Persists the planned price/quantity/discount snapshot on the treatment row.
      * Charge creation / billing-engine integration is deferred.
      */
-    public PlannedTreatmentDTO completePlannedTreatment(Long id, Long executionEncounterId) {
-        DentalPlannedTreatment entity = getPlannedTreatment(id);
+    public PlannedTreatmentDTO completePlannedTreatment(Long id, Long executionEncounterId, Long dentalActionId) {
+        DentalPlannedTreatment entity = getPlannedTreatmentForUpdate(id);
 
         if (entity.isCancelled()) {
             throw new BadRequestAlertException(
@@ -603,7 +611,7 @@ public class DentalPlannedTreatmentService {
 
         DentalPlannedTreatment saved = dentalPlannedTreatmentRepository.save(entity);
         recordHistory(saved, PlannedTreatmentHistoryAction.COMPLETED);
-        String chartEffect = plannedTreatmentChartEffectService.apply(saved, coveredTeeth, currentUser);
+        String chartEffect = plannedTreatmentChartEffectService.apply(saved, coveredTeeth, dentalActionId, currentUser);
         dentalTreatmentPlanService.markInProgressIfAccepted(saved.getTreatmentPlanId());
         dentalTreatmentPlanService.evaluateCompletion(saved.getTreatmentPlanId());
         LOG.info(
@@ -612,6 +620,86 @@ public class DentalPlannedTreatmentService {
                 scope,
                 financials.quantity()
         );
+        return toDTO(saved, chartEffect);
+    }
+
+    /**
+     * Returns one COMPLETED treatment item to In Progress, atomically: validates the reason, the encounter it is
+     * done from (must be open or under amendment) and the plan, reverses exactly the chart effect its completion
+     * created, reopens the plan through its lifecycle and logs previous/new status with the reason.
+     * Sibling items are not touched. A retry on an item already In Progress returns it unchanged.
+     * Billing is not reversed: an item already linked to a charge cannot be returned.
+     */
+    public PlannedTreatmentDTO returnToInProgress(Long id, Long encounterId, String reason) {
+        String trimmedReason = reason == null ? "" : reason.trim();
+        if (trimmedReason.isEmpty()) {
+            throw new BadRequestAlertException("A reason is required", ENTITY, "returnReasonRequired");
+        }
+        DentalPlannedTreatment entity = getPlannedTreatmentForUpdate(id);
+        if (entity.isCancelled()) {
+            throw new BadRequestAlertException(
+                    "Cancelled planned treatments cannot be returned to In Progress",
+                    ENTITY,
+                    "cancelledNotReturnable"
+            );
+        }
+        if (entity.getPatientServiceAndProductId() != null) {
+            throw new ConflictAlertException(
+                    "This treatment is already linked to a charge and cannot be returned to In Progress.",
+                    ENTITY,
+                    "returnCharged"
+            );
+        }
+        if (entity.getStatus() == PlannedTreatmentStatus.IN_PROGRESS) {
+            return toDTO(entity);
+        }
+        if (entity.getStatus() != PlannedTreatmentStatus.COMPLETED) {
+            throw new BadRequestAlertException(
+                    "Only completed treatments can be returned to In Progress",
+                    ENTITY,
+                    "statusNotReturnable"
+            );
+        }
+        if (encounterId == null) {
+            throw new BadRequestAlertException("Encounter is required", ENTITY, "encounterRequired");
+        }
+        PatientEncounter encounter =
+                dentalTreatmentPlanService.requireEncounterForPatient(encounterId, entity.getPatientId());
+        if (encounter.getStatus() == null || LOCKED_ENCOUNTER_STATUSES.contains(encounter.getStatus())) {
+            throw new BadRequestAlertException(
+                    "Treatments cannot be returned to In Progress while this encounter is completed or cancelled. "
+                            + "Start an amendment to change a completed encounter.",
+                    ENTITY,
+                    "encounterNotEditable"
+            );
+        }
+
+        String currentUser = SecurityUtils.getCurrentUserLogin()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated."));
+
+        dentalTreatmentPlanService.reopenForReturnedTreatment(
+                entity.getTreatmentPlanId(),
+                entity.getPatientId(),
+                trimmedReason
+        );
+        String chartEffect = plannedTreatmentChartEffectService.reverse(entity, trimmedReason, currentUser);
+
+        entity.setStatus(PlannedTreatmentStatus.IN_PROGRESS);
+        entity.setCompletedBy(null);
+        entity.setCompletedAt(null);
+        // The next completion records its effect on the chart of the encounter it is completed in.
+        entity.setExecutionEncounterId(null);
+        prepareExecution(entity, encounterId);
+
+        DentalPlannedTreatment saved = dentalPlannedTreatmentRepository.save(entity);
+        recordHistory(
+                saved,
+                PlannedTreatmentHistoryAction.RETURNED_TO_IN_PROGRESS,
+                PlannedTreatmentStatus.COMPLETED,
+                PlannedTreatmentStatus.IN_PROGRESS,
+                trimmedReason
+        );
+        LOG.info("[DENTAL_PLANNED_TREATMENT] Returned to In Progress id={} by={}", saved.getId(), currentUser);
         return toDTO(saved, chartEffect);
     }
 
@@ -677,7 +765,7 @@ public class DentalPlannedTreatmentService {
                     "planningCoverageUnmatched"
             );
         }
-        return new ResolvedScope(scope, null, covered, null);
+        return new ResolvedScope(scope, null, covered, dto.surface());
     }
 
     /**
@@ -777,11 +865,14 @@ public class DentalPlannedTreatmentService {
 
         assertTeethOnChart(chart, covered, false);
 
-        // Grouped rows: no single-tooth linkage, no surface.
-        return new ResolvedScope(scope, null, covered, null);
+        // Grouped rows: no single-tooth linkage.
+        return new ResolvedScope(scope, null, covered, dto.surface());
     }
 
     private void validateSaveCommon(PlannedTreatmentSaveDTO dto) {
+        if (dto.surface() == null) {
+            throw new BadRequestAlertException("Surface is required", ENTITY, "surfaceRequired");
+        }
         if (dto.visitNumber() != null) {
             dentalVisitNumberService.validatePositive(dto.visitNumber());
         }
@@ -966,7 +1057,7 @@ public class DentalPlannedTreatmentService {
 
     /** Grouped coverage is only ever the saved teeth; a row without it is never re-derived from the current chart. */
     private List<Long> requireSavedGroupedCoverage(DentalPlannedTreatment entity) {
-        List<Long> saved = DentalToothProtectionService.savedGroupedToothIds(entity);
+        List<Long> saved = PlannedTreatmentDTO.parseCoveredToothIds(entity.getCoveredToothIds());
         if (saved.isEmpty()) {
             throw new ConflictAlertException(
                     "This multi-tooth, arch or full-mouth treatment has no saved tooth coverage. "
@@ -1469,7 +1560,26 @@ public class DentalPlannedTreatmentService {
                 ));
     }
 
+    private DentalPlannedTreatment getPlannedTreatmentForUpdate(Long id) {
+        return dentalPlannedTreatmentRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Planned treatment not found: " + id,
+                        ENTITY,
+                        "notfound"
+                ));
+    }
+
     private void recordHistory(DentalPlannedTreatment entity, PlannedTreatmentHistoryAction action) {
+        recordHistory(entity, action, null, null, null);
+    }
+
+    private void recordHistory(
+            DentalPlannedTreatment entity,
+            PlannedTreatmentHistoryAction action,
+            PlannedTreatmentStatus previousStatus,
+            PlannedTreatmentStatus newStatus,
+            String reason
+    ) {
         if (entity.getTreatmentPlanId() == null || entity.getId() == null) {
             return;
         }
@@ -1487,6 +1597,9 @@ public class DentalPlannedTreatmentService {
                 .toothId(entity.getToothId())
                 .toothLabel(toothLabel)
                 .action(action)
+                .previousStatus(previousStatus)
+                .newStatus(newStatus)
+                .reason(reason)
                 .changedBy(currentUser)
                 .changedAt(Instant.now())
                 .build());

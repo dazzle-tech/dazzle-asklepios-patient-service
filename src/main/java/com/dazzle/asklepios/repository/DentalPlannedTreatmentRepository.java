@@ -3,12 +3,15 @@ package com.dazzle.asklepios.repository;
 import com.dazzle.asklepios.domain.DentalPlannedTreatment;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentType;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 public interface DentalPlannedTreatmentRepository extends JpaRepository<DentalPlannedTreatment, Long> {
 
@@ -17,6 +20,10 @@ public interface DentalPlannedTreatmentRepository extends JpaRepository<DentalPl
     List<DentalPlannedTreatment> findByEncounterIdAndTypeAndCancelledFalseOrderByCreatedDateAsc(Long encounterId, PlannedTreatmentType type);
 
     List<DentalPlannedTreatment> findByToothActionIdAndCancelledFalse(Long toothActionId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select t from DentalPlannedTreatment t where t.id = :id")
+    Optional<DentalPlannedTreatment> findByIdForUpdate(@Param("id") Long id);
 
     /** Open (not cancelled, not completed) planned treatments per tooth: rows of [toothId, count]. */
     @Query("""

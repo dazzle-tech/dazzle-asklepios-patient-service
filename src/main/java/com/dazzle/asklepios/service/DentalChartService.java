@@ -14,7 +14,6 @@ import com.dazzle.asklepios.domain.enumeration.DentalChartType;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.ToothNumberingSystem;
 import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
-import com.dazzle.asklepios.repository.DentalChartProgressNoteRepository;
 import com.dazzle.asklepios.repository.DentalChartRepository;
 import com.dazzle.asklepios.repository.DentalChartToothRepository;
 import com.dazzle.asklepios.repository.DentalPlannedTreatmentRepository;
@@ -51,7 +50,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -78,7 +76,6 @@ public class DentalChartService {
     private final ToothActionLogRepository toothActionLogRepository;
     private final ToothCdtRepository toothCdtRepository;
     private final ToothServiceRepository toothServiceRepository;
-    private final DentalChartProgressNoteRepository dentalChartProgressNoteRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final DentalChartAgeRuleClient dentalChartAgeRuleClient;
     private final DentalActionHelper dentalActionHelper;
@@ -92,7 +89,6 @@ public class DentalChartService {
             ToothActionLogRepository toothActionLogRepository,
             ToothCdtRepository toothCdtRepository,
             ToothServiceRepository toothServiceRepository,
-            DentalChartProgressNoteRepository dentalChartProgressNoteRepository,
             PatientEncounterRepository patientEncounterRepository,
             DentalChartAgeRuleClient dentalChartAgeRuleClient,
             DentalActionHelper dentalActionHelper,
@@ -105,7 +101,6 @@ public class DentalChartService {
         this.toothActionLogRepository = toothActionLogRepository;
         this.toothCdtRepository = toothCdtRepository;
         this.toothServiceRepository = toothServiceRepository;
-        this.dentalChartProgressNoteRepository = dentalChartProgressNoteRepository;
         this.patientEncounterRepository = patientEncounterRepository;
         this.dentalChartAgeRuleClient = dentalChartAgeRuleClient;
         this.dentalActionHelper = dentalActionHelper;
@@ -188,8 +183,10 @@ public class DentalChartService {
             saved = dentalChartRepository.saveAndFlush(chart);
         } catch (OptimisticLockingFailureException e) {
             throw new ConflictAlertException(
-                "The dental chart was changed by someone else. Refresh the chart and try again.",
-                "dentalChart", "chart.stale");
+                    "The dental chart was changed by someone else. Refresh the chart and try again.",
+                    ENTITY_NAME,
+                    "chart.stale"
+            );
         }
         return assembleChart(saved);
     }
@@ -287,9 +284,7 @@ public class DentalChartService {
                         .patient(encounter.getPatient())
                         .encounter(encounter)
                         .chartType(source.getChartType())
-                        .numberingSystem(source.getNumberingSystem() != null
-                                ? source.getNumberingSystem()
-                                : ToothNumberingSystem.UNIVERSAL)
+                        .numberingSystem(source.getNumberingSystem())
                         .ageRuleId(source.getAgeRuleId())
                         .numberingMethodId(source.getNumberingMethodId())
                         .numberingLabels(source.getNumberingLabels())
@@ -335,7 +330,7 @@ public class DentalChartService {
                         sourceAction.getDentalActionId(),
                         id -> {
                             DentalActionSetupDTO action = dentalActionHelper.getDentalAction(id);
-                            return action != null && "CONDITION".equalsIgnoreCase(String.valueOf(action.type()));
+                            return action != null && "CONDITION".equalsIgnoreCase(action.type());
                         }
                 );
                 if (!persistent) {
@@ -475,17 +470,11 @@ public class DentalChartService {
         if (toothNumbers == null || toothNumbers.isEmpty()) {
             return List.of();
         }
-        Set<String> seen = new HashSet<>();
-        LinkedHashSet<String> ordered = new LinkedHashSet<>();
+        Set<String> ordered = new LinkedHashSet<>();
         for (String raw : toothNumbers) {
-            if (raw == null) {
-                continue;
+            if (raw != null && !raw.isBlank()) {
+                ordered.add(raw.trim());
             }
-            String id = raw.trim();
-            if (id.isEmpty() || !seen.add(id)) {
-                continue;
-            }
-            ordered.add(id);
         }
         return List.copyOf(ordered);
     }
@@ -524,8 +513,7 @@ public class DentalChartService {
                     tooth, actions, history, services, cdts,
                     openTreatments.getOrDefault(tooth.getId(), 0), protection.get(tooth.getId()));
             // Removed/replaced teeth stay out of the active inventory but keep their history.
-            if (tooth.getInventoryStatus() == null
-                    || tooth.getInventoryStatus() == DentalChartToothInventoryStatus.ACTIVE) {
+            if (tooth.isActiveInventory()) {
                 toothDTOs.add(toothDTO);
                 chartActions.addAll(actions);
             } else {
@@ -538,10 +526,6 @@ public class DentalChartService {
                 .map(DentalChartSummaryDTO::fromEntity)
                 .toList();
 
-        ToothNumberingSystem numberingSystem = chart.getNumberingSystem() != null
-                ? chart.getNumberingSystem()
-                : ToothNumberingSystem.UNIVERSAL;
-
         return new DentalChartResponseDTO(
                 chart.getId(),
                 chart.getPatient().getId(),
@@ -550,7 +534,7 @@ public class DentalChartService {
                 chart.getChartType(),
                 chart.getStatus(),
                 chart.getTreatmentPlan(),
-                numberingSystem,
+                chart.getNumberingSystem(),
                 chart.getAgeRuleId(),
                 chart.getNumberingLabels() != null ? chart.getNumberingMethodId() : null,
                 parseLabels(chart.getNumberingLabels()),
