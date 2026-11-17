@@ -17,7 +17,6 @@ public record BillingCancellationRequest(
         BillingCancellationReason cancellationReason,
 
         @NotBlank
-        @Size(max = 500)
         String reason,
 
         @NotBlank

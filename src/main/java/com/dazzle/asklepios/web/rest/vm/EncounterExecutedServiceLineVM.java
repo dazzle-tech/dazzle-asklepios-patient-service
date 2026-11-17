@@ -25,6 +25,7 @@ public record EncounterExecutedServiceLineVM(
         BigDecimal discountPercentage,
         BigDecimal taxAmount,
         BigDecimal taxRate,
-        String coverageStatus
+        String coverageStatus,
+        String priceListName
 ) {
 }

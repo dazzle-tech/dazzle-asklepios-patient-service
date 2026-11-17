@@ -120,6 +120,29 @@ public class InsurancePatientShareCalculator {
         );
     }
 
+    /**
+     * @param patientPayableRatio part of the patient share the patient actually
+     *        pays (below 1 when the Patient Copayment toggle removes its tax);
+     *        the visit max limit is drawn by that payable part only.
+     */
+    public InsuranceSplit calculateSplit(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            BigDecimal netAmount,
+            VisitMaxLimitTracker visitMaxLimitTracker,
+            BigDecimal patientPayableRatio
+    ) {
+        return calculateSplit(
+                insurance,
+                item,
+                resolveServiceCategory(item),
+                item == null ? null : item.getServiceSource(),
+                netAmount,
+                visitMaxLimitTracker,
+                patientPayableRatio
+        );
+    }
+
     public InsuranceSplit calculateSplit(
             PatientInsurance insurance,
             PatientServiceAndProduct item,
@@ -127,6 +150,26 @@ public class InsurancePatientShareCalculator {
             ServiceSource serviceSource,
             BigDecimal netAmount,
             VisitMaxLimitTracker visitMaxLimitTracker
+    ) {
+        return calculateSplit(
+                insurance,
+                item,
+                serviceCategory,
+                serviceSource,
+                netAmount,
+                visitMaxLimitTracker,
+                BigDecimal.ONE
+        );
+    }
+
+    private InsuranceSplit calculateSplit(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            String serviceCategory,
+            ServiceSource serviceSource,
+            BigDecimal netAmount,
+            VisitMaxLimitTracker visitMaxLimitTracker,
+            BigDecimal patientPayableRatio
     ) {
         BigDecimal normalizedNet = money(netAmount);
 
@@ -163,7 +206,8 @@ public class InsurancePatientShareCalculator {
                         : trackerForEncounter(insurance, item);
 
         BigDecimal billedNet = billedNetOf(split, normalizedNet);
-        InsuranceSplit capped = tracker.consume(split, billedNet);
+        InsuranceSplit capped =
+                tracker.consume(split, billedNet, patientPayableRatio);
         if (tracker.hasLimit()
                 && capped.patientShare().compareTo(split.patientShare()) != 0) {
             LOG.info(

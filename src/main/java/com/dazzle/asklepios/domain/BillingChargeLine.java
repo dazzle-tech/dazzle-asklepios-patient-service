@@ -261,8 +261,7 @@ public class BillingChargeLine extends AbstractAuditingEntity<Long>
     @Column(name = "cancelled_by", length = 50)
     private String cancelledBy;
 
-    @Size(max = 500)
-    @Column(name = "cancellation_reason", length = 500)
+    @Column(name = "cancellation_reason", columnDefinition = "text")
     private String cancellationReason;
 
     @Column(name = "notes", columnDefinition = "text")
