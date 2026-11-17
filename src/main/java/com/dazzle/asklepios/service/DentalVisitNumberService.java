@@ -242,6 +242,12 @@ public class DentalVisitNumberService {
                 .toList();
     }
 
+    /**
+     * UNRESOLVED (ASK-3030): still a native advisory lock. A derived PESSIMISTIC_WRITE lookup of the patient row
+     * is not a safe replacement: Hibernate 6.6's PostgreSQL dialect emits plain {@code for update}, which blocks
+     * every concurrent insert holding a foreign key to the patient for the whole transaction. A safe replacement
+     * needs a dedicated lock/counter row (schema change) that is not approved.
+     */
     private void lockPatientVisitSequence(Long patientId) {
         entityManager
                 .createNativeQuery("SELECT pg_advisory_xact_lock(:lockKey)")

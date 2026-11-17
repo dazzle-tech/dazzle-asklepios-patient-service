@@ -669,6 +669,9 @@ public class DentalPlannedTreatmentService {
         String currentUser = SecurityUtils.getCurrentUserLogin()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated."));
 
+        // Lock order is chart -> plan, as in start/complete; prepareExecution below re-takes the same chart lock.
+        dentalChartService.findChartByEncounterId(encounterId)
+                .ifPresent(chart -> dentalChartRepository.findForUpdateById(chart.getId()));
         dentalTreatmentPlanService.reopenForReturnedTreatment(
                 planIdOf(entity),
                 entity.getPatientId(),
@@ -1429,7 +1432,7 @@ public class DentalPlannedTreatmentService {
                 dentalTreatmentPlanService.requireEncounterForPatient(encounterId, entity.getPatientId());
         DentalChart chart = requireChart(encounterId);
         // Serialize with inventory saves on the execution chart (they re-check tooth protection under this lock).
-        dentalChartRepository.findByIdForUpdate(chart.getId());
+        dentalChartRepository.findForUpdateById(chart.getId());
         resolveExecutionTeeth(entity, chart, effectiveScope(entity));
         if (entity.getExecutionEncounter() == null) {
             entity.setExecutionEncounter(executionEncounter);
@@ -1553,7 +1556,7 @@ public class DentalPlannedTreatmentService {
     }
 
     private DentalPlannedTreatment getPlannedTreatmentForUpdate(Long id) {
-        return dentalPlannedTreatmentRepository.findByIdForUpdate(id)
+        return dentalPlannedTreatmentRepository.findForUpdateById(id)
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Planned treatment not found: " + id,
                         ENTITY,

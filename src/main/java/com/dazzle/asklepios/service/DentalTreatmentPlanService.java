@@ -21,7 +21,6 @@ import com.dazzle.asklepios.service.dto.dentalChart.DentalTreatmentSessionDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.ConflictAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
-import jakarta.persistence.EntityManager;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -39,7 +38,6 @@ import java.util.UUID;
 public class DentalTreatmentPlanService {
 
     private static final String ENTITY = "dentalTreatmentPlan";
-    private static final long PLAN_LOCK_SALT = 0x4454504CL;
 
     private static final EnumSet<DentalTreatmentPlanStatus> EDITABLE =
             EnumSet.of(DentalTreatmentPlanStatus.DRAFT, DentalTreatmentPlanStatus.PROPOSED);
@@ -58,7 +56,6 @@ public class DentalTreatmentPlanService {
     private final DentalTreatmentPlanStatusLogRepository statusLogRepository;
     private final DentalPlannedTreatmentRepository treatmentRepository;
     private final PatientEncounterRepository patientEncounterRepository;
-    private final EntityManager entityManager;
     private final DentalPlannedTreatmentService dentalPlannedTreatmentService;
 
     public DentalTreatmentPlanService(
@@ -67,7 +64,6 @@ public class DentalTreatmentPlanService {
             DentalTreatmentPlanStatusLogRepository statusLogRepository,
             DentalPlannedTreatmentRepository treatmentRepository,
             PatientEncounterRepository patientEncounterRepository,
-            EntityManager entityManager,
             @Lazy DentalPlannedTreatmentService dentalPlannedTreatmentService
     ) {
         this.planRepository = planRepository;
@@ -75,7 +71,6 @@ public class DentalTreatmentPlanService {
         this.statusLogRepository = statusLogRepository;
         this.treatmentRepository = treatmentRepository;
         this.patientEncounterRepository = patientEncounterRepository;
-        this.entityManager = entityManager;
         this.dentalPlannedTreatmentService = dentalPlannedTreatmentService;
     }
 
@@ -147,9 +142,8 @@ public class DentalTreatmentPlanService {
      * Numbers start at 1 and are independent per plan. Serialized per plan.
      */
     public DentalTreatmentSession resolveSession(Long planId, Long sessionId, boolean createNew) {
-        DentalTreatmentPlan plan = getPlan(planId);
+        DentalTreatmentPlan plan = getPlanForUpdate(planId);
         assertAcceptsTreatments(plan);
-        lockPlan(planId);
         if (sessionId != null) {
             DentalTreatmentSession session = sessionRepository.findById(sessionId)
                     .orElseThrow(() -> new NotFoundAlertException(
@@ -328,8 +322,7 @@ public class DentalTreatmentPlanService {
      * Plans that are on hold, cancelled or not yet accepted are rejected before anything changes.
      */
     public void reopenForReturnedTreatment(Long planId, Long patientId, String reason) {
-        lockPlan(planId);
-        DentalTreatmentPlan plan = getPlan(planId);
+        DentalTreatmentPlan plan = getPlanForUpdate(planId);
         if (!Objects.equals(plan.getPatientId(), patientId)) {
             throw new BadRequestAlertException(
                     "Treatment plan does not belong to this patient",
@@ -524,10 +517,14 @@ public class DentalTreatmentPlanService {
         return "DTP-" + String.format("%05d", planId);
     }
 
-    private void lockPlan(Long planId) {
-        entityManager.createNativeQuery("SELECT pg_advisory_xact_lock(:lockKey)")
-                .setParameter("lockKey", PLAN_LOCK_SALT ^ planId)
-                .getSingleResult();
+    /** Loads the plan under a row lock held to the end of the transaction (serializes per plan). */
+    private DentalTreatmentPlan getPlanForUpdate(Long id) {
+        return planRepository.findForUpdateById(id)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Treatment plan not found: " + id,
+                        ENTITY,
+                        "notfound"
+                ));
     }
 
     private DentalTreatmentPlan getPlan(Long id) {

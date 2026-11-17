@@ -18,6 +18,7 @@ import com.dazzle.asklepios.repository.DentalChartRepository;
 import com.dazzle.asklepios.repository.DentalChartSpecification;
 import com.dazzle.asklepios.repository.DentalChartToothRepository;
 import com.dazzle.asklepios.repository.DentalPlannedTreatmentRepository;
+import com.dazzle.asklepios.repository.projection.OpenTreatmentCount;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.ToothActionLogRepository;
 import com.dazzle.asklepios.repository.ToothActionRepository;
@@ -118,7 +119,7 @@ public class DentalChartService {
         Long chartId = dentalChartToothRepository.findById(toothId)
                 .map(DentalChartTooth::getChartId)
                 .orElseThrow(() -> new NotFoundAlertException("Tooth not found", "dentalChartTooth", "tooth.notfound"));
-        dentalChartRepository.findByIdForUpdate(chartId);
+        dentalChartRepository.findForUpdateById(chartId);
     }
 
     /**
@@ -561,9 +562,9 @@ public class DentalChartService {
             return Map.of();
         }
         Map<Long, Integer> counts = new HashMap<>();
-        for (Object[] row : dentalPlannedTreatmentRepository.countOpenByToothIds(
+        for (OpenTreatmentCount row : dentalPlannedTreatmentRepository.countOpenByToothIds(
                 teeth.stream().map(DentalChartTooth::getId).toList(), PlannedTreatmentStatus.COMPLETED)) {
-            counts.put((Long) row[0], ((Number) row[1]).intValue());
+            counts.put(row.toothId(), row.openCount().intValue());
         }
         return counts;
     }

@@ -13,6 +13,7 @@ import com.dazzle.asklepios.repository.DentalChartInventoryAuditRepository;
 import com.dazzle.asklepios.repository.DentalChartRepository;
 import com.dazzle.asklepios.repository.DentalChartToothRepository;
 import com.dazzle.asklepios.repository.DentalPlannedTreatmentRepository;
+import com.dazzle.asklepios.repository.projection.OpenTreatmentCount;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.dentalChart.ChartInventoryAuditDTO;
 import com.dazzle.asklepios.service.dto.dentalChart.ChartInventoryChangeDTO;
@@ -97,7 +98,7 @@ public class DentalChartInventoryService {
     public ChartInventoryResultDTO updateInventory(Long chartId, ChartInventoryUpdateDTO dto) {
         requireStaff();
         // Chart row lock: clinical writes on this chart wait, so the protection re-check below is race-free.
-        DentalChart chart = dentalChartRepository.findByIdForUpdate(chartId)
+        DentalChart chart = dentalChartRepository.findForUpdateById(chartId)
                 .orElseThrow(() -> new NotFoundAlertException(
                         "Dental chart not found: " + chartId, ENTITY_NAME, "notfound"));
 
@@ -426,8 +427,8 @@ public class DentalChartInventoryService {
             numberById.put(rows.get(number).getId(), number);
         }
         List<ChartInventoryWarningDTO> warnings = new ArrayList<>();
-        for (Object[] row : dentalPlannedTreatmentRepository.countOpenByToothIds(numberById.keySet(), PlannedTreatmentStatus.COMPLETED)) {
-            warnings.add(new ChartInventoryWarningDTO(numberById.get((Long) row[0]), ((Number) row[1]).intValue()));
+        for (OpenTreatmentCount row : dentalPlannedTreatmentRepository.countOpenByToothIds(numberById.keySet(), PlannedTreatmentStatus.COMPLETED)) {
+            warnings.add(new ChartInventoryWarningDTO(numberById.get(row.toothId()), row.openCount().intValue()));
         }
         return warnings;
     }

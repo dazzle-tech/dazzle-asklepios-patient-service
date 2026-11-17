@@ -120,7 +120,7 @@ public class DentalPlannedTreatmentController {
 
     /** Returns one completed treatment item to In Progress and reverses its completion's chart effect. */
     @PreAuthorize("isAuthenticated() and !hasAuthority('" + AuthoritiesConstants.PATIENT + "')")
-    @PostMapping("/{id}/return-to-in-progress")
+    @PostMapping("/dental/treatment-plan/{id}/return-to-in-progress")
     public ResponseEntity<PlannedTreatmentDTO> returnToInProgress(
             @PathVariable Long id,
             @Valid @RequestBody PlannedTreatmentReturnDTO dto
