@@ -17,6 +17,7 @@ public interface PriceListSetupItemClient {
     PriceListItemWaseelCodesDTO getInsuranceWaseelCodes(
             @RequestParam("itemType") String itemType,
             @RequestParam("sourceId") Long sourceId,
-            @RequestParam(value = "facilityId", required = false) Long facilityId
+            @RequestParam(value = "facilityId", required = false) Long facilityId,
+            @RequestParam(value = "payerId", required = false) Long payerId
     );
 }

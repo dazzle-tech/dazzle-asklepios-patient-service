@@ -26,6 +26,8 @@ import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,6 +44,8 @@ import java.util.Optional;
 @Service
 @RequiredArgsConstructor
 public class WaseelEligibilityCheckService {
+
+    private static final Logger LOG = LoggerFactory.getLogger(WaseelEligibilityCheckService.class);
 
     private static final String ENTITY_NAME = "waseelEligibility";
     /** Waseel placeholder for "no TPA". */
@@ -121,6 +125,13 @@ public class WaseelEligibilityCheckService {
             Optional<WaseelEligibilityRejectionInterpreter.Rejection> rejection =
                     WaseelEligibilityRejectionInterpreter.fromResponse(response, objectMapper);
             if (rejection.isPresent()) {
+                LOG.warn(
+                        "[WASEEL_ELIGIBILITY] Rejected patientId={} patientInsuranceId={} destinationId={} response={}",
+                        patient.getId(),
+                        insurance.getId(),
+                        waseelRequest.destinationId(),
+                        log.getResponseJson()
+                );
                 throw new BadRequestAlertException(
                         rejection.get().message(),
                         ENTITY_NAME,

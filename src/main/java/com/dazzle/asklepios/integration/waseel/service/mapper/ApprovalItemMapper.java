@@ -12,7 +12,9 @@ import com.dazzle.asklepios.integration.waseel.client.dto.WaseelItemMappingSetup
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalItem;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalSupportingInfo;
 import com.dazzle.asklepios.repository.PatientDiagnosisRepository;
+import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientPrescriptionMedicationRepository;
+import com.dazzle.asklepios.service.helper.NphiesPayerHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +44,8 @@ public class ApprovalItemMapper {
     private final PatientPrescriptionMedicationRepository patientPrescriptionMedicationRepository;
     private final PatientDiagnosisRepository patientDiagnosisRepository;
     private final MedicationDaysSupplyResolver medicationDaysSupplyResolver;
+    private final PatientInsuranceRepository patientInsuranceRepository;
+    private final NphiesPayerHelper nphiesPayerHelper;
     private final DentalSiteResolver dentalSiteResolver;
 
     public List<WaseelApprovalItem> toWaseelItems(
@@ -103,6 +107,8 @@ public class ApprovalItemMapper {
 
         Map<String, PriceListItemWaseelCodesDTO> priceListCodesCache = new HashMap<>();
 
+        Long priceListPayerId = resolvePriceListPayerId(encounter);
+
         return items.stream()
                 .filter(item -> includeBilled || Boolean.FALSE.equals(item.getIsBilled()))
                 .map(item -> toWaseelItem(
@@ -114,6 +120,7 @@ public class ApprovalItemMapper {
                         supportingInfo,
                         supportingInfoSequence,
                         encounter,
+                        priceListPayerId,
                         priceListCodesCache,
                         oralClaim
                 ))
@@ -226,6 +233,7 @@ public class ApprovalItemMapper {
             List<WaseelApprovalSupportingInfo> supportingInfo,
             AtomicInteger supportingInfoSequence,
             PatientEncounter encounter,
+            Long priceListPayerId,
             Map<String, PriceListItemWaseelCodesDTO> priceListCodesCache,
             boolean oralClaim
     ) {
@@ -247,6 +255,7 @@ public class ApprovalItemMapper {
                 billingType,
                 sourceId,
                 encounter,
+                priceListPayerId,
                 priceListCodesCache
         );
 
@@ -409,6 +418,7 @@ public class ApprovalItemMapper {
             BillingItemTypes billingType,
             Long sourceId,
             PatientEncounter encounter,
+            Long payerId,
             Map<String, PriceListItemWaseelCodesDTO> cache
     ) {
         if (billingType == null || sourceId == null) {
@@ -416,7 +426,7 @@ public class ApprovalItemMapper {
         }
 
         Long facilityId = encounter == null ? null : encounter.getFacilityId();
-        String cacheKey = billingType.name() + ":" + sourceId + ":" + facilityId;
+        String cacheKey = billingType.name() + ":" + sourceId + ":" + facilityId + ":" + payerId;
 
         if (cache.containsKey(cacheKey)) {
             return cache.get(cacheKey);
@@ -428,7 +438,8 @@ public class ApprovalItemMapper {
             codes = priceListSetupItemClient.getInsuranceWaseelCodes(
                     billingType.name(),
                     sourceId,
-                    facilityId
+                    facilityId,
+                    payerId
             );
         } catch (FeignException ex) {
             codes = null;
@@ -436,6 +447,33 @@ public class ApprovalItemMapper {
 
         cache.put(cacheKey, codes);
         return codes;
+    }
+
+    /**
+     * Price-list codes must come from the visit payer's own price list,
+     * not from another insurance company's list for the same item.
+     */
+    private Long resolvePriceListPayerId(
+            PatientEncounter encounter
+    ) {
+        if (encounter == null || encounter.getPatientInsuranceId() == null) {
+            return null;
+        }
+
+        try {
+            return patientInsuranceRepository
+                    .findById(encounter.getPatientInsuranceId())
+                    .map(insurance ->
+                            nphiesPayerHelper.resolvePriceListPayerId(
+                                    insurance.getPayorId(),
+                                    insurance.getPayerNphiesId()
+                            )
+                    )
+                    .filter(payerId -> payerId > 0)
+                    .orElse(null);
+        } catch (FeignException ex) {
+            return null;
+        }
     }
 
     private Integer addDaysSupply(
