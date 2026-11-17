@@ -15,6 +15,7 @@ import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.ToothNumberingSystem;
 import com.dazzle.asklepios.domain.enumeration.TreatmentStatus;
 import com.dazzle.asklepios.repository.DentalChartRepository;
+import com.dazzle.asklepios.repository.DentalChartSpecification;
 import com.dazzle.asklepios.repository.DentalChartToothRepository;
 import com.dazzle.asklepios.repository.DentalPlannedTreatmentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
@@ -42,6 +43,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -113,7 +115,8 @@ public class DentalChartService {
      * inventory saves on its chart are serialized. Callers must be inside a transaction.
      */
     public void lockChartOfTooth(Long toothId) {
-        Long chartId = dentalChartToothRepository.findChartIdById(toothId)
+        Long chartId = dentalChartToothRepository.findById(toothId)
+                .map(DentalChartTooth::getChartId)
                 .orElseThrow(() -> new NotFoundAlertException("Tooth not found", "dentalChartTooth", "tooth.notfound"));
         dentalChartRepository.findByIdForUpdate(chartId);
     }
@@ -251,12 +254,18 @@ public class DentalChartService {
         LocalDate asOfDate = encounter.getEncounterDate() != null
                 ? encounter.getEncounterDate()
                 : LocalDate.now();
-        return dentalChartRepository.findEligiblePreviousCharts(
-                encounter.getPatient().getId(),
-                encounter.getId(),
-                asOfDate,
-                ELIGIBLE_SOURCE_STATUSES,
-                PageRequest.of(0, 1)
+        return dentalChartRepository.findAll(
+                DentalChartSpecification.previousChartsOf(
+                        encounter.getPatient().getId(),
+                        encounter.getId(),
+                        asOfDate,
+                        ELIGIBLE_SOURCE_STATUSES
+                ),
+                PageRequest.of(0, 1, Sort.by(
+                        Sort.Order.desc("encounter.encounterDate"),
+                        Sort.Order.desc("encounter.id"),
+                        Sort.Order.desc("id")
+                ))
         ).stream().findFirst();
     }
 

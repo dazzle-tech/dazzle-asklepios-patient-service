@@ -166,8 +166,10 @@ public class DentalTreatmentPlanService {
         if (!createNew) {
             throw new BadRequestAlertException("A session is required", ENTITY, "sessionRequired");
         }
-        Integer max = sessionRepository.findMaxSessionNumber(planId);
-        int next = (max == null ? 0 : max) + 1;
+        int max = sessionRepository.findFirstByTreatmentPlanIdOrderBySessionNumberDesc(planId)
+                .map(DentalTreatmentSession::getSessionNumber)
+                .orElse(0);
+        int next = max + 1;
         return sessionRepository.save(DentalTreatmentSession.builder()
                 .treatmentPlanId(planId)
                 .sessionNumber(next)

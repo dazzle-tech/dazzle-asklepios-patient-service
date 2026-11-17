@@ -54,7 +54,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -187,14 +186,7 @@ public class DentalPlannedTreatmentService {
                     "patientRequired"
             );
         }
-        Set<Integer> numbers = new LinkedHashSet<>();
-        dentalPlannedTreatmentRepository.findDistinctVisitNumbersByPatientId(patientId).stream()
-                .filter(n -> n != null && n > 0)
-                .forEach(numbers::add);
-        toothActionRepository.findDistinctVisitNumbersByPatientId(patientId).stream()
-                .filter(n -> n != null && n > 0)
-                .forEach(numbers::add);
-        return numbers.stream().sorted().toList();
+        return dentalVisitNumberService.listPatientVisitNumbers(patientId);
     }
 
     /**

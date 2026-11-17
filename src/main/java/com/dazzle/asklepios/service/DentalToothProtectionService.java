@@ -7,9 +7,11 @@ import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.TreatmentScope;
 import com.dazzle.asklepios.repository.DentalChartToothRepository;
 import com.dazzle.asklepios.repository.DentalPlannedTreatmentRepository;
+import com.dazzle.asklepios.repository.DentalPlannedTreatmentSpecification;
 import com.dazzle.asklepios.repository.ToothActionRepository;
 import com.dazzle.asklepios.repository.ToothCdtRepository;
 import com.dazzle.asklepios.repository.ToothServiceRepository;
+import com.dazzle.asklepios.repository.projection.DentalChartProjections;
 import com.dazzle.asklepios.service.dto.dentalChart.PlannedTreatmentDTO;
 import com.dazzle.asklepios.web.rest.errors.ConflictAlertException;
 import org.springframework.stereotype.Service;
@@ -23,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Which chart teeth carry recorded clinical work and therefore cannot be removed or replaced
@@ -85,7 +88,8 @@ public class DentalToothProtectionService {
      */
     public void requireResolvedCoverage(DentalChart chart) {
         Long encounterId = chart.getEncounter().getId();
-        for (DentalPlannedTreatment plan : dentalPlannedTreatmentRepository.findTouchingEncounter(encounterId, WORK_STATUSES)) {
+        for (DentalPlannedTreatment plan : dentalPlannedTreatmentRepository.findAll(
+                DentalPlannedTreatmentSpecification.touchingEncounter(encounterId, WORK_STATUSES))) {
             boolean grouped = plan.getTreatmentScope() != null && plan.getTreatmentScope() != TreatmentScope.SPECIFIC_TOOTH;
             if (grouped && PlannedTreatmentDTO.parseCoveredToothIds(plan.getCoveredToothIds()).isEmpty()) {
                 throw new ConflictAlertException(
@@ -104,13 +108,14 @@ public class DentalToothProtectionService {
             return Map.of();
         }
         List<Long> toothIds = teeth.stream().map(DentalChartTooth::getId).toList();
-        Set<Long> withActions = new HashSet<>(toothActionRepository.findToothIdsWithActiveActions(toothIds));
-        Set<Long> withCdts = new HashSet<>(toothCdtRepository.findToothIdsWithActiveCdts(toothIds));
-        Set<Long> withServices = new HashSet<>(toothServiceRepository.findToothIdsWithActiveServices(toothIds));
+        Set<Long> withActions = toothIds(toothActionRepository.findDistinctByToothIdInAndCancelledFalse(toothIds));
+        Set<Long> withCdts = toothIds(toothCdtRepository.findDistinctByToothIdInAndCancelledFalse(toothIds));
+        Set<Long> withServices = toothIds(toothServiceRepository.findDistinctByToothIdInAndCancelledFalse(toothIds));
         Long encounterId = chart.getEncounter().getId();
         Set<Long> withPlanned = new HashSet<>();
         Set<Long> executedOnThisChart = new HashSet<>();
-        for (DentalPlannedTreatment plan : dentalPlannedTreatmentRepository.findTouchingEncounter(encounterId, WORK_STATUSES)) {
+        for (DentalPlannedTreatment plan : dentalPlannedTreatmentRepository.findAll(
+                DentalPlannedTreatmentSpecification.touchingEncounter(encounterId, WORK_STATUSES))) {
             List<Long> covered = savedCoverageToothIds(plan);
             if (Objects.equals(plan.getEncounterId(), encounterId)) {
                 withPlanned.addAll(covered);
@@ -143,5 +148,9 @@ public class DentalToothProtectionService {
             }
         }
         return reasons;
+    }
+
+    private static Set<Long> toothIds(List<DentalChartProjections.ToothIdView> views) {
+        return views.stream().map(DentalChartProjections.ToothIdView::getToothId).collect(Collectors.toSet());
     }
 }

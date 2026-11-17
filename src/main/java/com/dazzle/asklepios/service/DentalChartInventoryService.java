@@ -102,7 +102,6 @@ public class DentalChartInventoryService {
                         "Dental chart not found: " + chartId, ENTITY_NAME, "notfound"));
 
         String reason = validateRequest(chart, dto);
-        PatientEncounter encounter = chart.getEncounter();
 
         // Stale-save protection: succeeds only for the version the client read; also bumps it.
         if (dentalChartRepository.bumpVersionIfCurrent(chartId, dto.expectedVersion()) == 0) {
@@ -125,7 +124,7 @@ public class DentalChartInventoryService {
                 .collect(Collectors.toCollection(HashSet::new));
 
         String batchId = UUID.randomUUID().toString();
-        Long reopenSessionId = encounterReopenGuard.findOpenReopenSessionId(encounter.getId()).orElse(null);
+        Long reopenSessionId = encounterReopenGuard.findOpenReopenSessionId(current.getEncounter().getId()).orElse(null);
         List<DentalChartInventoryAudit> audits = new ArrayList<>();
         List<DentalChartTooth> toSave = new ArrayList<>();
         List<String> deactivatedNumbers = new ArrayList<>();

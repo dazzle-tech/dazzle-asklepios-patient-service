@@ -3,8 +3,10 @@ package com.dazzle.asklepios.repository;
 import com.dazzle.asklepios.domain.DentalPlannedTreatment;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentType;
+import com.dazzle.asklepios.repository.projection.VisitNumberView;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -13,7 +15,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
-public interface DentalPlannedTreatmentRepository extends JpaRepository<DentalPlannedTreatment, Long> {
+public interface DentalPlannedTreatmentRepository
+        extends JpaRepository<DentalPlannedTreatment, Long>, JpaSpecificationExecutor<DentalPlannedTreatment> {
 
     List<DentalPlannedTreatment> findByPatientIdAndTypeAndCancelledFalseOrderByVisitNumberAsc(Long patientId, PlannedTreatmentType type);
 
@@ -25,7 +28,6 @@ public interface DentalPlannedTreatmentRepository extends JpaRepository<DentalPl
     @Query("select t from DentalPlannedTreatment t where t.id = :id")
     Optional<DentalPlannedTreatment> findByIdForUpdate(@Param("id") Long id);
 
-    /** Open (not cancelled, not completed) planned treatments per tooth: rows of [toothId, count]. */
     @Query("""
             select p.toothId, count(p)
             from DentalPlannedTreatment p
@@ -39,38 +41,9 @@ public interface DentalPlannedTreatmentRepository extends JpaRepository<DentalPl
             @Param("completedStatus") PlannedTreatmentStatus completedStatus
     );
 
-    /** Non-cancelled treatments in the given statuses that were planned on, or executed on, the encounter. */
-    @Query("""
-            select p
-            from DentalPlannedTreatment p
-            where p.cancelled = false
-              and p.status in :statuses
-              and (p.encounterId = :encounterId or p.executionEncounterId = :encounterId)
-            """)
-    List<DentalPlannedTreatment> findTouchingEncounter(
-            @Param("encounterId") Long encounterId,
-            @Param("statuses") Collection<PlannedTreatmentStatus> statuses
-    );
-
     List<DentalPlannedTreatment> findByTreatmentPlanId(Long treatmentPlanId);
 
-    List<DentalPlannedTreatment> findByTreatmentPlanIdAndCancelledFalseOrderByVisitNumberAsc(Long treatmentPlanId);
+    Optional<DentalPlannedTreatment> findFirstByPatientIdAndVisitNumberNotNullOrderByVisitNumberDesc(Long patientId);
 
-    /**
-     * Highest Visit Number for the patient across all encounters, DRAFT/CURRENT, including cancelled.
-     */
-    @Query("""
-            select max(t.visitNumber)
-            from DentalPlannedTreatment t
-            where t.patientId = :patientId
-            """)
-    Integer findMaxVisitNumberByPatientId(@Param("patientId") Long patientId);
-
-    @Query("""
-            select distinct t.visitNumber
-            from DentalPlannedTreatment t
-            where t.patientId = :patientId
-              and t.visitNumber is not null
-            """)
-    List<Integer> findDistinctVisitNumbersByPatientId(@Param("patientId") Long patientId);
+    List<VisitNumberView> findDistinctByPatientIdAndVisitNumberNotNull(Long patientId);
 }
