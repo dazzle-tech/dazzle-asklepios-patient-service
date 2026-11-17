@@ -635,7 +635,7 @@ public class DentalPlannedTreatmentService {
                     "cancelledNotReturnable"
             );
         }
-        if (entity.getPatientServiceAndProductId() != null) {
+        if (entity.getPatientServiceAndProduct() != null) {
             throw new ConflictAlertException(
                     "This treatment is already linked to a charge and cannot be returned to In Progress.",
                     ENTITY,
@@ -670,7 +670,7 @@ public class DentalPlannedTreatmentService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated."));
 
         dentalTreatmentPlanService.reopenForReturnedTreatment(
-                entity.getTreatmentPlanId(),
+                planIdOf(entity),
                 entity.getPatientId(),
                 trimmedReason
         );
@@ -680,7 +680,7 @@ public class DentalPlannedTreatmentService {
         entity.setCompletedBy(null);
         entity.setCompletedAt(null);
         // The next completion records its effect on the chart of the encounter it is completed in.
-        entity.setExecutionEncounterId(null);
+        entity.setExecutionEncounter(null);
         prepareExecution(entity, encounterId);
 
         DentalPlannedTreatment saved = dentalPlannedTreatmentRepository.save(entity);

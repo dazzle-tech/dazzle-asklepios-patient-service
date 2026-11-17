@@ -31,7 +31,5 @@ public interface DentalChartRepository extends JpaRepository<DentalChart, Long>,
             """)
     int bumpVersionIfCurrent(@Param("id") Long id, @Param("expectedVersion") Long expectedVersion);
 
-    List<DentalChart> findByPatient_Id(Long patientId);
-
     List<DentalChart> findByPatient_IdAndIdNotOrderByCreatedDateDesc(Long patientId, Long excludeId);
 }

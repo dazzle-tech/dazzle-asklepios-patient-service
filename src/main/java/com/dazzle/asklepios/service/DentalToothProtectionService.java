@@ -120,7 +120,7 @@ public class DentalToothProtectionService {
             if (Objects.equals(plan.getEncounterId(), encounterId)) {
                 withPlanned.addAll(covered);
             }
-            if (Objects.equals(plan.getExecutionEncounterId(), encounterId)) {
+            if (plan.getExecutionEncounter() != null && Objects.equals(plan.getExecutionEncounter().getId(), encounterId)) {
                 executedOnThisChart.addAll(covered);
             }
         }
