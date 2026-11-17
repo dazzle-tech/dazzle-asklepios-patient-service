@@ -23,12 +23,12 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -44,6 +44,7 @@ public class PreAuthorizationStatusRefreshService {
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final ApplicationEventPublisher applicationEventPublisher;
     private final CoverageApprovalRoutingService coverageApprovalRoutingService;
+    private final PreAuthorizationLineReleaseService preAuthorizationLineReleaseService;
 
     @Transactional
     public EncounterPreAuthorizationRefreshResponse refreshEncounter(Long encounterId) {
@@ -91,6 +92,12 @@ public class PreAuthorizationStatusRefreshService {
         List<Long> approvedPatientItemIds = new ArrayList<>();
 
         for (PreAuthorizationRequest request : requests) {
+            // A cancelled request is not read back from Waseel: its lines wait for a new pre-authorization.
+            if (Boolean.TRUE.equals(request.getIsCancelled())) {
+                pendingItemCount += preAuthorizationLineReleaseService.release(request);
+                continue;
+            }
+
             refreshedRequestCount++;
 
             PropagationResult propagationResult =
@@ -111,20 +118,7 @@ public class PreAuthorizationStatusRefreshService {
             approvedPatientItemIds.addAll(propagationResult.approvedPatientItemIds());
         }
 
-        if (!approvedPatientItemIds.isEmpty()) {
-            applicationEventPublisher.publishEvent(
-                    new PreAuthorizationApprovedEvent(
-                            encounterId,
-                            approvedPatientItemIds
-                    )
-            );
-        }
-
-        if (rejectedItemCount > 0 || approvedItemCount > 0) {
-            applicationEventPublisher.publishEvent(
-                    new PreAuthorizationDecisionCommittedEvent(encounterId)
-            );
-        }
+        publishDecisions(encounterId, approvedPatientItemIds, approvedItemCount, rejectedItemCount);
 
         boolean canCloseCalculation = pendingItemCount == 0;
 
@@ -171,30 +165,40 @@ public class PreAuthorizationStatusRefreshService {
                 : preAuthorizationRequestRepository.findFirstByApprovalRequestIdOrderByIdDesc(requestId))
                 .orElse(null);
 
-        if (request == null
-                || Boolean.TRUE.equals(request.getIsCancelled())
-                || patientServiceAndProductRepository.findByPreAuthorizationRequestId(request.getId()).isEmpty()) {
+        if (request == null) {
+            return searchResponse;
+        }
+
+        // A cancelled request no longer owns its lines, whatever status Waseel still returns for it.
+        if (Boolean.TRUE.equals(request.getIsCancelled())) {
+            preAuthorizationLineReleaseService.release(request);
+            return searchResponse;
+        }
+
+        if (patientServiceAndProductRepository.findByPreAuthorizationRequestId(request.getId()).isEmpty()) {
             return searchResponse;
         }
 
         PropagationResult propagationResult = propagateSearchResponse(request, searchResponse);
 
-        if (!propagationResult.approvedPatientItemIds().isEmpty()) {
-            applicationEventPublisher.publishEvent(
-                    new PreAuthorizationApprovedEvent(
-                            request.getEncounterId(),
-                            propagationResult.approvedPatientItemIds()
-                    )
-            );
-        }
-
-        if (propagationResult.rejectedCount() > 0 || propagationResult.approvedCount() > 0) {
-            applicationEventPublisher.publishEvent(
-                    new PreAuthorizationDecisionCommittedEvent(request.getEncounterId())
-            );
-        }
+        publishDecisions(
+                request.getEncounterId(),
+                propagationResult.approvedPatientItemIds(),
+                propagationResult.approvedCount(),
+                propagationResult.rejectedCount()
+        );
 
         return searchResponse;
+    }
+
+    /** Approved lines are billed, and any decision refreshes the visit's responsibility split. */
+    private void publishDecisions(Long encounterId, List<Long> approvedPatientItemIds, int approvedCount, int rejectedCount) {
+        if (!approvedPatientItemIds.isEmpty()) {
+            applicationEventPublisher.publishEvent(new PreAuthorizationApprovedEvent(encounterId, approvedPatientItemIds));
+        }
+        if (approvedCount > 0 || rejectedCount > 0) {
+            applicationEventPublisher.publishEvent(new PreAuthorizationDecisionCommittedEvent(encounterId));
+        }
     }
 
     /**
@@ -517,12 +521,15 @@ public class PreAuthorizationStatusRefreshService {
                 PreAuthorizationSearchItem searchItem =
                         findSearchItem(localItem, searchItemsBySequence);
 
-                PreAuthorizationStatus itemStatus = searchItem != null
-                        ? PreAuthorizationWaseelStatusMapper.mapItemStatus(searchItem)
-                        : headerStatus;
+                WaseelItemDecision decision = searchItem == null ? null : WaseelItemDecision.of(searchItem);
+                if (decision != null) {
+                    recordDecision(localItem, decision);
+                }
 
-                String waseelStatus = searchItem != null
-                        ? PreAuthorizationWaseelStatusMapper.resolveItemDecisionText(searchItem)
+                PreAuthorizationStatus itemStatus = decision != null ? decision.status() : headerStatus;
+
+                String waseelStatus = decision != null
+                        ? decision.decisionText()
                         : firstNonBlank(
                                 searchResponse == null ? null : searchResponse.status(),
                                 searchResponse == null ? null : searchResponse.outcome()
@@ -587,6 +594,7 @@ public class PreAuthorizationStatusRefreshService {
         }
 
         patientServiceAndProductRepository.saveAll(linkedItems);
+        preAuthorizationItemRepository.saveAll(localItems);
 
         return new PropagationResult(
                 approvedCount,
@@ -595,6 +603,23 @@ public class PreAuthorizationStatusRefreshService {
                 refreshedItems,
                 approvedPatientItemIds
         );
+    }
+
+    /**
+     * Keeps the payer amounts on the request line: billing reads the payer share as the insurance cap
+     * of a partial approval, and the reason is shown on the patient account.
+     */
+    private static void recordDecision(PreAuthorizationItem localItem, WaseelItemDecision decision) {
+        localItem.setItemDecision(decision.status() == PreAuthorizationStatus.PARTIAL ? "partial" : decision.decisionText());
+        if (decision.reason() != null) {
+            localItem.setReasonCodes(decision.reason());
+        }
+        if (decision.approvedInsuranceAmount() != null) {
+            localItem.setPayerShare(decision.approvedInsuranceAmount());
+            if (decision.submitted() != null) {
+                localItem.setPatientShare(decision.submitted().subtract(decision.approvedInsuranceAmount()).max(BigDecimal.ZERO));
+            }
+        }
     }
 
     private ItemRefreshOutcome applyResolvedStatus(
@@ -620,12 +645,16 @@ public class PreAuthorizationStatusRefreshService {
             }
             case PARTIAL -> {
                 // A local (NPHIES contract) partial decision is final: the line is billed with
-                // the approved insurance amount. A Waseel partial stays held for communication.
+                // the approved insurance amount. A Waseel partial waits for the patient's choice:
+                // pay the difference (accept) or cancel the service.
                 boolean localDecision = request.getApprovalRequestId() == null;
-                item.setPreAuthorizationRequired(!localDecision);
+                boolean acceptedByPatient = previousStatus == PreAuthorizationStatus.PARTIAL
+                        && !Boolean.TRUE.equals(item.getPreAuthorizationRequired());
+                boolean billable = localDecision || acceptedByPatient;
+                item.setPreAuthorizationRequired(!billable);
                 updatePaymentStatus(
                         item,
-                        localDecision
+                        billable
                                 ? PaymentStatus.PENDING
                                 : PaymentStatus.SKIPPED_PENDING_PRE_AUTH
                 );
@@ -762,27 +791,7 @@ public class PreAuthorizationStatusRefreshService {
             PreAuthorizationItem localItem,
             PatientServiceAndProduct item
     ) {
-        if (localItem == null || item == null) {
-            return false;
-        }
-
-        if (localItem.getServiceId() != null
-                && Objects.equals(localItem.getServiceId(), item.getServiceId())) {
-            return true;
-        }
-
-        if (localItem.getProcedureId() != null
-                && Objects.equals(localItem.getProcedureId(), item.getProcedureId())) {
-            return true;
-        }
-
-        if (localItem.getDiagnosticTestId() != null
-                && Objects.equals(localItem.getDiagnosticTestId(), item.getDiagnosticTestId())) {
-            return true;
-        }
-
-        return localItem.getBrandMedicationId() != null
-                && Objects.equals(localItem.getBrandMedicationId(), item.getBrandMedicationId());
+        return PreAuthorizationItemMatcher.matches(localItem, item);
     }
 
     private EncounterPreAuthorizationRefreshResponse buildEmptyResponse(

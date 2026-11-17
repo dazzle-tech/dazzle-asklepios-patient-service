@@ -43,6 +43,9 @@ public interface DentalPlannedTreatmentRepository
 
     List<DentalPlannedTreatment> findByTreatmentPlanId(Long treatmentPlanId);
 
+    /**
+     * Row holding the highest Visit Number for the patient across all encounters, DRAFT/CURRENT, including cancelled.
+     */
     Optional<DentalPlannedTreatment> findFirstByPatientIdAndVisitNumberNotNullOrderByVisitNumberDesc(Long patientId);
 
     List<VisitNumberView> findDistinctByPatientIdAndVisitNumberNotNull(Long patientId);

@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimType;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalItem;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimValidationError;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimPreAuthorizationInfo;
@@ -27,6 +28,21 @@ public class ClaimPayloadValidationService {
             "MEDICATION-CODES",
             "PROCEDURES",
             "SERVICES",
+            "COSMETIC-CODES",
+            "HERBAL-AND-VITAMIN-CODES",
+            "NUTRITION-CODES"
+    );
+
+    /** A dental (oral) claim: dental treatment is ORAL-HEALTH-OP / -IP, not PROCEDURES (Waseel's list for this type). */
+    private static final Set<String> ORAL_ITEM_TYPES = Set.of(
+            "TRANSPORTATION-SRCA",
+            "IMAGING",
+            "LABORATORY",
+            "MEDICAL-DEVICES",
+            "ORAL-HEALTH-IP",
+            "ORAL-HEALTH-OP",
+            "SERVICES",
+            "MEDICATION-CODES",
             "COSMETIC-CODES",
             "HERBAL-AND-VITAMIN-CODES",
             "NUTRITION-CODES"
@@ -61,6 +77,7 @@ public class ClaimPayloadValidationService {
             }
         }
 
+        Set<String> allowedItemTypes = allowedItemTypes(preAuth);
         List<WaseelApprovalItem> items = claim.items() == null ? List.of() : claim.items();
         for (WaseelApprovalItem item : items) {
             if (item == null) {
@@ -73,14 +90,14 @@ public class ClaimPayloadValidationService {
                 errors.add(error(
                         "Items - " + seq + " : Type",
                         "Please provide Type for Item[" + seq + "] from "
-                                + ALLOWED_ITEM_TYPES + ".",
+                                + allowedItemTypes + ".",
                         "Items"
                 ));
-            } else if (!ALLOWED_ITEM_TYPES.contains(type)) {
+            } else if (!allowedItemTypes.contains(type)) {
                 errors.add(error(
                         "Items - " + seq + " : Type",
                         "Invalid Type [" + type + "] for Item[" + seq + "]. Allowed values: "
-                                + ALLOWED_ITEM_TYPES + ".",
+                                + allowedItemTypes + ".",
                         "Items"
                 ));
             }
@@ -116,6 +133,12 @@ public class ClaimPayloadValidationService {
         }
 
         return errors;
+    }
+
+    private Set<String> allowedItemTypes(WaseelClaimPreAuthorizationInfo preAuth) {
+        boolean oralClaim = preAuth != null
+                && WaseelClaimType.fromWaseelCode(preAuth.type()) == WaseelClaimType.DENTAL;
+        return oralClaim ? ORAL_ITEM_TYPES : ALLOWED_ITEM_TYPES;
     }
 
     private ClaimValidationError error(String code, String message, String section) {

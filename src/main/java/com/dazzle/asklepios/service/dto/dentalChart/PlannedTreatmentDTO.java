@@ -93,7 +93,7 @@ public record PlannedTreatmentDTO(
                 entity.getQuantity(),
                 entity.getDiscount(),
                 entity.getStatus() != null ? entity.getStatus() : PlannedTreatmentStatus.PENDING,
-                entity.getPatientServiceAndProductId(),
+                entity.getPatientServiceAndProduct() != null ? entity.getPatientServiceAndProduct().getId() : null,
                 entity.getSource(),
                 entity.getToothActionId(),
                 entity.isCancelled(),
@@ -108,9 +108,9 @@ public record PlannedTreatmentDTO(
                 clinical.fillingMaterial(),
                 entity.getCompletedBy(),
                 entity.getCompletedAt(),
-                entity.getTreatmentPlanId(),
-                entity.getTreatmentSessionId(),
-                entity.getExecutionEncounterId(),
+                entity.getTreatmentPlan() != null ? entity.getTreatmentPlan().getId() : null,
+                entity.getTreatmentSession() != null ? entity.getTreatmentSession().getId() : null,
+                entity.getExecutionEncounter() != null ? entity.getExecutionEncounter().getId() : null,
                 chartEffect
         );
     }

@@ -15,7 +15,7 @@ public class PrescriptionMedicationUpdateDTO {
     public PrescriptionInstructionsType instructionsType;
     public String instructions;
 
-    public Long dose;
+    public BigDecimal dose;
     public String doesUnit;
     public String rout;
     public String frequency;

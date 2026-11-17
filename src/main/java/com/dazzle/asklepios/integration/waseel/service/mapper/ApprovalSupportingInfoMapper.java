@@ -23,6 +23,7 @@ import com.dazzle.asklepios.domain.DiagnosticTest;
 import com.dazzle.asklepios.domain.DiagnosticTestLaboratory;
 import com.dazzle.asklepios.domain.DiagnosticTestProfile;
 import com.dazzle.asklepios.domain.EncounterAssessment;
+import com.dazzle.asklepios.domain.EncounterPlan;
 import com.dazzle.asklepios.domain.FamilyHistory;
 import com.dazzle.asklepios.domain.Hospitalization;
 import com.dazzle.asklepios.domain.Patient;
@@ -69,6 +70,7 @@ import com.dazzle.asklepios.repository.DiagnosticTestLaboratoryRepository;
 import com.dazzle.asklepios.repository.DiagnosticTestProfileRepository;
 import com.dazzle.asklepios.repository.DiagnosticTestRepository;
 import com.dazzle.asklepios.repository.EncounterAssessmentRepository;
+import com.dazzle.asklepios.repository.EncounterPlanRepository;
 import com.dazzle.asklepios.repository.FamilyHistoryRepository;
 import com.dazzle.asklepios.repository.HospitalizationRepository;
 import com.dazzle.asklepios.repository.PatientObservationsComplaintsRepository;
@@ -114,6 +116,12 @@ import java.util.stream.Stream;
 public class ApprovalSupportingInfoMapper {
 
     private static final String ACTIVE = "ACTIVE";
+    /**
+     * Joins the parts of one supporting-info text value so each part starts on
+     * its own line. The leading space keeps the parts apart where the payer
+     * portal drops line breaks (Waseel shows the value on one line).
+     */
+    private static final String LINE_SEPARATOR = " \n";
     private static final String INVESTIGATION_RESULT = "investigation-result";
     private static final String LAB_TEST = "lab-test";
     private static final String INVESTIGATION_NOT_PERFORMED = "INP";
@@ -139,6 +147,7 @@ public class ApprovalSupportingInfoMapper {
     private final PatientObservationsComplaintsRepository patientObservationsComplaintsRepository;
     private final ProgressNoteRepository progressNoteRepository;
     private final EncounterAssessmentRepository encounterAssessmentRepository;
+    private final EncounterPlanRepository encounterPlanRepository;
     private final PatientProblemRepository patientProblemRepository;
     private final SurgicalHistoryRepository surgicalHistoryRepository;
     private final SocialHistoryRepository socialHistoryRepository;
@@ -280,6 +289,13 @@ public class ApprovalSupportingInfoMapper {
                 .map(String::trim)
                 .orElse(null);
 
+        String treatmentPlan = encounterPlanRepository
+                .findTopByEncounterIdOrderByCreatedDateDesc(encounterId)
+                .map(EncounterPlan::getTreatmentPlan)
+                .filter(this::isNotBlank)
+                .map(String::trim)
+                .orElse(null);
+
         String patientProblems = livePatientProblems(patientId);
         String surgicalHistory = liveSurgicalHistory(patientId);
         String socialHistory = liveSocialHistory(patientId);
@@ -303,8 +319,8 @@ public class ApprovalSupportingInfoMapper {
                 sequence,
                 "history-of-present-illness",
                 firstNonBlank(
+                        encounter.getHistoryOfPresentIllness(),
                         chief == null ? null : chief.getCaseUnderstanding(),
-                        progressNote,
                         reasonOfVisit,
                         encounter.getChiefComplaint()
                 )
@@ -315,7 +331,7 @@ public class ApprovalSupportingInfoMapper {
                 sequence,
                 "patient-history",
                 joinDistinctNonBlank(
-                        "; ",
+                        LINE_SEPARATOR,
                         clean(encounter.getNotes()),
                         patientProblems,
                         socialHistory,
@@ -330,8 +346,9 @@ public class ApprovalSupportingInfoMapper {
                 result,
                 sequence,
                 "physical-examination",
-                firstNonBlank(
-                        encounter.getPhysicalExaminationSummery(),
+                joinDistinctNonBlank(
+                        LINE_SEPARATOR,
+                        clean(encounter.getPhysicalExaminationSummery()),
                         assessment
                 )
         );
@@ -343,6 +360,7 @@ public class ApprovalSupportingInfoMapper {
                 sequence,
                 "treatment-plan",
                 firstNonBlank(
+                        treatmentPlan,
                         assessment,
                         progressNote
                 )
@@ -367,14 +385,14 @@ public class ApprovalSupportingInfoMapper {
                 result,
                 sequence,
                 "history-of-present-illness",
-                joinDistinctNonBlank("; ", clean(claimCopy.getHistoryOfPresentIllness()), progressNotes)
+                clean(claimCopy.getHistoryOfPresentIllness())
         );
         addTextIfExists(
                 result,
                 sequence,
                 "patient-history",
                 joinDistinctNonBlank(
-                        "; ",
+                        LINE_SEPARATOR,
                         copyPatientProblems(claimCopyId),
                         copySocialHistory(claimCopyId),
                         copySurgicalHistory(claimCopyId),
@@ -387,7 +405,7 @@ public class ApprovalSupportingInfoMapper {
                 result,
                 sequence,
                 "physical-examination",
-                joinDistinctNonBlank("; ", clean(claimCopy.getPhysicalExamination()), clean(claimCopy.getAssessment()))
+                joinDistinctNonBlank(LINE_SEPARATOR, clean(claimCopy.getPhysicalExamination()), clean(claimCopy.getAssessment()))
         );
 
         addInvestigationResult(result, sequence, encounter, claimCopyId);
@@ -419,7 +437,7 @@ public class ApprovalSupportingInfoMapper {
 
     private String copyProgressNotes(Long claimCopyId) {
         return joinDistinctNonBlank(
-                "; ",
+                LINE_SEPARATOR,
                 claimEncounterProgressNoteRepository
                         .findByClaimEncounterCopyIdAndCancelledDateIsNull(claimCopyId)
                         .stream()
@@ -455,7 +473,7 @@ public class ApprovalSupportingInfoMapper {
                         collectLabResultValue(serviceProductTests.allLabResults())
                 )
                 .filter(this::isNotBlank)
-                .collect(Collectors.joining("; "));
+                .collect(Collectors.joining(LINE_SEPARATOR));
 
         if (isNotBlank(investigationValue)) {
             result.add(investigationResultPending(sequence, investigationValue));
@@ -528,13 +546,13 @@ public class ApprovalSupportingInfoMapper {
             String labValue = Stream.concat(labResults.stream(), serviceProductTests.allLabResults().stream())
                     .map(this::formatLabResultValue)
                     .filter(this::isNotBlank)
-                    .collect(Collectors.joining("; "));
+                    .collect(Collectors.joining(LINE_SEPARATOR));
             String radiologyValue = report.orders().stream()
                     .flatMap(order -> order.orderTests().stream())
                     .filter(section -> section.radiologyResults() != null && !section.radiologyResults().isEmpty())
                     .map(InvestigationResultsReport.OrderTestSection::testName)
                     .filter(this::isNotBlank)
-                    .collect(Collectors.joining("; "));
+                    .collect(Collectors.joining(LINE_SEPARATOR));
             LocalDate attachmentDate = resolveDate(encounter);
 
             return new WaseelApprovalSupportingInfo(
@@ -1185,7 +1203,7 @@ public class ApprovalSupportingInfoMapper {
                 .filter(this::isNotBlank)
                 .toList();
 
-        return values.isEmpty() ? null : String.join("; ", values);
+        return values.isEmpty() ? null : String.join(LINE_SEPARATOR, values);
     }
 
     /**
@@ -1292,7 +1310,7 @@ public class ApprovalSupportingInfoMapper {
             String name = names.get(i);
             labeled.add(name == null ? values.get(i) : name + ": " + values.get(i));
         }
-        return String.join("; ", labeled);
+        return String.join(LINE_SEPARATOR, labeled);
     }
 
     /**

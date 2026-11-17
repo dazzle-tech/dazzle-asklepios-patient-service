@@ -7,6 +7,9 @@ public record EligibilityCheckResponse(
         String message,
         String eligibilityResponseId,
         String eligibilityResponseUrl,
-        String requestStatus
+        String requestStatus,
+        /** False when the payer answered that the patient is not eligible; null when this check did not tell. */
+        Boolean eligible,
+        String notEligibleReason
 ) {
 }

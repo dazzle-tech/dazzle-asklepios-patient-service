@@ -22,6 +22,7 @@ import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalEligib
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalItem;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalRequest;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalSupportingInfo;
+import com.dazzle.asklepios.integration.waseel.service.readiness.PreAuthorizationReadinessService;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.repository.PreAuthorizationCareTeamRepository;
@@ -57,6 +58,7 @@ public class PreAuthorizationSubmissionService {
     private final WaseelApprovalService waseelApprovalService;
     private final EligibilityRequestResolverService eligibilityRequestResolverService;
     private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
+    private final PreAuthorizationReadinessService preAuthorizationReadinessService;
 
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
@@ -150,6 +152,9 @@ public class PreAuthorizationSubmissionService {
                         "preAuthorization",
                         "encounter.notFound"
                 ));
+
+        // Every field Waseel makes mandatory for the claim type must be filled; the lines stay held until then.
+        preAuthorizationReadinessService.requireReady(encounter, pendingItems);
 
         WaseelApprovalRequest request =
                 approvalRequestBuilderService.buildRequest(

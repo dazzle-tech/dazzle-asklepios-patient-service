@@ -26,6 +26,8 @@ import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,7 +45,11 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class WaseelEligibilityCheckService {
 
+    private static final Logger LOG = LoggerFactory.getLogger(WaseelEligibilityCheckService.class);
+
     private static final String ENTITY_NAME = "waseelEligibility";
+    /** Error property set when the payer (or the expiry date) says the patient is not eligible. */
+    private static final String NOT_ELIGIBLE_PROPERTY = "notEligible";
     /** Waseel placeholder for "no TPA". */
     private static final String NO_TPA_MARKER = "-1";
 
@@ -121,9 +127,15 @@ public class WaseelEligibilityCheckService {
             Optional<WaseelEligibilityRejectionInterpreter.Rejection> rejection =
                     WaseelEligibilityRejectionInterpreter.fromResponse(response, objectMapper);
             if (rejection.isPresent()) {
-                throw new BadRequestAlertException(
+                LOG.warn(
+                        "[WASEEL_ELIGIBILITY] Rejected patientId={} patientInsuranceId={} destinationId={} response={}",
+                        patient.getId(),
+                        insurance.getId(),
+                        waseelRequest.destinationId(),
+                        log.getResponseJson()
+                );
+                throw notEligible(
                         rejection.get().message(),
-                        ENTITY_NAME,
                         rejection.get().errorKey()
                 );
             }
@@ -133,13 +145,13 @@ public class WaseelEligibilityCheckService {
 
             WaseelEligibilityRequest saved = eligibilityLogRepository.save(log);
 
-            if (response != null) {
-                eligibilityPatientInsuranceSyncService.syncFromEligibilityResponse(
-                        insurance,
-                        response,
-                        saved.getId()
-                );
-            }
+            PatientInsurance syncedInsurance = response == null
+                    ? null
+                    : eligibilityPatientInsuranceSyncService.syncFromEligibilityResponse(
+                            insurance,
+                            response,
+                            saved.getId()
+                    );
 
             triggerBackendPreAuthorizationSubmission(request);
 
@@ -157,7 +169,7 @@ public class WaseelEligibilityCheckService {
                     eligibilityNote
             );
 
-            return toResult(saved);
+            return toResult(saved, syncedInsurance);
 
         } catch (HttpClientErrorException ex) {
             markFailed(log, ex.getMessage());
@@ -316,9 +328,8 @@ public class WaseelEligibilityCheckService {
     ) {
         if (insurance.getExpirationDate() == null
                 || insurance.getExpirationDate().isBefore(LocalDate.now())) {
-            throw new BadRequestAlertException(
+            throw notEligible(
                     "Insurance plan is expired.",
-                    ENTITY_NAME,
                     "insurance.expired"
             );
         }
@@ -499,7 +510,16 @@ public class WaseelEligibilityCheckService {
         );
     }
 
-    private EligibilityCheckResponse toResult(WaseelEligibilityRequest log) {
+    /**
+     * Eligibility is read from the insurance as this check synced it. When this check did not sync it
+     * (no matching coverage in the payer response), eligibility is left unknown.
+     */
+    private EligibilityCheckResponse toResult(WaseelEligibilityRequest log, PatientInsurance syncedInsurance) {
+        boolean syncedByThisCheck = syncedInsurance != null
+                && log.getId() != null
+                && log.getId().equals(syncedInsurance.getLastEligibilityRequestId());
+        String notEligibleReason = syncedByThisCheck ? notEligibleReason(syncedInsurance) : null;
+
         return new EligibilityCheckResponse(
                 log.getId(),
                 log.getApiStatus(),
@@ -507,8 +527,28 @@ public class WaseelEligibilityCheckService {
                 log.getMessage(),
                 log.getEligibilityResponseId(),
                 log.getEligibilityResponseUrl(),
-                log.getRequestStatus()
+                log.getRequestStatus(),
+                syncedByThisCheck ? notEligibleReason == null : null,
+                notEligibleReason
         );
+    }
+
+    private String notEligibleReason(PatientInsurance insurance) {
+        String siteEligibility = clean(insurance.getSiteEligibility());
+        if (siteEligibility != null && !"eligible".equalsIgnoreCase(siteEligibility)) {
+            return "The patient is not eligible (" + siteEligibility + ").";
+        }
+        if ("false".equalsIgnoreCase(clean(insurance.getInforce()))) {
+            return "The patient insurance is not in force.";
+        }
+        return null;
+    }
+
+    /** A rejection the payment screen may offer to bill as Self Pay. */
+    private BadRequestAlertException notEligible(String message, String errorKey) {
+        BadRequestAlertException exception = new BadRequestAlertException(message, ENTITY_NAME, errorKey);
+        exception.getBody().setProperty(NOT_ELIGIBLE_PROPERTY, true);
+        return exception;
     }
 
     private String resolveDocumentType(Patient patient) {

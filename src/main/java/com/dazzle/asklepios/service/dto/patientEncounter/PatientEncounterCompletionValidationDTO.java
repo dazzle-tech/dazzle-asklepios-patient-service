@@ -27,7 +27,6 @@ public record PatientEncounterCompletionValidationDTO(
         boolean surgicalHistory,
         boolean socialHistory,
 
-        boolean progressNotes,
         boolean vitalSigns,
         boolean bodyMeasurements,
 

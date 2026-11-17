@@ -1592,6 +1592,25 @@ public class BillingDebitService {
             );
         }
 
+        BigDecimal expectedBalance =
+                money(
+                        account.getTotalDebitCreated()
+                ).subtract(
+                        money(
+                                account.getTotalDebitSettled()
+                        )
+                );
+
+        if (currentBalance.compareTo(
+                expectedBalance
+        ) != 0) {
+            throw new BadRequestAlertException(
+                    "Debit account balance does not match created minus settled debit.",
+                    ENTITY_NAME,
+                    "debitAccount.balance.mismatch"
+            );
+        }
+
         account.setCreditLimit(
                 creditLimit
         );
@@ -2090,13 +2109,16 @@ public class BillingDebitService {
         );
 
         /*
-         * A reversal reduces the net debit-created history.
-         * We do not reduce totalDebitCreated because it is an audit total.
-         *
-         * Keep:
-         * totalDebitCreated = lifetime created amount
-         * totalDebitSettled = actual payment settlements only
+         * A reversal cancels debit that was created but never settled, so it
+         * reduces the net created total. This keeps the DB invariant
+         * current_debit_balance = total_debit_created - total_debit_settled.
+         * totalDebitSettled stays limited to actual payment settlements.
          */
+        account.setTotalDebitCreated(
+                money(
+                        account.getTotalDebitCreated()
+                ).subtract(amount)
+        );
 
         validateAccountBalance(account);
 

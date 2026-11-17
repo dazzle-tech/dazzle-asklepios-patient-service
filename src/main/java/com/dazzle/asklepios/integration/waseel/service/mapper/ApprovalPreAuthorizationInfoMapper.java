@@ -2,6 +2,7 @@ package com.dazzle.asklepios.integration.waseel.service.mapper;
 
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalEligibilitySnapshot;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalPreAuthorizationInfo;
+import com.dazzle.asklepios.integration.waseel.service.readiness.PreAuthorizationClaimType;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import org.springframework.stereotype.Component;
 
@@ -21,6 +22,16 @@ public class ApprovalPreAuthorizationInfoMapper {
             WaseelApprovalEligibilitySnapshot snapshot,
             String providerNphiesId,
             String prescriptionReference
+    ) {
+        return toPreAuthorizationInfo(snapshot, providerNphiesId, prescriptionReference, PreAuthorizationClaimType.PROFESSIONAL_OP);
+    }
+
+    /** {@code type} / {@code subType} follow the claim type, e.g. "oral" / "op" for dental treatment. */
+    public WaseelApprovalPreAuthorizationInfo toPreAuthorizationInfo(
+            WaseelApprovalEligibilitySnapshot snapshot,
+            String providerNphiesId,
+            String prescriptionReference,
+            PreAuthorizationClaimType claimType
     ) {
         if (snapshot == null) {
             throw new BadRequestAlertException(
@@ -42,8 +53,8 @@ public class ApprovalPreAuthorizationInfoMapper {
                 LocalDate.now(),
                 parseLong(providerNphiesId),
                 "provider",
-                "professional",
-                "op",
+                claimType.nphiesType(),
+                claimType.nphiesSubType(),
                 emptyToNull(prescriptionReference),
                 null,
                 null,

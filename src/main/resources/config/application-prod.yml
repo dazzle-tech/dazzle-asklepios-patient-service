@@ -5,13 +5,19 @@ logging:
 
 waseel:
   api:
-    base-url: ${WASEEL_API_BASE_URL:https://api.stg-eclaims.waseel.com}
-    username: ${WASEEL_USERNAME:abh706}
-    password: ${WASEEL_PASSWORD:abhclm706}
-    provider-id: ${WASEEL_PROVIDER_ID:706}
+    base-url: ${WASEEL_API_BASE_URL:https://api.eclaims.waseel.com}
+    username: ${WASEEL_USERNAME:oh621.admin}
+    password: ${WASEEL_PASSWORD:Onehealth@2026}
+    provider-id: ${WASEEL_PROVIDER_ID:104834}
     nphies-id: ${WASEEL_NPHIES_ID:10000000003170}
     system-type: ${WASEEL_SYSTEM_TYPE:1}
     timeout-seconds: 90
+
+# Changing a prescription after it was submitted (add/edit/cancel a medication, resend to the pharmacy),
+# in the visit and from the EMR on a closed visit. false = nobody; true = users who have the permission.
+prescription:
+  edit-after-submit:
+    enabled: ${PRESCRIPTION_EDIT_AFTER_SUBMIT_ENABLED:true}
 
 # Nahdi pharmacy integration (prescriptions are sent to Nahdi on submit)
 nahdi:
@@ -26,7 +32,13 @@ nahdi:
     type-cash: ${NAHDI_PRESCRIPTION_TYPE_CASH:1}
     type-insurance: ${NAHDI_PRESCRIPTION_TYPE_INSURANCE:2}
     item-approval-status: ${NAHDI_ITEM_APPROVAL_STATUS:A}
+    item-cancelled-status: ${NAHDI_ITEM_CANCELLED_STATUS:C}
     item-code-priority: ${NAHDI_ITEM_CODE_PRIORITY:SFDA}
+  dispensing:
+    source: ${NAHDI_DISPENSING_SOURCE:NONE}
+    sales-invoices-endpoint: ${NAHDI_SALES_INVOICES_ENDPOINT:/GetSalesInvoices}
+    sale-invoice-type: ${NAHDI_SALE_INVOICE_TYPE:SALE}
+    return-invoice-type: ${NAHDI_RETURN_INVOICE_TYPE:RETURN}
 
 management:
   prometheus:

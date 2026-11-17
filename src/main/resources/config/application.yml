@@ -227,6 +227,12 @@ patient:
     secret: ${PATIENT_PORTAL_SECRET:}
   security:
 
+# Changing a prescription after it was submitted (add/edit/cancel a medication, resend to the pharmacy),
+# in the visit and from the EMR on a closed visit. false = nobody; true = users who have the permission.
+prescription:
+  edit-after-submit:
+    enabled: ${PRESCRIPTION_EDIT_AFTER_SUBMIT_ENABLED:true}
+
 # Nahdi pharmacy integration (prescriptions are sent to Nahdi on submit)
 nahdi:
   enabled: ${NAHDI_ENABLED:true}
@@ -243,5 +249,15 @@ nahdi:
     type-cash: ${NAHDI_PRESCRIPTION_TYPE_CASH:1}
     type-insurance: ${NAHDI_PRESCRIPTION_TYPE_INSURANCE:2}
     item-approval-status: ${NAHDI_ITEM_APPROVAL_STATUS:A}
+    # Line cancelled after the prescription was sent (still sent, marked as cancelled)
+    item-cancelled-status: ${NAHDI_ITEM_CANCELLED_STATUS:C}
     # Item code sent first: SFDA or NPHIES; the other one is used when it is missing
     item-code-priority: ${NAHDI_ITEM_CODE_PRIORITY:SFDA}
+  # Dispensing status of a sent prescription (locks dispensed medications)
+  dispensing:
+    # NONE: nothing is marked dispensed; INVOICE: taken from Nahdi sales invoices (GetSalesInvoices)
+    source: ${NAHDI_DISPENSING_SOURCE:NONE}
+    sales-invoices-endpoint: ${NAHDI_SALES_INVOICES_ENDPOINT:/GetSalesInvoices}
+    # Invoice_Type values (to confirm with Nahdi): a sale dispenses the items, a return takes them back
+    sale-invoice-type: ${NAHDI_SALE_INVOICE_TYPE:SALE}
+    return-invoice-type: ${NAHDI_RETURN_INVOICE_TYPE:RETURN}

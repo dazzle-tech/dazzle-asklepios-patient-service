@@ -49,7 +49,7 @@ public class FinancialDocument {
             name = "document_number",
             nullable = false,
             updatable = false,
-            length = 50
+            length = 100
     )
     private String documentNumber;
 

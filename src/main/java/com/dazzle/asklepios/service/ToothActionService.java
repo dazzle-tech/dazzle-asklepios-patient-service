@@ -17,6 +17,7 @@ import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentType;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.ToothActionLogType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
+import com.dazzle.asklepios.integration.waseel.service.readiness.PreAuthorizationReadiness;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.DentalChartRepository;
@@ -314,8 +315,8 @@ public class ToothActionService {
                     cancellationReason,
                     currentUser
             );
-            if (plannedTreatment.getTreatmentPlanId() != null) {
-                planIdForCompletion = plannedTreatment.getTreatmentPlanId();
+            if (plannedTreatment.getTreatmentPlan() != null) {
+                planIdForCompletion = plannedTreatment.getTreatmentPlan().getId();
             }
         }
         if (planIdForCompletion != null) {
@@ -407,8 +408,8 @@ public class ToothActionService {
             DentalPlannedTreatment plannedTreatment = DentalPlannedTreatment.builder()
                     .patientId(chart.getPatient().getId())
                     .encounterId(chart.getEncounter().getId())
-                    .treatmentPlanId(dto.treatmentPlanId())
-                    .treatmentSessionId(session.getId())
+                    .treatmentPlan(session.getTreatmentPlan())
+                    .treatmentSession(session)
                     .type(PlannedTreatmentType.CURRENT)
                     .visitNumber(visitNumber)
                     .cdtCodeId(dto.cdtCodeId())
@@ -532,6 +533,22 @@ public class ToothActionService {
         }
 
         billDentalItem(item, chart);
+
+        // Billing held the line (eligibility contract limit): send it to Waseel now, in this transaction.
+        if (isWaitingForWaseel(item)) {
+            try {
+                encounterPreAuthorizationSyncService.submitPendingPreAuthorizationOrThrow(chart.getEncounter().getId());
+            } catch (BadRequestAlertException ex) {
+                throw mapPreAuthorizationFailure(ex);
+            }
+        }
+    }
+
+    private boolean isWaitingForWaseel(PatientServiceAndProduct item) {
+        return patientServiceAndProductRepository.findById(item.getId())
+                .map(saved -> saved.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL
+                        && saved.getPreAuthorizationRequestId() == null)
+                .orElse(false);
     }
 
     private void billDentalItem(PatientServiceAndProduct item, DentalChart chart) {
@@ -585,7 +602,9 @@ public class ToothActionService {
                 title
         );
 
-        return new BadRequestAlertException(title, "toothAction", errorKey);
+        BadRequestAlertException mapped = new BadRequestAlertException(title, "toothAction", errorKey);
+        PreAuthorizationReadiness.carryMissingFields(ex, mapped);
+        return mapped;
     }
 
     private DentalChartTooth getTooth(Long toothId) {

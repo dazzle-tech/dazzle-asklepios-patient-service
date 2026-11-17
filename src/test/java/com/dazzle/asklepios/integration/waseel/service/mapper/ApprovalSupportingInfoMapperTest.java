@@ -18,6 +18,7 @@ import com.dazzle.asklepios.repository.DiagnosticOrderTestResultRepository;
 import com.dazzle.asklepios.repository.DiagnosticTestLaboratoryRepository;
 import com.dazzle.asklepios.repository.DiagnosticTestRepository;
 import com.dazzle.asklepios.repository.EncounterAssessmentRepository;
+import com.dazzle.asklepios.repository.EncounterPlanRepository;
 import com.dazzle.asklepios.repository.PatientObservationsComplaintsRepository;
 import com.dazzle.asklepios.repository.ProgressNoteRepository;
 import com.dazzle.asklepios.repository.VitalSignsRepository;
@@ -57,6 +58,7 @@ class ApprovalSupportingInfoMapperTest {
     @Mock private PatientObservationsComplaintsRepository patientObservationsComplaintsRepository;
     @Mock private ProgressNoteRepository progressNoteRepository;
     @Mock private EncounterAssessmentRepository encounterAssessmentRepository;
+    @Mock private EncounterPlanRepository encounterPlanRepository;
     @Mock private DiagnosticOrderRepository diagnosticOrderRepository;
     @Mock private DiagnosticOrderTestRepository diagnosticOrderTestRepository;
     @Mock private DiagnosticOrderTestResultRepository diagnosticOrderTestResultRepository;

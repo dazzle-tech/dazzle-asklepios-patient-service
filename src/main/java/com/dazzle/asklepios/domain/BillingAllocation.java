@@ -150,8 +150,7 @@ public class BillingAllocation extends AbstractAuditingEntity<Long>
     @Column(name = "reversed_by", length = 50)
     private String reversedBy;
 
-    @Size(max = 500)
-    @Column(name = "reversal_reason", length = 500)
+    @Column(name = "reversal_reason", columnDefinition = "text")
     private String reversalReason;
 
     @ManyToOne(fetch = FetchType.LAZY)

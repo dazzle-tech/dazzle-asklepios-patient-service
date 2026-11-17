@@ -48,6 +48,52 @@ public class PreAuthorizationRejectedItemService {
         PatientServiceAndProduct item =
                 requireRejectedItem(encounterId, patientServiceProductId);
 
+        return billPatientChoice(
+                encounterId,
+                item,
+                "PREAUTH-REJECTED-CASH:",
+                "Rejected pre-authorization item repriced as patient cash."
+        );
+    }
+
+    /**
+     * The patient accepts a Waseel partial approval: insurance pays the approved amount and the
+     * patient pays the difference. The other choice, cancelling the service, uses the normal cancel.
+     */
+    @Transactional
+    public BillingOperationResult acceptPartialApproval(
+            Long encounterId,
+            Long patientServiceProductId
+    ) {
+        PatientServiceAndProduct item = requireItemOfEncounter(encounterId, patientServiceProductId);
+
+        if (item.getPreAuthorizationStatus() != PreAuthorizationStatus.PARTIAL
+                || !Boolean.TRUE.equals(item.getPreAuthorizationRequired())) {
+            throw new BadRequestAlertException(
+                    "Only a partial approval waiting for the patient's choice can be accepted.",
+                    "preAuthorization",
+                    "item.notPartial"
+            );
+        }
+
+        return billPatientChoice(
+                encounterId,
+                item,
+                "PREAUTH-PARTIAL-ACCEPTED:",
+                "Partial approval accepted: insurance pays the approved amount, the patient the rest."
+        );
+    }
+
+    /**
+     * Releases the line from the pre-authorization hold and bills it. The billing split reads the
+     * decision: a rejected line is all patient, an accepted partial is capped at the approved amount.
+     */
+    private BillingOperationResult billPatientChoice(
+            Long encounterId,
+            PatientServiceAndProduct item,
+            String requestTagPrefix,
+            String repricedMessage
+    ) {
         if (Boolean.TRUE.equals(item.getIsBilled())) {
             throw new BadRequestAlertException(
                     "Item is already billed.",
@@ -93,19 +139,20 @@ public class PreAuthorizationRejectedItemService {
                                     chargeLine.getInsuranceResponsibilityAmount(),
                                     chargeLine.getReservedAmount(),
                                     true,
-                                    "Rejected pre-authorization item repriced as patient cash."
+                                    repricedMessage
                             );
                         })
                         .orElseGet(() ->
                                 billingEngineService.onItemOrdered(
                                         item.getId(),
                                         facilityId,
-                                        "PREAUTH-REJECTED-CASH:" + item.getId()
+                                        requestTagPrefix + item.getId()
                                 )
                         );
 
         LOG.info(
-                "[PREAUTH_REJECTED_CASH] encounterId={} pspId={} processed={} chargeLineId={}",
+                "[PREAUTH_PATIENT_CHOICE] {} encounterId={} pspId={} processed={} chargeLineId={}",
+                requestTagPrefix,
                 encounterId,
                 item.getId(),
                 result.processed(),
@@ -115,7 +162,7 @@ public class PreAuthorizationRejectedItemService {
         if (!result.processed()) {
             throw new BadRequestAlertException(
                     result.message() == null
-                            ? "Billing did not start for rejected pre-authorization item."
+                            ? "Billing did not start for the pre-authorization item."
                             : result.message(),
                     "preAuthorization",
                     "billing.rejectedCash.failed"
@@ -162,7 +209,7 @@ public class PreAuthorizationRejectedItemService {
         encounterPreAuthorizationSyncService.submitPendingPreAuthorizationOrThrow(encounterId);
     }
 
-    private PatientServiceAndProduct requireRejectedItem(
+    private PatientServiceAndProduct requireItemOfEncounter(
             Long encounterId,
             Long patientServiceProductId
     ) {
@@ -181,6 +228,15 @@ public class PreAuthorizationRejectedItemService {
                     "item.encounterMismatch"
             );
         }
+
+        return item;
+    }
+
+    private PatientServiceAndProduct requireRejectedItem(
+            Long encounterId,
+            Long patientServiceProductId
+    ) {
+        PatientServiceAndProduct item = requireItemOfEncounter(encounterId, patientServiceProductId);
 
         if (!PreAuthorizationResolutionService.isDeclinedByPayer(item)) {
             throw new BadRequestAlertException(

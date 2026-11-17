@@ -24,6 +24,9 @@ public interface ToothActionRepository extends JpaRepository<ToothAction, Long> 
 
     List<DentalChartProjections.ToothIdView> findDistinctByToothIdInAndCancelledFalse(Collection<Long> toothIds);
 
+    /**
+     * Action holding the highest Visit Number among the given chart teeth (including cancelled).
+     */
     Optional<ToothAction> findFirstByToothIdInAndVisitNumberNotNullOrderByVisitNumberDesc(List<Long> toothIds);
 
     List<VisitNumberView> findDistinctByToothIdInAndVisitNumberNotNull(List<Long> toothIds);

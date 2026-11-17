@@ -202,7 +202,7 @@ public class DentalPlannedTreatmentService {
             );
         }
         if (entity.getStatus() == PlannedTreatmentStatus.COMPLETED
-                || entity.getPatientServiceAndProductId() != null) {
+                || entity.getPatientServiceAndProduct() != null) {
             throw new BadRequestAlertException(
                     "Completed planned treatments cannot be started",
                     ENTITY,
@@ -216,7 +216,7 @@ public class DentalPlannedTreatmentService {
         entity.setStatus(PlannedTreatmentStatus.IN_PROGRESS);
         DentalPlannedTreatment saved = dentalPlannedTreatmentRepository.save(entity);
         recordHistory(saved, PlannedTreatmentHistoryAction.IN_PROGRESS);
-        dentalTreatmentPlanService.markInProgressIfAccepted(saved.getTreatmentPlanId());
+        dentalTreatmentPlanService.markInProgressIfAccepted(planIdOf(saved));
         return toDTO(saved);
     }
 
@@ -264,8 +264,8 @@ public class DentalPlannedTreatmentService {
                 financials.discountAmount(),
                 clinicalFrom(dto)
         );
-        entity.setTreatmentPlanId(dto.treatmentPlanId());
-        entity.setTreatmentSessionId(session.getId());
+        entity.setTreatmentPlan(session.getTreatmentPlan());
+        entity.setTreatmentSession(session);
 
         DentalPlannedTreatment saved = dentalPlannedTreatmentRepository.save(entity);
         recordHistory(saved, PlannedTreatmentHistoryAction.CREATED);
@@ -372,8 +372,8 @@ public class DentalPlannedTreatmentService {
                     financials.discountAmount(),
                     clinical
             );
-            row.setTreatmentPlanId(dto.treatmentPlanId());
-            row.setTreatmentSessionId(session.getId());
+            row.setTreatmentPlan(session.getTreatmentPlan());
+            row.setTreatmentSession(session);
             entities.add(row);
         }
 
@@ -398,9 +398,9 @@ public class DentalPlannedTreatmentService {
         );
 
         boolean scopeOrCommercialChanged = commercialChanged(entity, dto, resolved);
-        if (scopeOrCommercialChanged && entity.getTreatmentPlanId() != null) {
+        if (scopeOrCommercialChanged && planIdOf(entity) != null) {
             dentalTreatmentPlanService.returnToProposedForRevision(
-                    entity.getTreatmentPlanId(),
+                    planIdOf(entity),
                     dto.revisionReason()
             );
         }
@@ -413,8 +413,8 @@ public class DentalPlannedTreatmentService {
         entity.setPatientId(dto.patientId());
         entity.setType(dto.type());
         if (session != null) {
-            entity.setTreatmentPlanId(dto.treatmentPlanId());
-            entity.setTreatmentSessionId(session.getId());
+            entity.setTreatmentPlan(session.getTreatmentPlan());
+            entity.setTreatmentSession(session);
             entity.setVisitNumber(session.getSessionNumber());
         }
         entity.setCdtCodeId(dto.cdtCodeId());
@@ -445,7 +445,7 @@ public class DentalPlannedTreatmentService {
             );
         }
         if (entity.getStatus() == PlannedTreatmentStatus.COMPLETED
-                || entity.getPatientServiceAndProductId() != null) {
+                || entity.getPatientServiceAndProduct() != null) {
             throw new BadRequestAlertException(
                     "Completed planned treatments cannot be cancelled",
                     ENTITY,
@@ -470,7 +470,7 @@ public class DentalPlannedTreatmentService {
 
         DentalPlannedTreatment saved = dentalPlannedTreatmentRepository.save(entity);
         recordHistory(saved, PlannedTreatmentHistoryAction.CANCELLED);
-        dentalTreatmentPlanService.evaluateCompletion(saved.getTreatmentPlanId());
+        dentalTreatmentPlanService.evaluateCompletion(planIdOf(saved));
         return toDTO(saved);
     }
 
@@ -483,7 +483,7 @@ public class DentalPlannedTreatmentService {
             return;
         }
         if (entity.getStatus() == PlannedTreatmentStatus.COMPLETED
-                || entity.getPatientServiceAndProductId() != null) {
+                || entity.getPatientServiceAndProduct() != null) {
             return;
         }
         Instant now = Instant.now();
@@ -516,7 +516,7 @@ public class DentalPlannedTreatmentService {
         }
 
         if (entity.getStatus() == PlannedTreatmentStatus.COMPLETED
-                || entity.getPatientServiceAndProductId() != null) {
+                || entity.getPatientServiceAndProduct() != null) {
             return toDTO(entity);
         }
 
@@ -541,7 +541,7 @@ public class DentalPlannedTreatmentService {
         prepareExecution(entity, executionEncounterId);
 
         TreatmentScope scope = effectiveScope(entity);
-        DentalChart chart = requireChart(entity.getExecutionEncounterId());
+        DentalChart chart = requireChart(entity.getExecutionEncounter().getId());
         List<DentalChartTooth> coveredTeeth = resolveExecutionTeeth(entity, chart, scope);
 
         if (scope == TreatmentScope.SPECIFIC_TOOTH && entity.getToothId() == null) {
@@ -604,8 +604,8 @@ public class DentalPlannedTreatmentService {
         DentalPlannedTreatment saved = dentalPlannedTreatmentRepository.save(entity);
         recordHistory(saved, PlannedTreatmentHistoryAction.COMPLETED);
         String chartEffect = plannedTreatmentChartEffectService.apply(saved, coveredTeeth, dentalActionId, currentUser);
-        dentalTreatmentPlanService.markInProgressIfAccepted(saved.getTreatmentPlanId());
-        dentalTreatmentPlanService.evaluateCompletion(saved.getTreatmentPlanId());
+        dentalTreatmentPlanService.markInProgressIfAccepted(planIdOf(saved));
+        dentalTreatmentPlanService.evaluateCompletion(planIdOf(saved));
         LOG.info(
                 "[DENTAL_PLANNED_TREATMENT] Completed clinically id={} scope={} qty={} (billing deferred)",
                 saved.getId(),
@@ -1167,7 +1167,7 @@ public class DentalPlannedTreatmentService {
             );
         }
         if (entity.getStatus() == PlannedTreatmentStatus.COMPLETED
-                || entity.getPatientServiceAndProductId() != null) {
+                || entity.getPatientServiceAndProduct() != null) {
             throw new BadRequestAlertException(
                     "Completed planned treatments cannot be edited",
                     ENTITY,
@@ -1227,7 +1227,7 @@ public class DentalPlannedTreatmentService {
                 .quantity(quantity != null && quantity > 0 ? quantity : 1L)
                 .discount(defaultMoney(discount))
                 .status(PlannedTreatmentStatus.PENDING)
-                .patientServiceAndProductId(null)
+                .patientServiceAndProduct(null)
                 .cancelled(false)
                 .build();
     }
@@ -1413,7 +1413,7 @@ public class DentalPlannedTreatmentService {
     }
 
     private void prepareExecution(DentalPlannedTreatment entity, Long executionEncounterId) {
-        if (entity.getTreatmentPlanId() == null) {
+        if (planIdOf(entity) == null) {
             throw new BadRequestAlertException(
                     "This treatment is not linked to a treatment plan",
                     ENTITY,
@@ -1424,15 +1424,15 @@ public class DentalPlannedTreatmentService {
             requireSavedGroupedCoverage(entity);
         }
         Long encounterId = executionEncounterId != null ? executionEncounterId : entity.getEncounterId();
-        dentalTreatmentPlanService.requireExecutable(entity.getTreatmentPlanId(), entity.getPatientId());
+        dentalTreatmentPlanService.requireExecutable(planIdOf(entity), entity.getPatientId());
         PatientEncounter executionEncounter =
                 dentalTreatmentPlanService.requireEncounterForPatient(encounterId, entity.getPatientId());
         DentalChart chart = requireChart(encounterId);
         // Serialize with inventory saves on the execution chart (they re-check tooth protection under this lock).
         dentalChartRepository.findByIdForUpdate(chart.getId());
         resolveExecutionTeeth(entity, chart, effectiveScope(entity));
-        if (entity.getExecutionEncounterId() == null) {
-            entity.setExecutionEncounterId(encounterId);
+        if (entity.getExecutionEncounter() == null) {
+            entity.setExecutionEncounter(executionEncounter);
         }
     }
 
@@ -1561,6 +1561,10 @@ public class DentalPlannedTreatmentService {
                 ));
     }
 
+    private static Long planIdOf(DentalPlannedTreatment entity) {
+        return entity.getTreatmentPlan() != null ? entity.getTreatmentPlan().getId() : null;
+    }
+
     private void recordHistory(DentalPlannedTreatment entity, PlannedTreatmentHistoryAction action) {
         recordHistory(entity, action, null, null, null);
     }
@@ -1572,7 +1576,7 @@ public class DentalPlannedTreatmentService {
             PlannedTreatmentStatus newStatus,
             String reason
     ) {
-        if (entity.getTreatmentPlanId() == null || entity.getId() == null) {
+        if (planIdOf(entity) == null || entity.getId() == null) {
             return;
         }
         String toothLabel = null;
@@ -1585,7 +1589,7 @@ public class DentalPlannedTreatmentService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated."));
         dentalPlannedTreatmentStatusLogRepository.save(DentalPlannedTreatmentStatusLog.builder()
                 .plannedTreatmentId(entity.getId())
-                .treatmentPlanId(entity.getTreatmentPlanId())
+                .treatmentPlanId(planIdOf(entity))
                 .toothId(entity.getToothId())
                 .toothLabel(toothLabel)
                 .action(action)
