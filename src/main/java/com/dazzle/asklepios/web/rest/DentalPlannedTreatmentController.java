@@ -1,16 +1,20 @@
 package com.dazzle.asklepios.web.rest;
 
+import com.dazzle.asklepios.security.AuthoritiesConstants;
 import com.dazzle.asklepios.service.DentalPlannedTreatmentService;
 import com.dazzle.asklepios.service.dto.dentalChart.DentalTreatmentPlanResponseDTO;
 import com.dazzle.asklepios.service.dto.dentalChart.PlannedTreatmentBatchSaveDTO;
 import com.dazzle.asklepios.service.dto.dentalChart.PlannedTreatmentCancelDTO;
+import com.dazzle.asklepios.service.dto.dentalChart.PlannedTreatmentCompleteDTO;
 import com.dazzle.asklepios.service.dto.dentalChart.PlannedTreatmentDTO;
 import com.dazzle.asklepios.service.dto.dentalChart.PlannedTreatmentExecutionDTO;
+import com.dazzle.asklepios.service.dto.dentalChart.PlannedTreatmentReturnDTO;
 import com.dazzle.asklepios.service.dto.dentalChart.PlannedTreatmentSaveDTO;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.net.URI;
 import java.util.List;
 
 @RestController
@@ -67,7 +72,7 @@ public class DentalPlannedTreatmentController {
         LOG.debug("REST create planned treatment payload={}", dto);
         PlannedTreatmentDTO saved = dentalPlannedTreatmentService.createPlannedTreatment(dto);
         return ResponseEntity
-                .created(java.net.URI.create("/api/patient/dental/treatment-plan/" + saved.id()))
+                .created(URI.create("/api/patient/dental/treatment-plan/" + saved.id()))
                 .body(saved);
     }
 
@@ -78,7 +83,7 @@ public class DentalPlannedTreatmentController {
         LOG.debug("REST create planned treatment batch toothCount={}", dto.toothIds() != null ? dto.toothIds().size() : 0);
         List<PlannedTreatmentDTO> saved = dentalPlannedTreatmentService.createPlannedTreatmentsBatch(dto);
         return ResponseEntity
-                .created(java.net.URI.create("/api/patient/dental/treatment-plan/batch"))
+                .created(URI.create("/api/patient/dental/treatment-plan/batch"))
                 .body(saved);
     }
 
@@ -105,11 +110,24 @@ public class DentalPlannedTreatmentController {
     @PostMapping("/dental/treatment-plan/{id}/complete")
     public ResponseEntity<PlannedTreatmentDTO> completePlannedTreatment(
             @PathVariable Long id,
-            @Valid @RequestBody PlannedTreatmentExecutionDTO dto
+            @Valid @RequestBody PlannedTreatmentCompleteDTO dto
     ) {
         LOG.debug("REST complete planned treatment id={}", id);
         return ResponseEntity.ok(
-                dentalPlannedTreatmentService.completePlannedTreatment(id, dto.executionEncounterId())
+                dentalPlannedTreatmentService.completePlannedTreatment(id, dto.executionEncounterId(), dto.dentalActionId())
+        );
+    }
+
+    /** Returns one completed treatment item to In Progress and reverses its completion's chart effect. */
+    @PreAuthorize("isAuthenticated() and !hasAuthority('" + AuthoritiesConstants.PATIENT + "')")
+    @PostMapping("/dental/treatment-plan/{id}/return-to-in-progress")
+    public ResponseEntity<PlannedTreatmentDTO> returnToInProgress(
+            @PathVariable Long id,
+            @Valid @RequestBody PlannedTreatmentReturnDTO dto
+    ) {
+        LOG.debug("REST return planned treatment to in progress id={}", id);
+        return ResponseEntity.ok(
+                dentalPlannedTreatmentService.returnToInProgress(id, dto.encounterId(), dto.reason())
         );
     }
 }

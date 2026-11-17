@@ -19,7 +19,7 @@ public record PlannedTreatmentBatchSaveDTO(
         @NotNull Long encounterId,
         @NotNull PlannedTreatmentType type,
         Integer visitNumber,
-        @NotNull Long cdtCodeId,
+        Long cdtCodeId,
         @NotEmpty List<Long> toothIds,
         String note,
         ToothSurface surface,

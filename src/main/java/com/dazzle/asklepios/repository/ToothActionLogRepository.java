@@ -8,6 +8,4 @@ import java.util.List;
 public interface ToothActionLogRepository extends JpaRepository<ToothActionLog, Long> {
 
     List<ToothActionLog> findByToothIdOrderByLogTimeDesc(Long toothId);
-
-    List<ToothActionLog> findByToothIdInOrderByLogTimeDesc(List<Long> toothIds);
 }

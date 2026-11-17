@@ -52,6 +52,18 @@ public class ToothAction extends AbstractAuditingEntity<Long> implements Seriali
     private boolean existing = false;
 
     /**
+     * For a finding carried forward from an earlier chart: id of the original action it was copied from
+     * (always the root origin, never a copy). The row's own createdBy/createdDate are the carry-forward
+     * event; the original recorder/date are read from the origin action.
+     */
+    @Column(name = "carried_from_action_id")
+    private Long carriedFromActionId;
+
+    /** Planned treatment whose completion recorded this action on the chart (null for manually charted actions). */
+    @Column(name = "source_planned_treatment_id")
+    private Long sourcePlannedTreatmentId;
+
+    /**
      * Patient-scoped Visit Number for Existing chart treatments shown in Treatment Plan.
      * Assigned by {@code DentalVisitNumberService}; not a billable plan field.
      */

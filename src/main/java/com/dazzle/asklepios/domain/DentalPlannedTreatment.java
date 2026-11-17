@@ -69,8 +69,7 @@ public class DentalPlannedTreatment extends AbstractAuditingEntity<Long> impleme
     @Column(name = "visit_number")
     private Integer visitNumber;
 
-    @NotNull
-    @Column(name = "cdt_code_id", nullable = false)
+    @Column(name = "cdt_code_id")
     private Long cdtCodeId;
 
     @Column(name = "tooth_id")

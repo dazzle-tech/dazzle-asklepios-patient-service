@@ -1,9 +1,14 @@
 package com.dazzle.asklepios.web.rest;
 
+import com.dazzle.asklepios.security.AuthoritiesConstants;
+import com.dazzle.asklepios.service.DentalChartInventoryService;
 import com.dazzle.asklepios.service.DentalChartProgressNoteService;
 import com.dazzle.asklepios.service.DentalChartService;
 import com.dazzle.asklepios.service.ToothActionService;
 import com.dazzle.asklepios.service.ToothServiceAttachmentService;
+import com.dazzle.asklepios.service.dto.dentalChart.ChartInventoryAuditDTO;
+import com.dazzle.asklepios.service.dto.dentalChart.ChartInventoryResultDTO;
+import com.dazzle.asklepios.service.dto.dentalChart.ChartInventoryUpdateDTO;
 import com.dazzle.asklepios.service.dto.dentalChart.ChartUpdateDTO;
 import com.dazzle.asklepios.service.dto.dentalChart.DentalChartResponseDTO;
 import com.dazzle.asklepios.service.dto.dentalChart.ProgressNoteDTO;
@@ -16,6 +21,7 @@ import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -37,17 +43,20 @@ public class DentalChartController {
     private final ToothActionService toothActionService;
     private final ToothServiceAttachmentService toothServiceAttachmentService;
     private final DentalChartProgressNoteService dentalChartProgressNoteService;
+    private final DentalChartInventoryService dentalChartInventoryService;
 
     public DentalChartController(
             DentalChartService dentalChartService,
             ToothActionService toothActionService,
             ToothServiceAttachmentService toothServiceAttachmentService,
-            DentalChartProgressNoteService dentalChartProgressNoteService
+            DentalChartProgressNoteService dentalChartProgressNoteService,
+            DentalChartInventoryService dentalChartInventoryService
     ) {
         this.dentalChartService = dentalChartService;
         this.toothActionService = toothActionService;
         this.toothServiceAttachmentService = toothServiceAttachmentService;
         this.dentalChartProgressNoteService = dentalChartProgressNoteService;
+        this.dentalChartInventoryService = dentalChartInventoryService;
     }
 
     @GetMapping("/charts/by-encounter/{encounterId}")
@@ -77,6 +86,24 @@ public class DentalChartController {
     ) {
         LOG.debug("REST update dental chart id={} payload={}", chartId, dto);
         return ResponseEntity.ok(dentalChartService.updateChart(chartId, dto));
+    }
+
+    /** Saves one inventory batch (add / remove / replace) with one reason; atomic with its audit rows. */
+    @PreAuthorize("isAuthenticated() and !hasAuthority('" + AuthoritiesConstants.PATIENT + "')")
+    @PostMapping("/charts/{chartId}/inventory")
+    public ResponseEntity<ChartInventoryResultDTO> updateInventory(
+            @PathVariable Long chartId,
+            @Valid @RequestBody ChartInventoryUpdateDTO dto
+    ) {
+        LOG.debug("REST update dental chart inventory chartId={} changes={}", chartId, dto.changes().size());
+        return ResponseEntity.ok(dentalChartInventoryService.updateInventory(chartId, dto));
+    }
+
+    @PreAuthorize("isAuthenticated() and !hasAuthority('" + AuthoritiesConstants.PATIENT + "')")
+    @GetMapping("/charts/{chartId}/inventory-history")
+    public ResponseEntity<List<ChartInventoryAuditDTO>> getInventoryHistory(@PathVariable Long chartId) {
+        LOG.debug("REST get dental chart inventory history chartId={}", chartId);
+        return ResponseEntity.ok(dentalChartInventoryService.getInventoryHistory(chartId));
     }
 
     @PostMapping("/tooth-actions")

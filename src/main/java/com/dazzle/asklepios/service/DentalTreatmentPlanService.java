@@ -19,8 +19,8 @@ import com.dazzle.asklepios.service.dto.dentalChart.DentalTreatmentPlanStatusLog
 import com.dazzle.asklepios.service.dto.dentalChart.DentalTreatmentPlanSummaryDTO;
 import com.dazzle.asklepios.service.dto.dentalChart.DentalTreatmentSessionDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.ConflictAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
-import jakarta.persistence.EntityManager;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -38,7 +38,6 @@ import java.util.UUID;
 public class DentalTreatmentPlanService {
 
     private static final String ENTITY = "dentalTreatmentPlan";
-    private static final long PLAN_LOCK_SALT = 0x4454504CL;
 
     private static final EnumSet<DentalTreatmentPlanStatus> EDITABLE =
             EnumSet.of(DentalTreatmentPlanStatus.DRAFT, DentalTreatmentPlanStatus.PROPOSED);
@@ -57,7 +56,6 @@ public class DentalTreatmentPlanService {
     private final DentalTreatmentPlanStatusLogRepository statusLogRepository;
     private final DentalPlannedTreatmentRepository treatmentRepository;
     private final PatientEncounterRepository patientEncounterRepository;
-    private final EntityManager entityManager;
     private final DentalPlannedTreatmentService dentalPlannedTreatmentService;
 
     public DentalTreatmentPlanService(
@@ -66,7 +64,6 @@ public class DentalTreatmentPlanService {
             DentalTreatmentPlanStatusLogRepository statusLogRepository,
             DentalPlannedTreatmentRepository treatmentRepository,
             PatientEncounterRepository patientEncounterRepository,
-            EntityManager entityManager,
             @Lazy DentalPlannedTreatmentService dentalPlannedTreatmentService
     ) {
         this.planRepository = planRepository;
@@ -74,7 +71,6 @@ public class DentalTreatmentPlanService {
         this.statusLogRepository = statusLogRepository;
         this.treatmentRepository = treatmentRepository;
         this.patientEncounterRepository = patientEncounterRepository;
-        this.entityManager = entityManager;
         this.dentalPlannedTreatmentService = dentalPlannedTreatmentService;
     }
 
@@ -90,10 +86,7 @@ public class DentalTreatmentPlanService {
 
     public DentalTreatmentPlanSummaryDTO create(DentalTreatmentPlanSaveDTO dto) {
         PatientEncounter encounter = requireEncounterForPatient(dto.originEncounterId(), dto.patientId());
-        String title = dto.title() == null ? "" : dto.title().trim();
-        if (title.isEmpty()) {
-            throw new BadRequestAlertException("Title is required", ENTITY, "titleRequired");
-        }
+        String title = requiredTitle(dto);
 
         DentalTreatmentPlan plan = DentalTreatmentPlan.builder()
                 .planNumber(temporaryPlanNumber())
@@ -122,10 +115,7 @@ public class DentalTreatmentPlanService {
         }
         PatientEncounter originEncounter =
                 requireEncounterForPatient(dto.originEncounterId(), plan.getPatientId());
-        String title = dto.title() == null ? "" : dto.title().trim();
-        if (title.isEmpty()) {
-            throw new BadRequestAlertException("Title is required", ENTITY, "titleRequired");
-        }
+        String title = requiredTitle(dto);
         plan.setOriginEncounter(originEncounter);
         plan.setTitle(title);
         plan.setNotes(blankToNull(dto.notes()));
@@ -152,9 +142,8 @@ public class DentalTreatmentPlanService {
      * Numbers start at 1 and are independent per plan. Serialized per plan.
      */
     public DentalTreatmentSession resolveSession(Long planId, Long sessionId, boolean createNew) {
-        DentalTreatmentPlan plan = getPlan(planId);
+        DentalTreatmentPlan plan = getPlanForUpdate(planId);
         assertAcceptsTreatments(plan);
-        lockPlan(planId);
         if (sessionId != null) {
             DentalTreatmentSession session = sessionRepository.findById(sessionId)
                     .orElseThrow(() -> new NotFoundAlertException(
@@ -328,6 +317,44 @@ public class DentalTreatmentPlanService {
     }
 
     /**
+     * A completed treatment returned to In Progress reopens its plan through the normal lifecycle:
+     * a Completed plan goes back to In Progress (logged with the reason), an Accepted plan starts.
+     * Plans that are on hold, cancelled or not yet accepted are rejected before anything changes.
+     */
+    public void reopenForReturnedTreatment(Long planId, Long patientId, String reason) {
+        DentalTreatmentPlan plan = getPlanForUpdate(planId);
+        if (!Objects.equals(plan.getPatientId(), patientId)) {
+            throw new BadRequestAlertException(
+                    "Treatment plan does not belong to this patient",
+                    ENTITY,
+                    "planPatientMismatch"
+            );
+        }
+        switch (plan.getStatus()) {
+            case IN_PROGRESS -> {
+                // Already open.
+            }
+            case ACCEPTED -> transition(plan, DentalTreatmentPlanStatus.IN_PROGRESS, null);
+            case COMPLETED -> {
+                plan.setCompletedAt(null);
+                plan.setCompletedBy(null);
+                transition(plan, DentalTreatmentPlanStatus.IN_PROGRESS, reason);
+            }
+            case ON_HOLD -> throw new BadRequestAlertException(
+                    "This plan is on hold. Resume it before returning a treatment to In Progress.",
+                    ENTITY,
+                    "planOnHold"
+            );
+            default -> throw new ConflictAlertException(
+                    "Treatments of a " + plan.getStatus().name().toLowerCase().replace('_', ' ')
+                            + " plan cannot be returned to In Progress.",
+                    ENTITY,
+                    "planNotReopenable"
+            );
+        }
+    }
+
+    /**
      * Completes the plan when every non-cancelled treatment is completed
      * and at least one treatment is genuinely completed.
      */
@@ -345,12 +372,8 @@ public class DentalTreatmentPlanService {
         if (active.isEmpty()) {
             return;
         }
-        boolean allCompleted = active.stream().allMatch(t ->
-                t.getStatus() == PlannedTreatmentStatus.COMPLETED
-                        || t.getPatientServiceAndProduct() != null);
-        boolean anyCompleted = active.stream().anyMatch(t ->
-                t.getStatus() == PlannedTreatmentStatus.COMPLETED
-                        || t.getPatientServiceAndProduct() != null);
+        boolean allCompleted = active.stream().allMatch(DentalTreatmentPlanService::isDone);
+        boolean anyCompleted = active.stream().anyMatch(DentalTreatmentPlanService::isDone);
         if (allCompleted && anyCompleted) {
             plan.setCompletedBy(currentUser());
             plan.setCompletedAt(Instant.now());
@@ -459,8 +482,7 @@ public class DentalTreatmentPlanService {
                 continue;
             }
             active++;
-            if (row.getStatus() == PlannedTreatmentStatus.COMPLETED
-                    || row.getPatientServiceAndProduct() != null) {
+            if (isDone(row)) {
                 completed++;
             }
         }
@@ -495,10 +517,14 @@ public class DentalTreatmentPlanService {
         return "DTP-" + String.format("%05d", planId);
     }
 
-    private void lockPlan(Long planId) {
-        entityManager.createNativeQuery("SELECT pg_advisory_xact_lock(:lockKey)")
-                .setParameter("lockKey", PLAN_LOCK_SALT ^ planId)
-                .getSingleResult();
+    /** Loads the plan under a row lock held to the end of the transaction (serializes per plan). */
+    private DentalTreatmentPlan getPlanForUpdate(Long id) {
+        return planRepository.findForUpdateById(id)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Treatment plan not found: " + id,
+                        ENTITY,
+                        "notfound"
+                ));
     }
 
     private DentalTreatmentPlan getPlan(Long id) {
@@ -508,6 +534,20 @@ public class DentalTreatmentPlanService {
                         ENTITY,
                         "notfound"
                 ));
+    }
+
+    private String requiredTitle(DentalTreatmentPlanSaveDTO dto) {
+        String title = dto.title() == null ? "" : dto.title().trim();
+        if (title.isEmpty()) {
+            throw new BadRequestAlertException("Title is required", ENTITY, "titleRequired");
+        }
+        return title;
+    }
+
+    /** Completed through the plan, or already charged through the patient service record. */
+    private static boolean isDone(DentalPlannedTreatment treatment) {
+        return treatment.getStatus() == PlannedTreatmentStatus.COMPLETED
+                || treatment.getPatientServiceAndProduct() != null;
     }
 
     private String requiredReason(DentalTreatmentPlanReasonDTO dto) {

@@ -4,5 +4,6 @@ public enum PlannedTreatmentHistoryAction {
     CREATED,
     IN_PROGRESS,
     COMPLETED,
-    CANCELLED
+    CANCELLED,
+    RETURNED_TO_IN_PROGRESS
 }

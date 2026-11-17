@@ -126,12 +126,21 @@ public class ToothActionService {
     }
 
     public DentalChartResponseDTO saveToothAction(ToothActionSaveDTO dto) {
+        // Serialize with inventory saves on this chart so a tooth cannot be removed while work is recorded on it.
+        dentalChartService.lockChartOfTooth(dto.toothId());
         DentalChartTooth tooth = getTooth(dto.toothId());
         if (tooth.isMissing()) {
             throw new BadRequestAlertException(
                     "Cannot modify a missing tooth",
                     "toothAction",
                     "toothMissing"
+            );
+        }
+        if (!tooth.isActiveInventory()) {
+            throw new BadRequestAlertException(
+                    "This tooth was removed or replaced in the chart inventory. Its history is kept, but new actions cannot be recorded on it.",
+                    "toothAction",
+                    "toothNotActive"
             );
         }
 
@@ -248,6 +257,7 @@ public class ToothActionService {
                     "alreadyCancelled"
             );
         }
+        rejectIfLinkedToCompletedTreatment(toothAction);
         if (cancellationReason == null || cancellationReason.trim().isEmpty()) {
             throw new BadRequestAlertException(
                     "Cancellation reason is required",
@@ -315,6 +325,31 @@ public class ToothActionService {
 
         DentalChartTooth tooth = getTooth(toothAction.getToothId());
         return dentalChartService.getChartById(tooth.getChartId());
+    }
+
+    /**
+     * A chart action that records a completed treatment (recorded by its completion, or the action it was
+     * planned from) cannot be cancelled on its own, so the chart and the completed plan never contradict.
+     * Carried-forward copies on later charts are separate findings and are not covered.
+     */
+    private void rejectIfLinkedToCompletedTreatment(ToothAction toothAction) {
+        boolean completed = false;
+        if (toothAction.getSourcePlannedTreatmentId() != null && toothAction.getCarriedFromActionId() == null) {
+            completed = dentalPlannedTreatmentRepository.findById(toothAction.getSourcePlannedTreatmentId())
+                    .filter(p -> !p.isCancelled() && p.getStatus() == PlannedTreatmentStatus.COMPLETED)
+                    .isPresent();
+        }
+        if (!completed) {
+            completed = dentalPlannedTreatmentRepository.findByToothActionIdAndCancelledFalse(toothAction.getId()).stream()
+                    .anyMatch(p -> p.getStatus() == PlannedTreatmentStatus.COMPLETED);
+        }
+        if (completed) {
+            throw new BadRequestAlertException(
+                    "This chart action records a completed treatment and cannot be cancelled on its own.",
+                    "toothAction",
+                    "linkedToCompletedTreatment"
+            );
+        }
     }
 
     private void handleCdtFanOut(

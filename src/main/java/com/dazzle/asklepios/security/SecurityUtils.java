@@ -138,6 +138,22 @@ public final class SecurityUtils {
         return hasCurrentUserAnyOfAuthorities(authority);
     }
 
+    /**
+     * True for a patient-portal login. Checks the granted authorities and, like SurveyService, the
+     * space-separated "auth" claim of the JWT, because the claim is where the portal token carries ROLE_PATIENT.
+     */
+    public static boolean isPatientPortalUser() {
+        if (hasCurrentUserThisAuthority(AuthoritiesConstants.PATIENT)) {
+            return true;
+        }
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.getPrincipal() instanceof Jwt jwt) {
+            String claim = jwt.getClaimAsString(AUTHORITIES_CLAIM);
+            return claim != null && Arrays.asList(claim.split(" ")).contains(AuthoritiesConstants.PATIENT);
+        }
+        return false;
+    }
+
     private static Stream<String> getAuthorities(Authentication authentication) {
         return authentication.getAuthorities().stream().map(GrantedAuthority::getAuthority);
     }

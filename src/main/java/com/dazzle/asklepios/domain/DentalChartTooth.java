@@ -1,7 +1,10 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.DentalChartToothInventoryStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -43,4 +46,16 @@ public class DentalChartTooth extends AbstractAuditingEntity<Long> implements Se
 
     @Column(name = "missing", nullable = false)
     private boolean missing = false;
+
+    /** ACTIVE teeth form the chart inventory; REMOVED/REPLACED rows are kept for their clinical references. */
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    @Column(name = "inventory_status", nullable = false, length = 20)
+    @Builder.Default
+    private DentalChartToothInventoryStatus inventoryStatus = DentalChartToothInventoryStatus.ACTIVE;
+
+    /** Rows loaded before the column existed have no status and count as ACTIVE. */
+    public boolean isActiveInventory() {
+        return inventoryStatus == null || inventoryStatus == DentalChartToothInventoryStatus.ACTIVE;
+    }
 }

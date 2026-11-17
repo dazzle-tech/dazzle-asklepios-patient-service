@@ -14,7 +14,7 @@ public record PlannedTreatmentSaveDTO(
         @NotNull Long encounterId,
         @NotNull PlannedTreatmentType type,
         Integer visitNumber,
-        @NotNull Long cdtCodeId,
+        Long cdtCodeId,
         Long toothId,
         TreatmentScope treatmentScope,
         List<Long> coveredToothIds,
