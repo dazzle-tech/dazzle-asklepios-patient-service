@@ -239,7 +239,7 @@ nahdi:
   base-url: ${NAHDI_BASE_URL:https://m2.nahdi.sa/ProvidersIntegration/Home}
   provider-id: ${NAHDI_PROVIDER_ID:9999}
   provider-token: ${NAHDI_PROVIDER_TOKEN:56a84e8e04b411ec9a0er30242ac130003}
-  timeout-seconds: ${NAHDI_TIMEOUT_SECONDS:30}
+  timeout-seconds: ${NAHDI_TIMEOUT_SECONDS:60}
   send-prescription-endpoint: ${NAHDI_SEND_PRESCRIPTION_ENDPOINT:/SendPrescription_clinics}
   # Fixed codes sent in the SendPrescription payload (values from the Nahdi sample)
   prescription:
