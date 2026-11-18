@@ -42,6 +42,7 @@ import com.dazzle.asklepios.integration.nahdi.dto.prescription.NahdiPrescription
 import com.dazzle.asklepios.integration.nahdi.dto.prescription.NahdiPrescriptionHead;
 import com.dazzle.asklepios.integration.nahdi.dto.prescription.NahdiPrescriptionItem;
 import com.dazzle.asklepios.integration.nahdi.dto.prescription.NahdiSendPrescriptionRequest;
+import com.dazzle.asklepios.service.PrescriptionQuantityCalculator;
 import com.dazzle.asklepios.repository.ApLovValueRepository;
 import com.dazzle.asklepios.repository.BodyMeasurementsRepository;
 import com.dazzle.asklepios.repository.ChiefComplainRepository;
@@ -110,6 +111,7 @@ public class NahdiPrescriptionMapper {
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final PractitionerClient practitionerClient;
     private final PrescriptionInstructionClient prescriptionInstructionClient;
+    private final PrescriptionQuantityCalculator prescriptionQuantityCalculator;
     private final ICDTreeClient icdTreeClient;
     private final BrandMedicationClient brandMedicationClient;
     private final PharmaceuticalClient pharmaceuticalClient;
@@ -268,13 +270,27 @@ public class NahdiPrescriptionMapper {
                         brand == null ? null : brand.name(),
                         activeIngredient == null ? null : activeIngredient.name(),
                         medication.getOtherMedicationName()))
-                .qty(serviceAndProduct == null || serviceAndProduct.getQuantity() == null ? null : BigDecimal.valueOf(serviceAndProduct.getQuantity()))
+                .qty(toQuantity(medication, serviceAndProduct))
                 .dose(toDoseText(medication))
                 .price(text(price))
                 .appStatus(PrescriptionStatus.CANCELLED.equals(medication.getStatus())
                         ? nahdiProperties.prescription().itemCancelledStatus()
                         : nahdiProperties.prescription().itemApprovalStatus())
                 .build();
+    }
+
+    /**
+     * Quantity on the line (calculated or entered by the doctor); for older lines without one, the billing line's
+     * quantity, otherwise calculated from dose x frequency x duration.
+     */
+    private BigDecimal toQuantity(PatientPrescriptionMedication medication, PatientServiceAndProduct serviceAndProduct) {
+        if (medication.getQuantity() != null) {
+            return medication.getQuantity();
+        }
+        if (serviceAndProduct != null && serviceAndProduct.getQuantity() != null) {
+            return BigDecimal.valueOf(serviceAndProduct.getQuantity());
+        }
+        return prescriptionQuantityCalculator.calculate(medication);
     }
 
     private record ItemCode(String type, String code) {}

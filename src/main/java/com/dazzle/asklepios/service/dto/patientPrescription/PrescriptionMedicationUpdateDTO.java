@@ -23,6 +23,7 @@ public class PrescriptionMedicationUpdateDTO {
     public Boolean chronicMedication;
     public BigDecimal duration;
     public String durationType;
+    public BigDecimal quantity;
 
     public BigDecimal maximumDose;
     public Boolean allowedSubstitute;

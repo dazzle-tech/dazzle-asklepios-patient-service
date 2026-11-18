@@ -80,6 +80,10 @@ public class PatientPrescriptionMedication extends AbstractAuditingEntity<Long> 
     @Column(name = "duration_type", length = 50)
     private String durationType;
 
+    // Quantity to dispense (e.g. 7 tablets), filled from dose x frequency x duration and editable by the doctor.
+    @Column(name = "quantity", precision = 10, scale = 2)
+    private BigDecimal quantity;
+
     @Column(name = "chronic_medication", nullable = false)
     private Boolean chronicMedication = false;
 

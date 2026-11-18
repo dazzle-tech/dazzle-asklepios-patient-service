@@ -28,6 +28,8 @@ public class PrescriptionMedicationCreateDTO {
     public Boolean chronicMedication;
     public BigDecimal duration;
     public String durationType;
+    // When empty it is calculated from dose x frequency x duration.
+    public BigDecimal quantity;
 
     public BigDecimal maximumDose;
     public Boolean allowedSubstitute;

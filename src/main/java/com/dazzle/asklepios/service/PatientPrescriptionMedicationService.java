@@ -45,6 +45,7 @@ public class PatientPrescriptionMedicationService {
     private final ICDTreeHelper icdTreeHelper;
     private final PatientServiceAndProductService patientServiceAndProductService;
     private final ReopenSessionAuditContext reopenSessionAuditContext;
+    private final PrescriptionQuantityCalculator prescriptionQuantityCalculator;
     private final SubmittedPrescriptionEditPolicy submittedPrescriptionEditPolicy;
 
     public PatientPrescriptionMedication create(PrescriptionMedicationCreateDTO prescriptionMedicationCreateDTO) {
@@ -89,6 +90,7 @@ public class PatientPrescriptionMedicationService {
                 .chronicMedication(prescriptionMedicationCreateDTO.chronicMedication)
                 .duration(prescriptionMedicationCreateDTO.duration)
                 .durationType(prescriptionMedicationCreateDTO.durationType)
+                .quantity(prescriptionMedicationCreateDTO.quantity)
                 .maximumDose(prescriptionMedicationCreateDTO.maximumDose)
                 .allowedSubstitute(prescriptionMedicationCreateDTO.allowedSubstitute)
                 .indicationManually(prescriptionMedicationCreateDTO.indicationManually)
@@ -104,6 +106,9 @@ public class PatientPrescriptionMedicationService {
                 // A medication added to an already submitted prescription is part of it (sent on the next resend).
                 .status(PrescriptionStatus.SUBMITTED.equals(header.getStatus()) ? PrescriptionStatus.SUBMITTED : PrescriptionStatus.DRAFT)
                 .build();
+        if (entity.getQuantity() == null) {
+            entity.setQuantity(prescriptionQuantityCalculator.calculate(entity));
+        }
 
         reopenSessionAuditContext.applyOpenSession(header.getEncounterId());
         PatientPrescriptionMedication saved = patientPrescriptionMedicationRepository.saveAndFlush(entity);
@@ -147,6 +152,9 @@ public class PatientPrescriptionMedicationService {
             if (prescriptionMedicationUpdateDTO.durationType != null)
                 entity.setDurationType(prescriptionMedicationUpdateDTO.durationType);
         }
+
+        if (prescriptionMedicationUpdateDTO.quantity != null)
+            entity.setQuantity(prescriptionMedicationUpdateDTO.quantity);
 
         if (prescriptionMedicationUpdateDTO.maximumDose != null)
             entity.setMaximumDose(prescriptionMedicationUpdateDTO.maximumDose);
