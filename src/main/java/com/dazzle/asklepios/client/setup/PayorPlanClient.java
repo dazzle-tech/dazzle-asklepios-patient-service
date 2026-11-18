@@ -14,9 +14,9 @@ public interface PayorPlanClient {
     @GetMapping("/api/setup/payor-plan/{id}")
     ResponseEntity<Void> existsPayorPlan(@PathVariable("id") @NotNull Long payorPlanId );
 
-    @GetMapping("/api/setup/payor-plan/cchi/by-payor/{payorId}/waseel-plan/{waseelPlanId}")
+    @GetMapping("/api/setup/payor-plan/cchi/by-payer/{payerId}/waseel-plan/{waseelPlanId}")
     PayorPlanDTO getPayorPlanByWaseelPlanId(
-            @PathVariable Long payorId,
+            @PathVariable("payerId") Long payerId,
             @PathVariable String waseelPlanId
     );
 
@@ -24,9 +24,9 @@ public interface PayorPlanClient {
     @GetMapping("/api/setup/payor-plan/{id}")
     PayorPlanDTO getPayorPlanById(@PathVariable("id") @NotNull Long payorPlanId);
 
-    @GetMapping("/api/setup/payor-plan/cchi/by-payor/{payorId}/match")
+    @GetMapping("/api/setup/payor-plan/cchi/by-payer/{payerId}/match")
     PayorPlanDTO getPayorPlanByCchiMatch(
-            @PathVariable("payorId") Long payorId,
+            @PathVariable("payerId") Long payerId,
             @RequestParam(required = false) String coverageType,
             @RequestParam(required = false) String networkId,
             @RequestParam(required = false) String policyClassName

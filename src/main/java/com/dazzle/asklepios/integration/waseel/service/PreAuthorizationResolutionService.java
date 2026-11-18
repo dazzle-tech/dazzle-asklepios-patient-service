@@ -937,10 +937,7 @@ public class PreAuthorizationResolutionService {
     private Long resolvePriceListPayerId(
             PatientInsurance insurance
     ) {
-        return nphiesPayerHelper.resolvePriceListPayerId(
-                insurance.getPayorId(),
-                insurance.getPayerNphiesId()
-        );
+        return nphiesPayerHelper.resolvePayerId(insurance);
     }
 
     private boolean requiresPreAuthorizationFromPayorPlan(

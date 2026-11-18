@@ -8,5 +8,7 @@ public record NphiesPayerDTO(
         String nphiesId,
         String nameEn,
         String nameAr,
-        Boolean isActive
+        Boolean isActive,
+        String waseelPayerId,
+        Boolean isWaseelEnabled
 ) {}

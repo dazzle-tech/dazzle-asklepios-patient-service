@@ -43,8 +43,13 @@ public class PatientInsurance extends AbstractAuditingEntity<Long> {
     @JsonIgnore
     private Patient patient;
 
-    @Column(name = "payor_id", nullable = false)
+    // legacy payor row; optional, kept until payor is dropped
+    @Column(name = "payor_id")
     private Long payorId;
+
+    /** payers.id (formerly nphies_payers); the payer this insurance belongs to. */
+    @Column(name = "nphies_payer_id")
+    private Long nphiesPayerId;
 
     @Column(name = "plan_id")
     private Long planId;

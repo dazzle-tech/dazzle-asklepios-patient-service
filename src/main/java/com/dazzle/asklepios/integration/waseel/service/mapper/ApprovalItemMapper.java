@@ -463,12 +463,7 @@ public class ApprovalItemMapper {
         try {
             return patientInsuranceRepository
                     .findById(encounter.getPatientInsuranceId())
-                    .map(insurance ->
-                            nphiesPayerHelper.resolvePriceListPayerId(
-                                    insurance.getPayorId(),
-                                    insurance.getPayerNphiesId()
-                            )
-                    )
+                    .map(nphiesPayerHelper::resolvePayerId)
                     .filter(payerId -> payerId > 0)
                     .orElse(null);
         } catch (FeignException ex) {

@@ -1,6 +1,6 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.setup.dto.PayorDTO;
+import com.dazzle.asklepios.client.setup.dto.NphiesPayerDTO;
 import com.dazzle.asklepios.client.setup.dto.TpaResolutionDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientInsurance;
@@ -60,34 +60,33 @@ public class PatientInsuranceService {
     public PatientInsurance create(PatientInsuranceCreateDTO dto) {
         LOG.info("[CREATE] PatientInsurance payload={}", dto);
 
-        Long payorId = payorHelper.resolvePayorId(dto.payorId(), dto.payerNphiesId());
-        if (payorId == null) {
+        Long payerId = nphiesPayerHelper.resolvePayerId(dto.payerId(), dto.payorId(), dto.payerNphiesId());
+        if (payerId == null) {
             throw new BadRequestAlertException(
-                    "Payor could not be resolved from the provided payor or payer NPHIES ID.",
+                    "Insurance company could not be resolved from the provided payer, payor or payer NPHIES ID.",
                     "patientInsurance",
                     "payor.unresolved"
             );
         }
+        NphiesPayerDTO payer = nphiesPayerHelper.findById(payerId);
+        String resolvedPayerNphiesId = firstNonBlank(dto.payerNphiesId(), payer == null ? null : payer.nphiesId());
+        // legacy payor row, still written while payor is being retired; never blocks the save
+        Long payorId = payorHelper.resolveLegacyPayorId(dto.payorId(), resolvedPayerNphiesId);
 
         Long planId = payorPlanHelper.resolvePlanId(
-                payorId,
+                payerId,
                 dto.planId(),
                 dto.networkId(),
                 dto.policyClassName(),
                 dto.coverageType()
         );
 
-        PayorDTO payor = payorHelper.findPayor(payorId, dto.payerNphiesId());
-        String payerNphiesId = firstNonBlank(
-                dto.payerNphiesId(),
-                payor == null ? null : payor.nphiesId(),
-                payor == null ? null : payor.waseelPayerId()
-        );
+        String payerNphiesId = resolvedPayerNphiesId;
         insuranceRegistrationGuard.requireRegistrable(payerNphiesId, dto.policyNumber(), dto.policyClassName());
         TpaResolutionDTO tpa = payorHelper.resolveTpa(payerNphiesId, dto.policyNumber(), dto.tpaNphiesId());
         String payerName = nphiesPayerHelper.resolvePayerDisplayName(payerNphiesId, null);
-        if (payerName == null && payor != null) {
-            payerName = payor.name();
+        if (payerName == null && payer != null) {
+            payerName = firstNonBlank(payer.nameEn(), payer.nameAr());
         }
 
         Patient policyHolder = dto.policyHolderId() == null ? null : refPatient(dto.policyHolderId());
@@ -95,6 +94,7 @@ public class PatientInsuranceService {
         PatientInsurance entity = PatientInsurance.builder()
                 .patient(refPatient(dto.patientId()))
                 .payorId(payorId)
+                .nphiesPayerId(payerId)
                 .planId(planId)
 
                 .policyHolderId(policyHolder == null ? null : policyHolder.getId())
@@ -157,15 +157,20 @@ public class PatientInsuranceService {
         String previousPayerNphiesId = existing.getPayerNphiesId();
 
         existing.setPatient(refPatient(dto.patientId()));
-        Long payorId = payorHelper.resolvePayorId(dto.payorId(), dto.payerNphiesId());
-        if (payorId == null) {
+        Long payerId = nphiesPayerHelper.resolvePayerId(dto.payerId(), dto.payorId(), dto.payerNphiesId());
+        if (payerId == null) {
             throw new BadRequestAlertException(
-                    "Payor could not be resolved from the provided payor or payer NPHIES ID.",
+                    "Insurance company could not be resolved from the provided payer, payor or payer NPHIES ID.",
                     "patientInsurance",
                     "payor.unresolved"
             );
         }
+        NphiesPayerDTO payer = nphiesPayerHelper.findById(payerId);
+        String resolvedPayerNphiesId = firstNonBlank(dto.payerNphiesId(), payer == null ? null : payer.nphiesId());
+        // legacy payor row, still written while payor is being retired; never blocks the save
+        Long payorId = payorHelper.resolveLegacyPayorId(dto.payorId(), resolvedPayerNphiesId);
         existing.setPayorId(payorId);
+        existing.setNphiesPayerId(payerId);
         existing.setPlanId(dto.planId());
 //        existing.setPolicyHolderId(dto.policyHolderId() == null ? null : refPatient(dto.policyHolderId()).getId());
         Patient policyHolder = dto.policyHolderId() == null ? null : refPatient(dto.policyHolderId());
@@ -183,12 +188,7 @@ public class PatientInsuranceService {
         existing.setRemainingDeductibles(dto.remainingDeductibles());
         existing.setMemberCardId(dto.memberCardId());
 
-        PayorDTO payor = payorHelper.findPayor(payorId, dto.payerNphiesId());
-        existing.setPayerNphiesId(firstNonBlank(
-                dto.payerNphiesId(),
-                payor == null ? null : payor.nphiesId(),
-                payor == null ? null : payor.waseelPayerId()
-        ));
+        existing.setPayerNphiesId(resolvedPayerNphiesId);
         insuranceRegistrationGuard.requireRegistrable(
                 existing.getPayerNphiesId(),
                 dto.policyNumber(),

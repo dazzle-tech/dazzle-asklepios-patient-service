@@ -1,6 +1,5 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientInsuranceBenefitRule;
 import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
@@ -196,14 +195,14 @@ public class InsuranceBenefitRuleService {
     }
 
     private boolean isWaseelCoverage(PatientInsurance insurance) {
-        if (insurance.getPayorId() == null
+        if (insurance.getNphiesPayerId() == null
+                && insurance.getPayorId() == null
                 && (insurance.getPayerNphiesId() == null || insurance.getPayerNphiesId().isBlank())) {
             return false;
         }
 
         try {
-            PayorDTO payor = payorHelper.findPayor(insurance.getPayorId(), insurance.getPayerNphiesId());
-            return payor != null && Boolean.TRUE.equals(payor.isWaseelEnabled());
+            return payorHelper.isWaseelEnabled(insurance);
         } catch (FeignException exception) {
             LOG.warn(
                     "[INSURANCE] Unable to resolve payor waseel flag payorId={}. "

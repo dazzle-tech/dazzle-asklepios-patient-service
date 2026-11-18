@@ -1710,12 +1710,7 @@ public class BillingEngineService {
 
         return patientInsuranceRepository
                 .findById(patientInsuranceId)
-                .map(insurance ->
-                        nphiesPayerHelper.resolvePriceListPayerId(
-                                insurance.getPayorId(),
-                                insurance.getPayerNphiesId()
-                        )
-                )
+                .map(nphiesPayerHelper::resolvePayerId)
                 .filter(payerId -> payerId != null && payerId > 0)
                 .orElse(null);
     }

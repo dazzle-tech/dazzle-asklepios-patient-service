@@ -49,15 +49,15 @@ public interface ClaimRequestRepository
     );
 
     @Query("""
-            SELECT pi.payorId, cr.status, COUNT(cr)
+            SELECT pi.nphiesPayerId, cr.status, COUNT(cr)
             FROM ClaimRequest cr, PatientInsurance pi
             WHERE pi.id = cr.patientInsuranceId
-              AND pi.payorId IS NOT NULL
+              AND pi.nphiesPayerId IS NOT NULL
               AND (:facilityId IS NULL OR EXISTS (
                   SELECT 1 FROM PatientEncounter e
                   WHERE e.id = cr.encounterId AND e.facilityId = :facilityId
               ))
-            GROUP BY pi.payorId, cr.status
+            GROUP BY pi.nphiesPayerId, cr.status
             """)
     List<Object[]> countClaimsByPayerAndStatus(
             @Param("facilityId") Long facilityId

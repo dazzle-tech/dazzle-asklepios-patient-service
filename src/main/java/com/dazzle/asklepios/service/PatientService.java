@@ -540,6 +540,8 @@ public class PatientService {
                         : company.nphiesId().trim().toLowerCase();
 
                 List<Predicate> companyMatch = new ArrayList<>();
+                // filter.insuranceId is a payers.id (the UI lists payers)
+                companyMatch.add(cb.equal(insuranceRoot.get("nphiesPayerId"), filter.insuranceId()));
                 companyMatch.add(cb.equal(insuranceRoot.get("payorId"), linkedPayorId));
                 if (!linkedPayorId.equals(filter.insuranceId())) {
                     companyMatch.add(cb.equal(insuranceRoot.get("payorId"), filter.insuranceId()));

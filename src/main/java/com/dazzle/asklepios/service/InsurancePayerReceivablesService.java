@@ -1,6 +1,6 @@
 package com.dazzle.asklepios.service;
 
-import com.dazzle.asklepios.client.setup.dto.PayorDTO;
+import com.dazzle.asklepios.client.setup.dto.NphiesPayerDTO;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingResponsibilityStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.ResponsiblePartyType;
@@ -8,7 +8,7 @@ import com.dazzle.asklepios.domain.enumeration.waseelIntegration.ClaimStatus;
 import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
 import com.dazzle.asklepios.repository.ClaimRequestRepository;
 import com.dazzle.asklepios.service.dto.billing.InsurancePayerReceivablesSummaryResponse;
-import com.dazzle.asklepios.service.helper.PayorHelper;
+import com.dazzle.asklepios.service.helper.NphiesPayerHelper;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,7 +62,7 @@ public class InsurancePayerReceivablesService {
 
     private final ClaimRequestRepository claimRequestRepository;
 
-    private final PayorHelper payorHelper;
+    private final NphiesPayerHelper nphiesPayerHelper;
 
     public List<InsurancePayerReceivablesSummaryResponse> summarizeByPayer(
             Long facilityId
@@ -154,8 +154,10 @@ public class InsurancePayerReceivablesService {
             Long payerId,
             MutableSummary summary
     ) {
-        PayorDTO payor = payorHelper.findPayor(payerId, null);
-        String payerName = payor == null ? null : payor.name();
+        // payerId is payers.id (formerly nphies_payers)
+        NphiesPayerDTO payer = nphiesPayerHelper.findById(payerId);
+        String payerName = payer == null ? null
+                : payer.nameEn() != null && !payer.nameEn().isBlank() ? payer.nameEn() : payer.nameAr();
 
         return new InsurancePayerReceivablesSummaryResponse(
                 payerId,

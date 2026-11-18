@@ -68,6 +68,9 @@ public record PatientInsuranceCreateDTO(
 
         BigDecimal remainingDeductibles,
 
-        Boolean isPrimary
+        Boolean isPrimary,
+
+        // payers.id (formerly nphies_payers); preferred over the legacy payorId
+        Long payerId
 ) implements Serializable {
 }

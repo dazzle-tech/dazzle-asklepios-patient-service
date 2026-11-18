@@ -423,6 +423,7 @@ public class CoveragePreApprovalLimitService {
                 .encounterId(encounter.getId())
                 .patientInsuranceId(insurance.getId())
                 .payorId(insurance.getPayorId())
+                .nphiesPayerId(insurance.getNphiesPayerId())
                 .providerId(String.valueOf(encounter.getFacilityId()))
                 .dateOrdered(LocalDate.now())
                 .payeeId(encounter.getFacilityId())

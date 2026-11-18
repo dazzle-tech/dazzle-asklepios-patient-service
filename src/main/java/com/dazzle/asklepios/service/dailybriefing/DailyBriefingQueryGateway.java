@@ -601,7 +601,8 @@ public class DailyBriefingQueryGateway {
         Map<String, AuthAccumulator> totals = new LinkedHashMap<>();
         for (PreAuthorizationRequest request : requests) {
             PatientInsurance insurance = insurances.get(request.getPatientInsuranceId());
-            Long payorId = insurance != null && insurance.getPayorId() != null ? insurance.getPayorId() : request.getPayorId();
+            // payers.id (formerly nphies_payers)
+            Long payorId = insurance != null && insurance.getNphiesPayerId() != null ? insurance.getNphiesPayerId() : request.getNphiesPayerId();
             String key = request.getStatus() + "|" + request.getOutcome() + "|" + payorId + "|" + request.getDateOrdered();
             AuthAccumulator accumulator = totals.computeIfAbsent(
                     key,
@@ -628,7 +629,7 @@ public class DailyBriefingQueryGateway {
         Map<String, ClaimAccumulator> totals = new LinkedHashMap<>();
         for (ClaimRequest claim : claims) {
             PatientInsurance insurance = insurances.get(claim.getPatientInsuranceId());
-            Long payorId = insurance == null ? null : insurance.getPayorId();
+            Long payorId = insurance == null ? null : insurance.getNphiesPayerId(); // payers.id
             String payerName = insurance == null ? null : insurance.getPayerName();
             String key = claim.getStatus() + "|" + claim.getOutcome() + "|" + payorId + "|" + payerName;
             ClaimAccumulator accumulator = totals.computeIfAbsent(key, ignored -> new ClaimAccumulator(

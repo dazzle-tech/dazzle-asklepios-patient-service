@@ -2,7 +2,6 @@ package com.dazzle.asklepios.service.helper;
 
 import com.dazzle.asklepios.client.setup.InsuranceRegistrationStatusClient;
 import com.dazzle.asklepios.client.setup.dto.InsuranceRegistrationStatusDTO;
-import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
@@ -53,11 +52,6 @@ public class InsuranceRegistrationGuard {
     }
 
     private String payerNphiesIdOf(PatientInsurance insurance) {
-        String payerNphiesId = insurance.getPayerNphiesId();
-        if (payerNphiesId != null && !payerNphiesId.isBlank()) {
-            return payerNphiesId;
-        }
-        PayorDTO payor = payorHelper.findPayor(insurance.getPayorId(), null);
-        return payor == null ? null : payor.nphiesId();
+        return payorHelper.resolvePayerNphiesId(insurance);
     }
 }

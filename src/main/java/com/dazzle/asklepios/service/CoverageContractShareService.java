@@ -2,7 +2,6 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.CoverageContractClient;
 import com.dazzle.asklepios.client.setup.dto.CoverageContractResolveDtos;
-import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.service.helper.PayorHelper;
 import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.PatientDiagnosis;
@@ -1006,7 +1005,7 @@ public class CoverageContractShareService {
                         .toList();
 
         return new CoverageContractResolveDtos.Request(
-                null,
+                insurance.getNphiesPayerId(),
                 resolvePayerNphiesId(insurance),
                 null,
                 firstNonBlank(insurance.getTpaName()),
@@ -1045,12 +1044,11 @@ public class CoverageContractShareService {
 
     private String resolvePayerNphiesId(PatientInsurance insurance) {
         String nphiesId = firstNonBlank(insurance.getPayerNphiesId());
-        if (nphiesId != null || insurance.getPayorId() == null) {
+        if (nphiesId != null) {
             return nphiesId;
         }
         try {
-            PayorDTO payor = payorHelper.findPayor(insurance.getPayorId(), insurance.getPayerNphiesId());
-            return payor == null ? null : firstNonBlank(payor.nphiesId());
+            return payorHelper.resolvePayerNphiesId(insurance);
         } catch (RuntimeException exception) {
             LOG.warn(
                     "[COVERAGE_CONTRACT] Unable to resolve payer NPHIES id payorId={}",

@@ -1,6 +1,5 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
-import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.client.setup.dto.TpaResolutionDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientInsurance;
@@ -411,15 +410,7 @@ public class WaseelEligibilityCheckService {
             return stored;
         }
 
-        PayorDTO payor = payorHelper.findPayor(insurance.getPayorId(), null);
-        if (payor == null) {
-            return null;
-        }
-
-        return firstNonBlank(
-                clean(payor.nphiesId()),
-                clean(payor.waseelPayerId())
-        );
+        return clean(payorHelper.resolvePayerNphiesId(insurance));
     }
 
     /**

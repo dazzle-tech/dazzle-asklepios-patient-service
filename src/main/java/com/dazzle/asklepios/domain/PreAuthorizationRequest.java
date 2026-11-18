@@ -48,6 +48,10 @@ public class PreAuthorizationRequest extends AbstractAuditingEntity<Long> implem
     @Column(name = "payor_id")
     private Long payorId;
 
+    /** payers.id (formerly nphies_payers); the payer this insurance belongs to. */
+    @Column(name = "nphies_payer_id")
+    private Long nphiesPayerId;
+
     @Column(name = "payor_plan_id")
     private Long payorPlanId;
 

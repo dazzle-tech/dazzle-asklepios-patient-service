@@ -4,6 +4,7 @@ import com.dazzle.asklepios.client.setup.NphiesPayerClient;
 import com.dazzle.asklepios.client.setup.PayorClient;
 import com.dazzle.asklepios.client.setup.dto.NphiesPayerDTO;
 import com.dazzle.asklepios.client.setup.dto.PayorDTO;
+import com.dazzle.asklepios.domain.PatientInsurance;
 import feign.FeignException;
 import feign.Request;
 import feign.RequestTemplate;
@@ -13,8 +14,12 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import java.util.Collections;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class PayorHelperTest {
@@ -39,7 +44,7 @@ class PayorHelperTest {
 
         when(payorClient.existsPayor(1018L)).thenThrow(notFound());
         when(nphiesPayerClient.getNphiesPayerById(1018L))
-                .thenReturn(new NphiesPayerDTO(1018L, "INS-BUPA", "Bupa Arabia", null, true));
+                .thenReturn(new NphiesPayerDTO(1018L, "INS-BUPA", "Bupa Arabia", null, true, null, true));
         when(payorClient.getPayorByNphiesId("INS-BUPA")).thenThrow(notFound());
         when(payorClient.ensurePayorFromNphiesId("INS-BUPA")).thenReturn(created);
 
@@ -70,6 +75,40 @@ class PayorHelperTest {
                 null,
                 true
         );
+    }
+
+    @Test
+    void isWaseelEnabled_readsFlagFromPayersRowByStoredId() {
+        PatientInsurance insurance = new PatientInsurance();
+        insurance.setNphiesPayerId(1018L);
+        insurance.setPayorId(44L);
+        when(nphiesPayerClient.getNphiesPayerById(1018L))
+                .thenReturn(new NphiesPayerDTO(1018L, "INS-BUPA", "Bupa Arabia", null, true, "W-1", false));
+
+        assertThat(payorHelper.isWaseelEnabled(insurance)).isFalse();
+        verify(payorClient, never()).getPayorById(any());
+    }
+
+    @Test
+    void isWaseelEnabled_withoutStoredId_looksUpPayersRowByNphiesId() {
+        PatientInsurance insurance = new PatientInsurance();
+        insurance.setPayerNphiesId("INS-BUPA");
+        when(nphiesPayerClient.getNphiesPayersByNphiesId("INS-BUPA", 0, 1))
+                .thenReturn(List.of(new NphiesPayerDTO(1018L, "INS-BUPA", "Bupa Arabia", null, true, "W-1", true)));
+
+        assertThat(payorHelper.isWaseelEnabled(insurance)).isTrue();
+    }
+
+    @Test
+    void isWaseelEnabled_whenPayersRowMissing_fallsBackToLegacyPayor() {
+        PatientInsurance insurance = new PatientInsurance();
+        insurance.setPayorId(44L);
+        insurance.setPayerNphiesId("INS-BUPA");
+        when(nphiesPayerClient.getNphiesPayersByNphiesId("INS-BUPA", 0, 1)).thenReturn(List.of());
+        when(payorClient.getPayorByNphiesId("INS-BUPA")).thenReturn(
+                new PayorDTO(44L, "NPH-BUPA", "Bupa Arabia", "INS-BUPA", null, null, true, null, null, true));
+
+        assertThat(payorHelper.isWaseelEnabled(insurance)).isTrue();
     }
 
     private static FeignException.NotFound notFound() {

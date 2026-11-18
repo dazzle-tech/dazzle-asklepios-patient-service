@@ -27,7 +27,7 @@ public class PayorPlanHelper {
     }
 
     public Long resolvePlanId(
-            Long payorId,
+            Long payerId,
             Long planId,
             String networkId,
             String policyClassName,
@@ -38,13 +38,13 @@ public class PayorPlanHelper {
             return planId;
         }
 
-        if (payorId == null || payorId <= 0) {
+        if (payerId == null || payerId <= 0) {
             return null;
         }
 
         if (hasText(coverageType) || hasText(networkId)) {
             PayorPlanDTO matchedPlan = findPlanByCchiMatch(
-                    payorId,
+                    payerId,
                     coverageType,
                     networkId,
                     policyClassName
@@ -56,7 +56,7 @@ public class PayorPlanHelper {
         }
 
         if (hasText(networkId)) {
-            PayorPlanDTO planByNetwork = findPlanByWaseelPlanId(payorId, networkId.trim());
+            PayorPlanDTO planByNetwork = findPlanByWaseelPlanId(payerId, networkId.trim());
             if (hasId(planByNetwork)) {
                 return planByNetwork.id();
             }
@@ -66,14 +66,14 @@ public class PayorPlanHelper {
     }
 
     private PayorPlanDTO findPlanByCchiMatch(
-            Long payorId,
+            Long payerId,
             String coverageType,
             String networkId,
             String policyClassName
     ) {
         try {
             return payorPlanClient.getPayorPlanByCchiMatch(
-                    payorId,
+                    payerId,
                     coverageType,
                     networkId,
                     policyClassName
@@ -86,9 +86,9 @@ public class PayorPlanHelper {
         }
     }
 
-    private PayorPlanDTO findPlanByWaseelPlanId(Long payorId, String waseelPlanId) {
+    private PayorPlanDTO findPlanByWaseelPlanId(Long payerId, String waseelPlanId) {
         try {
-            return payorPlanClient.getPayorPlanByWaseelPlanId(payorId, waseelPlanId);
+            return payorPlanClient.getPayorPlanByWaseelPlanId(payerId, waseelPlanId);
         } catch (feign.FeignException ex) {
             if (isClientMiss(ex)) {
                 return null;

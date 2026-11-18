@@ -1,7 +1,6 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.setup.ServiceClient;
-import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.client.setup.dto.ServiceSetupDTO;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientInsuranceCoverage;
@@ -672,14 +671,14 @@ public class InsurancePatientShareCalculator {
 
     public boolean isWaseelCoverage(PatientInsurance insurance) {
         if (insurance == null
-                || (insurance.getPayorId() == null
+                || (insurance.getNphiesPayerId() == null
+                && insurance.getPayorId() == null
                 && (insurance.getPayerNphiesId() == null || insurance.getPayerNphiesId().isBlank()))) {
             return false;
         }
 
         try {
-            PayorDTO payor = payorHelper.findPayor(insurance.getPayorId(), insurance.getPayerNphiesId());
-            return payor != null && Boolean.TRUE.equals(payor.isWaseelEnabled());
+            return payorHelper.isWaseelEnabled(insurance);
         } catch (FeignException exception) {
             LOG.warn(
                     "[INSURANCE] Unable to resolve payor waseel flag payorId={}. Keeping existing share calculation.",
