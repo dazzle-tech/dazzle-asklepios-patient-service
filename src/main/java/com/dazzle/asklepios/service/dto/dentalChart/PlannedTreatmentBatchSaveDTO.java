@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service.dto.dentalChart;
 
+import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentDiscountType;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentType;
 import com.dazzle.asklepios.domain.enumeration.ToothSurface;
 import jakarta.validation.constraints.NotEmpty;
@@ -29,6 +30,7 @@ public record PlannedTreatmentBatchSaveDTO(
         BigDecimal price,
         Long quantity,
         BigDecimal discount,
+        PlannedTreatmentDiscountType discountType,
         String anesthesiaUsed,
         BigDecimal dose,
         String unit,

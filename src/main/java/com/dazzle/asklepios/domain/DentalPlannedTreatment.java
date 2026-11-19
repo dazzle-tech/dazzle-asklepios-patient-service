@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentDiscountType;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentType;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
@@ -123,6 +124,12 @@ public class DentalPlannedTreatment extends AbstractAuditingEntity<Long> impleme
     @Column(name = "discount", nullable = false, precision = 10, scale = 2)
     @Builder.Default
     private BigDecimal discount = BigDecimal.ZERO;
+
+    /** Interpretation of {@link #discount}: FIXED amount (default, legacy rows) or PERCENT of the line subtotal. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "discount_type", nullable = false, length = 10)
+    @Builder.Default
+    private PlannedTreatmentDiscountType discountType = PlannedTreatmentDiscountType.FIXED;
 
     @NotNull
     @Enumerated(EnumType.STRING)
