@@ -13,7 +13,6 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -29,8 +28,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Dispensing status taken from Nahdi sales invoices (GetSalesInvoices), enabled with
- * {@code nahdi.dispensing.source=INVOICE}.
+ * Dispensing status taken from Nahdi sales invoices (GetSalesInvoices). It is only called while the Nahdi
+ * integration is enabled ({@code nahdi.enabled}).
  * <p>
  * Confirmed by Nahdi:
  * <ul>
@@ -47,7 +46,6 @@ import java.util.Map;
  * time order and the latest one decides each line's status). A line is always dispensed as a whole.
  */
 @Component
-@ConditionalOnProperty(name = "nahdi.dispensing.source", havingValue = "INVOICE")
 public class InvoiceNahdiDispensingStatusProvider implements NahdiDispensingStatusProvider {
 
     private static final Logger LOG = LoggerFactory.getLogger(InvoiceNahdiDispensingStatusProvider.class);

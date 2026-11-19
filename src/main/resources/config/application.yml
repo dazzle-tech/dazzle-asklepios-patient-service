@@ -255,9 +255,7 @@ nahdi:
     item-code-priority: ${NAHDI_ITEM_CODE_PRIORITY:SFDA}
   # Dispensing status of a sent prescription (locks dispensed medications)
   dispensing:
-    # NONE: nothing is marked dispensed; INVOICE: taken from Nahdi sales invoices (GetSalesInvoices)
-    source: ${NAHDI_DISPENSING_SOURCE:NONE}
     sales-invoices-endpoint: ${NAHDI_SALES_INVOICES_ENDPOINT:/GetSalesInvoices}
-    # Invoice_Type values (to confirm with Nahdi): a sale dispenses the items, a return takes them back
+    # Invoice_Type values: a sale dispenses the items, a return takes them back (return value still to confirm with Nahdi)
     sale-invoice-type: ${NAHDI_SALE_INVOICE_TYPE:SALE}
     return-invoice-type: ${NAHDI_RETURN_INVOICE_TYPE:RETURN}

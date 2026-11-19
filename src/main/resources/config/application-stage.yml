@@ -54,7 +54,6 @@ nahdi:
     item-cancelled-status: ${NAHDI_ITEM_CANCELLED_STATUS:C}
     item-code-priority: ${NAHDI_ITEM_CODE_PRIORITY:SFDA}
   dispensing:
-    source: ${NAHDI_DISPENSING_SOURCE:NONE}
     sales-invoices-endpoint: ${NAHDI_SALES_INVOICES_ENDPOINT:/GetSalesInvoices}
     sale-invoice-type: ${NAHDI_SALE_INVOICE_TYPE:SALE}
     return-invoice-type: ${NAHDI_RETURN_INVOICE_TYPE:RETURN}
