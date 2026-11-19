@@ -9,6 +9,7 @@ import com.dazzle.asklepios.integration.nahdi.dto.invoice.NahdiSalesInvoicesResp
 import com.dazzle.asklepios.integration.nahdi.dto.invoice.NahdiSalesInvoicesResponse.Invoice;
 import com.dazzle.asklepios.integration.nahdi.dto.invoice.NahdiSalesInvoicesResponse.Item;
 import com.dazzle.asklepios.integration.nahdi.mapper.NahdiPrescriptionLines;
+import com.dazzle.asklepios.integration.nahdi.service.NahdiErrorReason;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -83,7 +84,7 @@ public class InvoiceNahdiDispensingStatusProvider implements NahdiDispensingStat
     /** Maps a GetSalesInvoices response to the status of each sent line. */
     NahdiDispensingStatus toStatus(PatientPrescription prescription, String prescriptionRef, NahdiSalesInvoicesResponse response) {
         if (response == null || !Boolean.TRUE.equals(response.success())) {
-            String error = response == null || response.error() == null ? "no response" : response.error().toString();
+            String error = response == null ? "no response" : NahdiErrorReason.of(null, response.error());
             LOG.warn("[NAHDI][INVOICES] GetSalesInvoices was not successful. prescriptionRef={}, error={}", prescriptionRef, error);
             return NahdiDispensingStatus.unavailable("GetSalesInvoices was not successful: " + error);
         }

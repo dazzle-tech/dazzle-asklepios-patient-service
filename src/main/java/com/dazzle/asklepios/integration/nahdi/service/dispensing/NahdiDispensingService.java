@@ -32,6 +32,11 @@ public class NahdiDispensingService {
 
     private static final Logger LOG = LoggerFactory.getLogger(NahdiDispensingService.class);
 
+    // Messages for the doctor when the dispensing status is not refreshed.
+    static final String UNAVAILABLE = "Could not check what the pharmacy dispensed. Try again later.";
+    static final String INTEGRATION_OFF = "Pharmacy integration is off.";
+    static final String NOT_SUBMITTED = "Only a submitted prescription has a dispensing status.";
+
     private final NahdiProperties nahdiProperties;
     private final NahdiDispensingStatusProvider dispensingStatusProvider;
     private final PatientPrescriptionRepository patientPrescriptionRepository;
@@ -48,10 +53,10 @@ public class NahdiDispensingService {
         Instant now = Instant.now();
 
         if (!PrescriptionStatus.SUBMITTED.equals(prescription.getStatus())) {
-            return summary(false, "Prescription is not submitted", now, medications);
+            return summary(false, NOT_SUBMITTED, null, now, medications);
         }
         if (!nahdiProperties.enabled()) {
-            return summary(false, "Nahdi integration is disabled", now, medications);
+            return summary(false, INTEGRATION_OFF, null, now, medications);
         }
 
         NahdiDispensingStatus status;
@@ -62,9 +67,10 @@ public class NahdiDispensingService {
             status = NahdiDispensingStatus.unavailable("Status fetch failed: " + e.getMessage());
         }
         if (status == null || !status.available()) {
-            String message = status == null ? "No status returned" : status.message();
-            LOG.debug("[NAHDI][DISPENSING] status unavailable, keeping stored status. prescriptionId={}, reason={}", prescriptionId, message);
-            return summary(false, message, now, medications);
+            String detail = status == null ? "No status returned" : status.message();
+            LOG.debug("[NAHDI][DISPENSING] status unavailable, keeping stored status. prescriptionId={}, reason={}", prescriptionId, detail);
+            // The doctor gets a plain message; the technical reason stays in the log and in `detail`.
+            return summary(false, UNAVAILABLE, detail, now, medications);
         }
 
         Map<Long, PatientPrescriptionMedication> byId = medications.stream()
@@ -81,7 +87,7 @@ public class NahdiDispensingService {
         }
         patientPrescriptionMedicationRepository.saveAll(medications);
         LOG.info("[NAHDI][DISPENSING] status refreshed. prescriptionId={}, lines={}", prescriptionId, status.lines().size());
-        return summary(true, null, now, medications);
+        return summary(true, null, null, now, medications);
     }
 
     /**
@@ -103,12 +109,12 @@ public class NahdiDispensingService {
         }
     }
 
-    private static NahdiDispensingSummary summary(boolean refreshed, String message, Instant checkedAt,
+    private static NahdiDispensingSummary summary(boolean refreshed, String message, String detail, Instant checkedAt,
                                                   List<PatientPrescriptionMedication> medications) {
         List<Long> dispensedIds = medications.stream()
                 .filter(m -> Boolean.TRUE.equals(m.getDispensed()))
                 .map(PatientPrescriptionMedication::getId)
                 .toList();
-        return new NahdiDispensingSummary(refreshed, message, checkedAt, dispensedIds);
+        return new NahdiDispensingSummary(refreshed, message, detail, checkedAt, dispensedIds);
     }
 }
