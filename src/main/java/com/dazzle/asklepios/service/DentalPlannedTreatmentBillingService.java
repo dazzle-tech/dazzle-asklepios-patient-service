@@ -83,7 +83,21 @@ public class DentalPlannedTreatmentBillingService {
             long quantity,
             String toothNumber
     ) {
+        if (quantity <= 0) {
+            throw new BadRequestAlertException(
+                    "Quantity must be a positive number",
+                    ENTITY,
+                    "invalidQuantity"
+            );
+        }
         PatientEncounter executionEncounter = treatment.getExecutionEncounter();
+        if (executionEncounter == null) {
+            throw new BadRequestAlertException(
+                    "Execution encounter is required to bill the planned treatment",
+                    ENTITY,
+                    "executionEncounterRequired"
+            );
+        }
         boolean asProcedure = treatment.getProcedureId() != null;
         BillingItemTypes itemType = asProcedure ? BillingItemTypes.PROCEDURE : BillingItemTypes.SERVICE;
         Long procedureId = asProcedure ? treatment.getProcedureId() : null;
@@ -126,6 +140,17 @@ public class DentalPlannedTreatmentBillingService {
         // existing 409 and the treatment stays incomplete.
         insurancePriceListCoverageService.requireCoveredOrAcknowledged(coverageCheck, null);
 
+        // The setup currency, else the one the coverage check resolved for this item (it defaults the same way
+        // for the insurance price-list lookup). The line cannot be saved or billed without a currency.
+        Currency lineCurrency = currency != null ? currency : coverageCheck.currency();
+        if (lineCurrency == null) {
+            throw new BadRequestAlertException(
+                    "Currency is not configured for this dental procedure or service.",
+                    ENTITY,
+                    "currency.required"
+            );
+        }
+
         PatientServiceAndProduct.PatientServiceAndProductBuilder builder = PatientServiceAndProduct.builder()
                 .patientId(treatment.getPatientId())
                 .encounterId(executionEncounter.getId())
@@ -141,7 +166,7 @@ public class DentalPlannedTreatmentBillingService {
                 .exemptionAmount(BigDecimal.ZERO)
                 .taxAmount(BigDecimal.ZERO)
                 .totalAmount(unitPrice.multiply(BigDecimal.valueOf(quantity)))
-                .currency(currency)
+                .currency(lineCurrency)
                 .isBilled(Boolean.FALSE)
                 .billingInvoiceId(null)
                 .billingInvoiceItemId(null)
@@ -159,7 +184,7 @@ public class DentalPlannedTreatmentBillingService {
                     null,
                     null,
                     true,
-                    currency
+                    lineCurrency
             );
             preAuthorizationResolutionService.enrichWaseelSbsMappingForBillingItem(
                     builder,
@@ -211,6 +236,14 @@ public class DentalPlannedTreatmentBillingService {
                 facilityId,
                 "DENTAL-PLANNED-COMPLETE:" + item.getId()
         );
+
+        if (result == null) {
+            throw new BadRequestAlertException(
+                    "Dental billing returned no result.",
+                    ENTITY,
+                    "billing.failed"
+            );
+        }
 
         LOG.info(
                 "[DENTAL_PLANNED_TREATMENT] Billed item. pspId={} type={} processed={} message={}",
