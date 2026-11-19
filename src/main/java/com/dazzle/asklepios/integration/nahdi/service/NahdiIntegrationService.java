@@ -46,6 +46,8 @@ public class NahdiIntegrationService {
     private static final String MASKED = "***";
     // Medications saved by the submit itself land a moment after the submit time; they are not later edits.
     private static final Duration SUBMIT_SAVE_WINDOW = Duration.ofMinutes(1);
+    // Our own failure texts (e.g. "HTTP 500: <body>") are cut to this length for the screen.
+    private static final int MAX_REASON_LENGTH = 300;
 
     private final NahdiProperties nahdiProperties;
     private final NahdiClient nahdiClient;
@@ -99,7 +101,7 @@ public class NahdiIntegrationService {
             }
             LOG.error("[NAHDI][SEND_PRESCRIPTION] rejected by Nahdi. prescriptionId={}, response={}", prescriptionId, response);
             record(prescriptionId, requestPayload, response, NahdiIntegrationStatus.FAILED, null);
-            return NahdiSendResult.failed(rejectionMessage(parsed, response));
+            return NahdiSendResult.failed(rejectionMessage(parsed));
         } catch (RestClientResponseException e) {
             LOG.error("[NAHDI][SEND_PRESCRIPTION] Nahdi responded with status={} prescriptionId={}",
                     e.getStatusCode().value(), prescriptionId);
@@ -129,7 +131,8 @@ public class NahdiIntegrationService {
     }
 
     /**
-     * Tells whether a submitted prescription was changed after its last successful send, so the user knows to resend.
+     * Send status of a prescription for the screen: whether it reached Nahdi (order number, last attempt and the
+     * rejection reason when it failed) and whether it was changed after its last successful send.
      */
     @Transactional(readOnly = true)
     public NahdiSyncStatus syncStatus(Long prescriptionId) {
@@ -137,22 +140,28 @@ public class NahdiIntegrationService {
                 .orElseThrow(() -> new NotFoundAlertException("PatientPrescription not found: " + prescriptionId, "prescription", "notfound"));
 
         Optional<NahdiIntegrationLog> lastAttempt = nahdiIntegrationLogRepository.findFirstByPrescriptionIdOrderByCreatedDateDesc(prescriptionId);
-        Instant lastSentAt = nahdiIntegrationLogRepository
-                .findFirstByPrescriptionIdAndStatusOrderByCreatedDateDesc(prescriptionId, NahdiIntegrationStatus.SUCCESS)
-                .map(NahdiIntegrationLog::getCreatedDate)
-                .orElse(null);
-        String lastAttemptStatus = lastAttempt.map(log -> log.getStatus().name()).orElse(null);
+        Optional<NahdiIntegrationLog> lastSuccess = nahdiIntegrationLogRepository
+                .findFirstByPrescriptionIdAndStatusOrderByCreatedDateDesc(prescriptionId, NahdiIntegrationStatus.SUCCESS);
+        Instant lastSentAt = lastSuccess.map(NahdiIntegrationLog::getCreatedDate).orElse(null);
+        boolean lastFailed = lastAttempt.map(log -> NahdiIntegrationStatus.FAILED.equals(log.getStatus())).orElse(false);
+        NahdiSyncStatus.Builder status = NahdiSyncStatus.builder()
+                .integrationEnabled(nahdiProperties.enabled())
+                .lastSentAt(lastSentAt)
+                .orderNumber(lastSuccess.map(NahdiIntegrationLog::getOrderNumber).orElse(null))
+                .lastAttemptStatus(lastAttempt.map(log -> log.getStatus().name()).orElse(null))
+                .lastAttemptAt(lastAttempt.map(NahdiIntegrationLog::getCreatedDate).orElse(null))
+                .failureReason(lastFailed ? failureReason(lastAttempt.get()) : null);
 
         // Nothing is waiting to be sent when the prescription is not submitted, or when the integration is off.
         if (!PrescriptionStatus.SUBMITTED.equals(prescription.getStatus()) || !nahdiProperties.enabled()) {
-            return new NahdiSyncStatus(false, lastSentAt, lastAttemptStatus);
+            return status.hasUnsentChanges(false).build();
         }
 
         Instant baseline = lastSentAt;
         if (baseline == null) {
             if (lastAttempt.isPresent()) {
                 // Attempts exist but none was accepted: the prescription still has to reach Nahdi.
-                return new NahdiSyncStatus(true, null, lastAttemptStatus);
+                return status.hasUnsentChanges(true).build();
             }
             // Sent before sends were linked to prescriptions: the submit time is the last send. Submit saves the
             // medications just after setting the submit time, so changes in that short window are part of the submit.
@@ -160,24 +169,38 @@ public class NahdiIntegrationService {
             baseline = submittedAt == null ? null : submittedAt.plus(SUBMIT_SAVE_WINDOW);
         }
         if (baseline == null) {
-            return new NahdiSyncStatus(false, null, lastAttemptStatus);
+            return status.hasUnsentChanges(false).build();
         }
 
         Instant since = baseline;
         boolean changed = patientPrescriptionMedicationRepository.findByPrescriptionHeader_Id(prescriptionId).stream()
                 .map(medication -> medication.getLastModifiedDate() != null ? medication.getLastModifiedDate() : medication.getCreatedDate())
                 .anyMatch(modifiedAt -> modifiedAt != null && modifiedAt.isAfter(since));
-        return new NahdiSyncStatus(changed, lastSentAt, lastAttemptStatus);
+        return status.hasUnsentChanges(changed).build();
     }
 
-    private static String rejectionMessage(NahdiSendPrescriptionResponse parsed, String response) {
+    /**
+     * Reason of a failed attempt, from what was stored: Nahdi's JSON (success=false), or our own text for HTTP errors,
+     * timeouts and requests we could not build.
+     */
+    private String failureReason(NahdiIntegrationLog log) {
+        String stored = log.getResponsePayload();
+        if (!StringUtils.hasText(stored)) {
+            return "No response from Nahdi";
+        }
+        String text = stored.trim();
+        NahdiSendPrescriptionResponse parsed = text.startsWith("{") ? parseResponse(text) : null;
+        if (parsed != null) {
+            return rejectionMessage(parsed);
+        }
+        return text.length() > MAX_REASON_LENGTH ? text.substring(0, MAX_REASON_LENGTH) + "..." : text;
+    }
+
+    private static String rejectionMessage(NahdiSendPrescriptionResponse parsed) {
         if (parsed == null) {
             return "Unexpected response from Nahdi";
         }
-        if (StringUtils.hasText(parsed.message())) {
-            return parsed.message();
-        }
-        return parsed.error() != null && !parsed.error().isNull() ? parsed.error().toString() : response;
+        return NahdiErrorReason.of(parsed.message(), parsed.error());
     }
 
     /**
