@@ -128,8 +128,15 @@ public class NahdiIntegrationService {
         if (!PrescriptionStatus.SUBMITTED.equals(prescription.getStatus())) {
             throw new BadRequestAlertException("Only a submitted prescription can be resent", "prescription", "notSubmitted");
         }
-        submittedPrescriptionEditPolicy.assertCanEdit(prescription);
-        LOG.info("[NAHDI][RESEND_PRESCRIPTION] prescriptionId={}", prescriptionId);
+        // Resending a prescription that never reached Nahdi delivers it as it was submitted, so anyone may do it.
+        // Once it was delivered, a resend sends a changed prescription and needs the edit-after-submit permission.
+        boolean everDelivered = nahdiIntegrationLogRepository
+                .findFirstByPrescriptionIdAndStatusOrderByCreatedDateDesc(prescriptionId, NahdiIntegrationStatus.SUCCESS)
+                .isPresent();
+        if (everDelivered) {
+            submittedPrescriptionEditPolicy.assertCanEdit(prescription);
+        }
+        LOG.info("[NAHDI][RESEND_PRESCRIPTION] prescriptionId={}, everDelivered={}", prescriptionId, everDelivered);
         return sendPrescription(prescriptionId);
     }
 
