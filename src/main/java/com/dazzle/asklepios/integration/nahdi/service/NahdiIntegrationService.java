@@ -221,7 +221,7 @@ public class NahdiIntegrationService {
     private void record(Long prescriptionId, String requestPayload, String responsePayload, NahdiIntegrationStatus status, String orderNumber) {
         try {
             nahdiIntegrationLogService.save(new NahdiIntegrationLogDTO(
-                    null, prescriptionId, nahdiProperties.sendPrescriptionEndpoint(), requestPayload, responsePayload, status, orderNumber, null));
+                    null, prescriptionId, nahdiProperties.sendPrescriptionEndpoint(), requestPayload, responsePayload, status, orderNumber, null, null));
         } catch (Exception e) {
             LOG.error("[NAHDI][SEND_PRESCRIPTION] failed to save integration log, status={}", status, e);
         }

@@ -13,6 +13,7 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.springframework.data.annotation.CreatedBy;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
@@ -63,8 +64,13 @@ public class NahdiIntegrationLog implements Serializable {
     @Column(name = "created_date", nullable = false, updatable = false)
     private Instant createdDate;
 
+    /** User who sent the prescription (submit or Resend to Pharmacy), filled by auditing. */
+    @CreatedBy
+    @Column(name = "created_by", length = 50, updatable = false)
+    private String createdBy;
+
     @Override
     public String toString() {
-        return "NahdiIntegrationLog{id=" + id + ", endpoint='" + endpoint + "', status=" + status + ", orderNumber='" + orderNumber + "', createdDate=" + createdDate + "}";
+        return "NahdiIntegrationLog{id=" + id + ", endpoint='" + endpoint + "', status=" + status + ", orderNumber='" + orderNumber + "', createdDate=" + createdDate + ", createdBy='" + createdBy + "'}";
     }
 }

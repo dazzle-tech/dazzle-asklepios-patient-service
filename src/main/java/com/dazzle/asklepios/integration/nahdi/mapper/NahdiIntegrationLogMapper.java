@@ -22,12 +22,13 @@ public class NahdiIntegrationLogMapper {
                 entity.getResponsePayload(),
                 entity.getStatus(),
                 entity.getOrderNumber(),
-                entity.getCreatedDate()
+                entity.getCreatedDate(),
+                entity.getCreatedBy()
         );
     }
 
     /**
-     * {@code id} and {@code createdDate} are managed by persistence and auditing, so they are not copied.
+     * {@code id}, {@code createdDate} and {@code createdBy} are managed by persistence and auditing, so they are not copied.
      */
     public NahdiIntegrationLog toEntity(NahdiIntegrationLogDTO dto) {
         if (dto == null) {
