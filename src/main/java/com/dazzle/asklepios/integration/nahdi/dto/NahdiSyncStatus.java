@@ -13,7 +13,9 @@ import java.time.Instant;
  * @param lastAttemptStatus  status of the last attempt (SUCCESS / FAILED), if any
  * @param lastAttemptAt      time of the last attempt, if any
  * @param orderNumber        Nahdi order number of the last successful send
- * @param failureReason      readable reason when the last attempt failed
+ * @param failureReason      technical reason when the last attempt failed (for IT, shown as a hint)
+ * @param failureMessage     what the doctor is told when the last attempt failed
+ * @param failureDataError   true when the failure is in the prescription data (the doctor can fix it)
  * @param integrationEnabled false when the Nahdi integration is off (nothing is sent)
  */
 @Builder(builderClassName = "Builder")
@@ -24,5 +26,7 @@ public record NahdiSyncStatus(
         Instant lastAttemptAt,
         String orderNumber,
         String failureReason,
+        String failureMessage,
+        boolean failureDataError,
         boolean integrationEnabled
 ) {}
