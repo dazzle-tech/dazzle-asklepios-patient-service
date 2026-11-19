@@ -32,15 +32,13 @@ public record NahdiProperties(
     ) {}
 
     /**
-     * Where the dispensing status of a sent prescription comes from.
+     * Dispensing status of a sent prescription, read from Nahdi sales invoices.
      *
-     * @param source                NONE (nothing is marked dispensed) or INVOICE (Nahdi sales invoices)
      * @param salesInvoicesEndpoint GetSalesInvoices path
      * @param saleInvoiceType       Invoice_Type of a sale (the medications on it were dispensed)
      * @param returnInvoiceType     Invoice_Type of a return (the medications on it are no longer dispensed)
      */
     public record Dispensing(
-            String source,
             String salesInvoicesEndpoint,
             String saleInvoiceType,
             String returnInvoiceType

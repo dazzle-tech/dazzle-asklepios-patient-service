@@ -13,6 +13,7 @@ import com.dazzle.asklepios.domain.ToothAction;
 import com.dazzle.asklepios.domain.ToothCdt;
 import com.dazzle.asklepios.domain.ToothService;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentDiscountType;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentHistoryAction;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentType;
@@ -241,7 +242,8 @@ public class DentalPlannedTreatmentService {
                 dto.procedureId(),
                 dto.price(),
                 quantity,
-                dto.discount()
+                dto.discount(),
+                dto.discountType()
         );
         DentalTreatmentSession session = requirePlanSession(
                 dto.patientId(),
@@ -265,7 +267,8 @@ public class DentalPlannedTreatmentService {
                 dto.procedureId(),
                 financials.unitPrice(),
                 financials.quantity(),
-                financials.discountAmount(),
+                financials.discountValue(),
+                financials.discountType(),
                 clinicalFrom(dto)
         );
         entity.setTreatmentPlan(session.getTreatmentPlan());
@@ -330,6 +333,7 @@ public class DentalPlannedTreatmentService {
                 dto.price(),
                 dto.quantity(),
                 dto.discount(),
+                dto.discountType(),
                 dto.anesthesiaUsed(),
                 dto.dose(),
                 dto.unit(),
@@ -345,7 +349,8 @@ public class DentalPlannedTreatmentService {
                 dto.procedureId(),
                 dto.price(),
                 dto.quantity(),
-                dto.discount()
+                dto.discount(),
+                dto.discountType()
         );
 
         DentalTreatmentSession session = requirePlanSession(
@@ -373,7 +378,8 @@ public class DentalPlannedTreatmentService {
                     dto.procedureId(),
                     financials.unitPrice(),
                     financials.quantity(),
-                    financials.discountAmount(),
+                    financials.discountValue(),
+                    financials.discountType(),
                     clinical
             );
             row.setTreatmentPlan(session.getTreatmentPlan());
@@ -398,7 +404,8 @@ public class DentalPlannedTreatmentService {
                 dto.procedureId(),
                 dto.price(),
                 quantity,
-                dto.discount()
+                dto.discount(),
+                dto.discountType()
         );
 
         boolean scopeOrCommercialChanged = commercialChanged(entity, dto, resolved);
@@ -432,7 +439,8 @@ public class DentalPlannedTreatmentService {
         entity.setProcedureId(dto.procedureId());
         entity.setPrice(financials.unitPrice());
         entity.setQuantity(financials.quantity());
-        entity.setDiscount(financials.discountAmount());
+        entity.setDiscount(financials.discountValue());
+        entity.setDiscountType(financials.discountType());
         entity.setClinicalDetails(clinicalFrom(dto).toJson());
 
         return toDTO(dentalPlannedTreatmentRepository.save(entity));
@@ -593,7 +601,8 @@ public class DentalPlannedTreatmentService {
                 entity.getProcedureId(),
                 snapshotPrice,
                 billableQty,
-                entity.getDiscount()
+                entity.getDiscount(),
+                entity.getDiscountType()
         );
 
         String currentUser = SecurityUtils.getCurrentUserLogin()
@@ -602,7 +611,9 @@ public class DentalPlannedTreatmentService {
         entity.setStatus(PlannedTreatmentStatus.COMPLETED);
         entity.setPrice(financials.unitPrice());
         entity.setQuantity(financials.quantity());
-        entity.setDiscount(financials.discountAmount());
+        // Keep the entered value + type; the amount is derived, so it is never applied twice.
+        entity.setDiscount(financials.discountValue());
+        entity.setDiscountType(financials.discountType());
         entity.setCompletedBy(currentUser);
         entity.setCompletedAt(Instant.now());
 
@@ -943,7 +954,8 @@ public class DentalPlannedTreatmentService {
             Long procedureId,
             BigDecimal requestedPrice,
             Long quantity,
-            BigDecimal discount
+            BigDecimal discount,
+            PlannedTreatmentDiscountType requestedDiscountType
     ) {
         BigDecimal unitPrice = requestedPrice;
         if (unitPrice == null && procedureId != null) {
@@ -962,26 +974,46 @@ public class DentalPlannedTreatmentService {
             throw new BadRequestAlertException("Unit price cannot be negative", ENTITY, "invalidPrice");
         }
         long qty = quantity != null && quantity > 0 ? quantity : 1L;
-        BigDecimal discountAmount = (discount != null ? discount : BigDecimal.ZERO)
+        PlannedTreatmentDiscountType discountType = requestedDiscountType != null
+                ? requestedDiscountType
+                : PlannedTreatmentDiscountType.FIXED;
+        BigDecimal discountValue = (discount != null ? discount : BigDecimal.ZERO)
                 .setScale(2, RoundingMode.HALF_UP);
-        if (discountAmount.compareTo(BigDecimal.ZERO) < 0) {
+        if (discountValue.compareTo(BigDecimal.ZERO) < 0) {
             throw new BadRequestAlertException("Discount amount cannot be negative", ENTITY, "invalidDiscount");
         }
         BigDecimal lineGross = price.multiply(BigDecimal.valueOf(qty)).setScale(2, RoundingMode.HALF_UP);
-        if (discountAmount.compareTo(lineGross) > 0) {
-            throw new BadRequestAlertException(
-                    "Discount amount cannot exceed unit price × quantity",
-                    ENTITY,
-                    "discountExceedsLine"
-            );
+        BigDecimal discountAmount;
+        if (discountType == PlannedTreatmentDiscountType.PERCENT) {
+            if (discountValue.compareTo(BigDecimal.valueOf(100)) > 0) {
+                throw new BadRequestAlertException(
+                        "Discount percentage cannot exceed 100",
+                        ENTITY,
+                        "discountPercentExceeds100"
+                );
+            }
+            discountAmount = lineGross.multiply(discountValue)
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        } else {
+            if (discountValue.compareTo(lineGross) > 0) {
+                throw new BadRequestAlertException(
+                        "Discount amount cannot exceed unit price × quantity",
+                        ENTITY,
+                        "discountExceedsLine"
+                );
+            }
+            discountAmount = discountValue;
         }
         BigDecimal net = lineGross.subtract(discountAmount).setScale(2, RoundingMode.HALF_UP);
-        return new ValidatedFinancials(price, qty, discountAmount, net);
+        return new ValidatedFinancials(price, qty, discountType, discountValue, discountAmount, net);
     }
 
     private record ValidatedFinancials(
             BigDecimal unitPrice,
             long quantity,
+            PlannedTreatmentDiscountType discountType,
+            /** Entered value (the amount for FIXED, the percentage for PERCENT) — this is what is persisted. */
+            BigDecimal discountValue,
             BigDecimal discountAmount,
             BigDecimal netTotal
     ) {}
@@ -1225,6 +1257,7 @@ public class DentalPlannedTreatmentService {
             BigDecimal price,
             Long quantity,
             BigDecimal discount,
+            PlannedTreatmentDiscountType discountType,
             PlannedTreatmentClinicalDetails clinical
     ) {
         return DentalPlannedTreatment.builder()
@@ -1245,6 +1278,7 @@ public class DentalPlannedTreatmentService {
                 .price(defaultMoney(price))
                 .quantity(quantity != null && quantity > 0 ? quantity : 1L)
                 .discount(defaultMoney(discount))
+                .discountType(discountType != null ? discountType : PlannedTreatmentDiscountType.FIXED)
                 .status(PlannedTreatmentStatus.PENDING)
                 .patientServiceAndProduct(null)
                 .cancelled(false)
@@ -1362,6 +1396,7 @@ public class DentalPlannedTreatmentService {
                     action.getSurface(),
                     null,
                     serviceId,
+                    null,
                     null,
                     null,
                     null,
@@ -1535,6 +1570,17 @@ public class DentalPlannedTreatmentService {
         if (dto.discount() != null
                 && defaultMoney(entity.getDiscount()).compareTo(defaultMoney(dto.discount())) != 0) {
             return true;
+        }
+        if (dto.discount() != null || dto.discountType() != null) {
+            PlannedTreatmentDiscountType currentType = entity.getDiscountType() != null
+                    ? entity.getDiscountType()
+                    : PlannedTreatmentDiscountType.FIXED;
+            PlannedTreatmentDiscountType nextType = dto.discountType() != null
+                    ? dto.discountType()
+                    : PlannedTreatmentDiscountType.FIXED;
+            if (currentType != nextType) {
+                return true;
+            }
         }
         PlannedTreatmentClinicalDetails current =
                 PlannedTreatmentClinicalDetails.fromJson(entity.getClinicalDetails());

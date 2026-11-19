@@ -9,11 +9,11 @@ import com.dazzle.asklepios.integration.nahdi.dto.invoice.NahdiSalesInvoicesResp
 import com.dazzle.asklepios.integration.nahdi.dto.invoice.NahdiSalesInvoicesResponse.Invoice;
 import com.dazzle.asklepios.integration.nahdi.dto.invoice.NahdiSalesInvoicesResponse.Item;
 import com.dazzle.asklepios.integration.nahdi.mapper.NahdiPrescriptionLines;
+import com.dazzle.asklepios.integration.nahdi.service.NahdiErrorReason;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -29,8 +29,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Dispensing status taken from Nahdi sales invoices (GetSalesInvoices), enabled with
- * {@code nahdi.dispensing.source=INVOICE}.
+ * Dispensing status taken from Nahdi sales invoices (GetSalesInvoices). It is only called while the Nahdi
+ * integration is enabled ({@code nahdi.enabled}).
  * <p>
  * Confirmed by Nahdi:
  * <ul>
@@ -47,7 +47,6 @@ import java.util.Map;
  * time order and the latest one decides each line's status). A line is always dispensed as a whole.
  */
 @Component
-@ConditionalOnProperty(name = "nahdi.dispensing.source", havingValue = "INVOICE")
 public class InvoiceNahdiDispensingStatusProvider implements NahdiDispensingStatusProvider {
 
     private static final Logger LOG = LoggerFactory.getLogger(InvoiceNahdiDispensingStatusProvider.class);
@@ -85,7 +84,7 @@ public class InvoiceNahdiDispensingStatusProvider implements NahdiDispensingStat
     /** Maps a GetSalesInvoices response to the status of each sent line. */
     NahdiDispensingStatus toStatus(PatientPrescription prescription, String prescriptionRef, NahdiSalesInvoicesResponse response) {
         if (response == null || !Boolean.TRUE.equals(response.success())) {
-            String error = response == null || response.error() == null ? "no response" : response.error().toString();
+            String error = response == null ? "no response" : NahdiErrorReason.of(null, response.error());
             LOG.warn("[NAHDI][INVOICES] GetSalesInvoices was not successful. prescriptionRef={}, error={}", prescriptionRef, error);
             return NahdiDispensingStatus.unavailable("GetSalesInvoices was not successful: " + error);
         }

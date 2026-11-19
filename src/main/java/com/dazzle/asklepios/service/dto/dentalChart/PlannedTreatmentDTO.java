@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service.dto.dentalChart;
 
 import com.dazzle.asklepios.domain.DentalPlannedTreatment;
+import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentDiscountType;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentType;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
@@ -39,6 +40,8 @@ public record PlannedTreatmentDTO(
         BigDecimal price,
         Long quantity,
         BigDecimal discount,
+        /** FIXED (default/legacy) or PERCENT; {@code discount} is the entered value, not the amount. */
+        PlannedTreatmentDiscountType discountType,
         PlannedTreatmentStatus status,
         Long patientServiceAndProductId,
         ServiceSource source,
@@ -92,6 +95,7 @@ public record PlannedTreatmentDTO(
                 entity.getPrice(),
                 entity.getQuantity(),
                 entity.getDiscount(),
+                entity.getDiscountType() != null ? entity.getDiscountType() : PlannedTreatmentDiscountType.FIXED,
                 entity.getStatus() != null ? entity.getStatus() : PlannedTreatmentStatus.PENDING,
                 entity.getPatientServiceAndProduct() != null ? entity.getPatientServiceAndProduct().getId() : null,
                 entity.getSource(),

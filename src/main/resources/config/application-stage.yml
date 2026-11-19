@@ -44,7 +44,7 @@ nahdi:
   base-url: ${NAHDI_BASE_URL:https://m2.nahdi.sa/ProvidersIntegration/Home}
   provider-id: ${NAHDI_PROVIDER_ID:}
   provider-token: ${NAHDI_PROVIDER_TOKEN:}
-  timeout-seconds: ${NAHDI_TIMEOUT_SECONDS:30}
+  timeout-seconds: ${NAHDI_TIMEOUT_SECONDS:60}
   send-prescription-endpoint: ${NAHDI_SEND_PRESCRIPTION_ENDPOINT:/SendPrescription_clinics}
   prescription:
     status: ${NAHDI_PRESCRIPTION_STATUS:Approved}
@@ -54,7 +54,6 @@ nahdi:
     item-cancelled-status: ${NAHDI_ITEM_CANCELLED_STATUS:C}
     item-code-priority: ${NAHDI_ITEM_CODE_PRIORITY:SFDA}
   dispensing:
-    source: ${NAHDI_DISPENSING_SOURCE:NONE}
     sales-invoices-endpoint: ${NAHDI_SALES_INVOICES_ENDPOINT:/GetSalesInvoices}
     sale-invoice-type: ${NAHDI_SALE_INVOICE_TYPE:SALE}
     return-invoice-type: ${NAHDI_RETURN_INVOICE_TYPE:RETURN}

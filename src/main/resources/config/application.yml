@@ -239,7 +239,7 @@ nahdi:
   base-url: ${NAHDI_BASE_URL:https://m2.nahdi.sa/ProvidersIntegration/Home}
   provider-id: ${NAHDI_PROVIDER_ID:9999}
   provider-token: ${NAHDI_PROVIDER_TOKEN:56a84e8e04b411ec9a0er30242ac130003}
-  timeout-seconds: ${NAHDI_TIMEOUT_SECONDS:30}
+  timeout-seconds: ${NAHDI_TIMEOUT_SECONDS:60}
   send-prescription-endpoint: ${NAHDI_SEND_PRESCRIPTION_ENDPOINT:/SendPrescription_clinics}
   # Fixed codes sent in the SendPrescription payload (values from the Nahdi sample)
   prescription:
@@ -255,9 +255,7 @@ nahdi:
     item-code-priority: ${NAHDI_ITEM_CODE_PRIORITY:SFDA}
   # Dispensing status of a sent prescription (locks dispensed medications)
   dispensing:
-    # NONE: nothing is marked dispensed; INVOICE: taken from Nahdi sales invoices (GetSalesInvoices)
-    source: ${NAHDI_DISPENSING_SOURCE:NONE}
     sales-invoices-endpoint: ${NAHDI_SALES_INVOICES_ENDPOINT:/GetSalesInvoices}
-    # Invoice_Type values (to confirm with Nahdi): a sale dispenses the items, a return takes them back
+    # Invoice_Type values: a sale dispenses the items, a return takes them back (return value still to confirm with Nahdi)
     sale-invoice-type: ${NAHDI_SALE_INVOICE_TYPE:SALE}
     return-invoice-type: ${NAHDI_RETURN_INVOICE_TYPE:RETURN}

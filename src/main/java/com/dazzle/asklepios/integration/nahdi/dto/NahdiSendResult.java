@@ -5,12 +5,14 @@ package com.dazzle.asklepios.integration.nahdi.dto;
  *
  * @param status      SUCCESS, FAILED or SKIPPED (integration disabled / not configured)
  * @param orderNumber Nahdi order number on success
- * @param message     reason when the prescription was not accepted
+ * @param message     for the doctor when the prescription was not accepted (see NahdiDoctorMessage)
+ * @param detail      technical reason of a failure (e.g. Nahdi's error), for IT
  */
 public record NahdiSendResult(
         String status,
         String orderNumber,
-        String message
+        String message,
+        String detail
 ) {
 
     public static final String SUCCESS = "SUCCESS";
@@ -18,14 +20,14 @@ public record NahdiSendResult(
     public static final String SKIPPED = "SKIPPED";
 
     public static NahdiSendResult success(String orderNumber) {
-        return new NahdiSendResult(SUCCESS, orderNumber, null);
+        return new NahdiSendResult(SUCCESS, orderNumber, null, null);
     }
 
-    public static NahdiSendResult failed(String message) {
-        return new NahdiSendResult(FAILED, null, message);
+    public static NahdiSendResult failed(String message, String detail) {
+        return new NahdiSendResult(FAILED, null, message, detail);
     }
 
     public static NahdiSendResult skipped(String message) {
-        return new NahdiSendResult(SKIPPED, null, message);
+        return new NahdiSendResult(SKIPPED, null, message, null);
     }
 }

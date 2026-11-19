@@ -16,5 +16,6 @@ public record NahdiIntegrationLogDTO(
         String responsePayload,
         NahdiIntegrationStatus status,
         String orderNumber,
-        Instant createdDate
+        Instant createdDate,
+        String createdBy
 ) implements Serializable {}
