@@ -39,7 +39,8 @@ public final class EligibilityContractRules {
     private static final Set<ServiceSource> DENTAL_SOURCES = EnumSet.of(
             ServiceSource.DENTAL_PROCEDURE,
             ServiceSource.DENTAL_CHART_CDT_TREATMENT,
-            ServiceSource.DENTAL_CHART_MANUAL_SERVICE
+            ServiceSource.DENTAL_CHART_MANUAL_SERVICE,
+            ServiceSource.DENTAL_PLANNED_TREATMENT
     );
 
     private static final String COST_BENEFICIARY_CATEGORY = "cost beneficiary";

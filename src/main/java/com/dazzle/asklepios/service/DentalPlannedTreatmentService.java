@@ -12,6 +12,7 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.ToothAction;
 import com.dazzle.asklepios.domain.ToothCdt;
 import com.dazzle.asklepios.domain.ToothService;
+import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentDiscountType;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentHistoryAction;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentStatus;
@@ -92,6 +93,7 @@ public class DentalPlannedTreatmentService {
     private final CDTCodeHelper cdtCodeHelper;
     private final ProcedureHelper procedureHelper;
     private final DentalPlannedTreatmentStatusLogRepository dentalPlannedTreatmentStatusLogRepository;
+    private final DentalPlannedTreatmentBillingService dentalPlannedTreatmentBillingService;
 
     public DentalPlannedTreatmentService(
             DentalPlannedTreatmentRepository dentalPlannedTreatmentRepository,
@@ -109,7 +111,8 @@ public class DentalPlannedTreatmentService {
             DentalTreatmentPlanService dentalTreatmentPlanService,
             CDTCodeHelper cdtCodeHelper,
             ProcedureHelper procedureHelper,
-            DentalPlannedTreatmentStatusLogRepository dentalPlannedTreatmentStatusLogRepository
+            DentalPlannedTreatmentStatusLogRepository dentalPlannedTreatmentStatusLogRepository,
+            DentalPlannedTreatmentBillingService dentalPlannedTreatmentBillingService
     ) {
         this.dentalPlannedTreatmentRepository = dentalPlannedTreatmentRepository;
         this.dentalChartToothRepository = dentalChartToothRepository;
@@ -127,6 +130,7 @@ public class DentalPlannedTreatmentService {
         this.cdtCodeHelper = cdtCodeHelper;
         this.procedureHelper = procedureHelper;
         this.dentalPlannedTreatmentStatusLogRepository = dentalPlannedTreatmentStatusLogRepository;
+        this.dentalPlannedTreatmentBillingService = dentalPlannedTreatmentBillingService;
     }
 
     @Transactional(readOnly = true)
@@ -510,7 +514,9 @@ public class DentalPlannedTreatmentService {
     /**
      * Completes a PENDING/IN_PROGRESS planned treatment clinically with the selected dental action.
      * Persists the planned price/quantity/discount snapshot on the treatment row.
-     * Charge creation / billing-engine integration is deferred.
+     * Creates the treatment's single Products & Services line in the execution encounter and bills it through the
+     * Billing Engine (the engine's price and discount rules set the Ledger total). Everything runs in this
+     * transaction, so a billing failure rolls back the completion, history, chart effect and line.
      */
     public PlannedTreatmentDTO completePlannedTreatment(Long id, Long executionEncounterId, Long dentalActionId) {
         DentalPlannedTreatment entity = getPlannedTreatmentForUpdate(id);
@@ -603,7 +609,6 @@ public class DentalPlannedTreatmentService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated."));
 
         entity.setStatus(PlannedTreatmentStatus.COMPLETED);
-        // Billing charge creation is deferred — do not invent a patientServiceAndProductId.
         entity.setPrice(financials.unitPrice());
         entity.setQuantity(financials.quantity());
         // Keep the entered value + type; the amount is derived, so it is never applied twice.
@@ -614,14 +619,25 @@ public class DentalPlannedTreatmentService {
 
         DentalPlannedTreatment saved = dentalPlannedTreatmentRepository.save(entity);
         recordHistory(saved, PlannedTreatmentHistoryAction.COMPLETED);
+        // The row is locked and had no charge (checked above), so one completion creates exactly one line.
+        String billedToothNumber = scope == TreatmentScope.SPECIFIC_TOOTH && !coveredTeeth.isEmpty()
+                ? coveredTeeth.get(0).getToothNumber()
+                : null;
+        PatientServiceAndProduct charge = dentalPlannedTreatmentBillingService.billCompletedTreatment(
+                saved,
+                financials.quantity(),
+                billedToothNumber
+        );
+        saved.setPatientServiceAndProduct(charge);
         String chartEffect = plannedTreatmentChartEffectService.apply(saved, coveredTeeth, dentalActionId, currentUser);
         dentalTreatmentPlanService.markInProgressIfAccepted(planIdOf(saved));
         dentalTreatmentPlanService.evaluateCompletion(planIdOf(saved));
         LOG.info(
-                "[DENTAL_PLANNED_TREATMENT] Completed clinically id={} scope={} qty={} (billing deferred)",
+                "[DENTAL_PLANNED_TREATMENT] Completed id={} scope={} qty={} pspId={}",
                 saved.getId(),
                 scope,
-                financials.quantity()
+                financials.quantity(),
+                charge.getId()
         );
         return toDTO(saved, chartEffect);
     }
