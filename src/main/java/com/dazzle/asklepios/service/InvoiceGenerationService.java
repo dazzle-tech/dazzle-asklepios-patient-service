@@ -127,6 +127,7 @@ public class InvoiceGenerationService {
     private final EncounterChargeLineEnsuringService encounterChargeLineEnsuringService;
     private final EncounterBillingGuardService encounterBillingGuardService;
     private final ClaimEncounterCopyService claimEncounterCopyService;
+    private final EncounterInvestigationReasonGuard encounterInvestigationReasonGuard;
     private final PatientActivityService patientActivityService;
 
     @Transactional(readOnly = true)
@@ -389,6 +390,11 @@ public class InvoiceGenerationService {
 
         if ("INSURANCE".equals(resolveCoverageType(encounterId))) {
             billingEligibilitySnapshotService.requireReadyForFinancialClose(encounterId);
+            encounterInvestigationReasonGuard.requireReasonWhenNoInvestigation(
+                    encounter,
+                    encounterServices,
+                    request.investigationNotPerformedReason()
+            );
         }
 
         if (hasFinalInvoice(encounterId)) {

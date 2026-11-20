@@ -162,6 +162,7 @@ public class PatientEncounterService {
     private final InsuranceCheckoutDiagnosticApprovalService insuranceCheckoutDiagnosticApprovalService;
     private final PatientActivityService patientActivityService;
     private final InsuranceRegistrationGuard insuranceRegistrationGuard;
+    private final EncounterInvestigationReasonGuard encounterInvestigationReasonGuard;
 
     public PatientEncounterService(
             PatientEncounterRepository patientEncounterRepository,
@@ -198,8 +199,10 @@ public class PatientEncounterService {
             EncounterAmendmentService encounterAmendmentService,
             InsuranceCheckoutDiagnosticApprovalService insuranceCheckoutDiagnosticApprovalService,
             @Lazy PatientActivityService patientActivityService,
-            InsuranceRegistrationGuard insuranceRegistrationGuard) {
+            InsuranceRegistrationGuard insuranceRegistrationGuard,
+            EncounterInvestigationReasonGuard encounterInvestigationReasonGuard) {
         this.insuranceRegistrationGuard = insuranceRegistrationGuard;
+        this.encounterInvestigationReasonGuard = encounterInvestigationReasonGuard;
         this.patientEncounterRepository = patientEncounterRepository;
         this.patientRepository = patientRepository;
         this.entityManager = entityManager;
@@ -1297,6 +1300,7 @@ public class PatientEncounterService {
                     true, // socialHistory
                     true, // vitalSigns
                     true, // bodyMeasurements
+                    true, // investigationNotPerformedReason
                     true, // canComplete
                     Collections.emptyList(),
                     Collections.emptyList()
@@ -1429,6 +1433,14 @@ public class PatientEncounterService {
             missing.add("Body Measurements");
         }
 
+        boolean investigationNotPerformedReason =
+                !encounterInvestigationReasonGuard.isReasonMissing(encounter);
+
+        // The visit screens ask for the reason on Complete / Disposition; billing checkout lists it.
+        if (includeDiagnostics && !investigationNotPerformedReason) {
+            missing.add("Reason Investigations Not Performed (enter it on visit Complete or Disposition)");
+        }
+
         boolean canComplete = missing.isEmpty();
 
         List<DiagnosticCheckoutApproval> diagnosticApprovals = includeDiagnostics
@@ -1451,6 +1463,7 @@ public class PatientEncounterService {
                 socialHistory,
                 vitalSigns,
                 bodyMeasurements,
+                investigationNotPerformedReason,
                 canComplete,
                 missing,
                 diagnosticApprovals
@@ -2434,6 +2447,11 @@ public class PatientEncounterService {
             );
         }
 
+        encounterInvestigationReasonGuard.requireReasonWhenNoInvestigation(
+                encounter,
+                dischargeDTO.investigationNotPerformedReason()
+        );
+
         /*
          * Update encounter discharge details
          */
@@ -2502,6 +2520,22 @@ public class PatientEncounterService {
             throw ex;
         }
     }
+    /**
+     * Saves why no laboratory or radiology investigation was done, asked on visit Complete.
+     */
+    @Transactional
+    public PatientEncounter saveInvestigationNotPerformedReason(Long encounterId, String reason) {
+        PatientEncounter encounter = patientEncounterRepository.findById(encounterId)
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "PatientEncounter not found with id " + encounterId,
+                        "patientEncounter",
+                        "id.notfound"
+                ));
+
+        encounter.setInvestigationNotPerformedReason(reason.trim());
+        return patientEncounterRepository.saveAndFlush(encounter);
+    }
+
     public PatientEncounter closeEncounterForBilling(Long encounterId) {
         LOG.info("[CLOSE_BILLING] PatientEncounter id={}", encounterId);
 
@@ -2512,6 +2546,7 @@ public class PatientEncounterService {
                         "id.notfound"
                 ));
 
+        encounterInvestigationReasonGuard.requireReasonWhenNoInvestigation(encounter, null);
 
         PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
         LOG.info("[CLOSE_BILLING] success id={} encounterStatus={}", saved.getId(), saved.getEncounterStatus());

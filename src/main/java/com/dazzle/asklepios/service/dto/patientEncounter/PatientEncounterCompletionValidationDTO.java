@@ -30,6 +30,9 @@ public record PatientEncounterCompletionValidationDTO(
         boolean vitalSigns,
         boolean bodyMeasurements,
 
+        /** False when a Waseel insurance visit without investigations has no reason why none was done. */
+        boolean investigationNotPerformedReason,
+
         boolean canComplete,
 
         List<String> missing,
