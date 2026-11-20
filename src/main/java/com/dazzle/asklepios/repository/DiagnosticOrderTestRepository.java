@@ -24,6 +24,8 @@ public interface DiagnosticOrderTestRepository extends JpaRepository<DiagnosticO
 
     List<DiagnosticOrderTest> findByOrderIdInAndStatusNot(Collection<Long> orderIds, DiagnosticOrderTestStatus status);
 
+    boolean existsByOrderIdInAndStatusNot(Collection<Long> orderIds, DiagnosticOrderTestStatus status);
+
     List<DiagnosticOrderTest> findByOrderIdInAndOrderTypeAndStatusNot(
             Collection<Long> orderIds,
             TestType orderType,

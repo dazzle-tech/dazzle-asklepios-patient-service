@@ -171,7 +171,10 @@ public class ApprovalRequestBuilderService {
         List<WaseelApprovalDiagnosis> requestDiagnoses = ApprovalDiagnosisMapper.withSinglePrincipal(visitDiagnoses);
 
         Map<Integer, LabTestSource> labTestSources = new LinkedHashMap<>();
-        var supportingInfo = approvalSupportingInfoMapper.toSupportingInfo(encounter, labTestSources);
+        var supportingInfo = ApprovalSupportingInfoMapper.withOnsetCode(
+                approvalSupportingInfoMapper.toSupportingInfo(encounter, labTestSources),
+                requestDiagnoses
+        );
 
         var waseelItems = linkItemSupportingInfo(
                 pendingItems,

@@ -2,6 +2,7 @@ package com.dazzle.asklepios.integration.waseel.service;
 
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimType;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalItem;
+import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalSupportingInfo;
 import com.dazzle.asklepios.integration.waseel.dto.claim.ClaimValidationError;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimPreAuthorizationInfo;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimRequest;
@@ -48,6 +49,9 @@ public class ClaimPayloadValidationService {
             "NUTRITION-CODES"
     );
 
+    private static final String INVESTIGATION_RESULT = "investigation-result";
+    private static final String INVESTIGATION_NOT_PERFORMED = "INP";
+
     /** Saudi SBS codes use a 5-digit root, e.g. 83600-00-00 or 11012-01-00. */
     private static final Pattern NPHIES_ITEM_CODE = Pattern.compile("^\\d{5}(-\\d{2}(-\\d{2})?)?$");
 
@@ -75,6 +79,15 @@ public class ClaimPayloadValidationService {
                         "Claim Information"
                 ));
             }
+        }
+
+        if (isInvestigationNotPerformedReasonMissing(claim.supportingInfo())) {
+            errors.add(error(
+                    "Supporting Info - Investigation Result",
+                    "No laboratory or radiology investigation was performed for this visit. "
+                            + "Enter the reason in Pre-Claim Clinical and Coding Review > Edit Encounter > Supportive Info.",
+                    "Supporting Info"
+            ));
         }
 
         Set<String> allowedItemTypes = allowedItemTypes(preAuth);
@@ -133,6 +146,13 @@ public class ClaimPayloadValidationService {
         }
 
         return errors;
+    }
+
+    /** The payer rejects an "investigation not performed" (INP) row that does not say why. */
+    private boolean isInvestigationNotPerformedReasonMissing(List<WaseelApprovalSupportingInfo> supportingInfo) {
+        return supportingInfo != null && supportingInfo.stream()
+                .filter(info -> info != null && INVESTIGATION_RESULT.equals(info.category()))
+                .anyMatch(info -> INVESTIGATION_NOT_PERFORMED.equals(info.code()) && blankToNull(info.value()) == null);
     }
 
     private Set<String> allowedItemTypes(WaseelClaimPreAuthorizationInfo preAuth) {

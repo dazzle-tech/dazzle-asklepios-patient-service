@@ -65,5 +65,8 @@ public class ClaimEncounterCopy extends AbstractAuditingEntity<Long> implements 
     @Column(name = "weight")
     private BigDecimal weight;
 
+    @Column(name = "investigation_not_performed_reason", columnDefinition = "text")
+    private String investigationNotPerformedReason;
+
 
 }

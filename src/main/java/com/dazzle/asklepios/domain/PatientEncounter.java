@@ -210,6 +210,9 @@ public class PatientEncounter extends AbstractAuditingEntity<Long> implements Se
     @Column(name = "history_of_present_illness")
     private String historyOfPresentIllness;
 
+    @Column(name = "investigation_not_performed_reason", columnDefinition = "text")
+    private String investigationNotPerformedReason;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "encounter_status")
     private EncounterStatus encounterStatus = EncounterStatus.OPEN;

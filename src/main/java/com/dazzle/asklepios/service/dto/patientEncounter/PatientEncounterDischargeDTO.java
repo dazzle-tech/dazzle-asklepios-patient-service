@@ -17,7 +17,10 @@ public record PatientEncounterDischargeDTO(
         DischargeType dischargeType,
 
         @NotNull
-        LocalDateTime dischargeAt
+        LocalDateTime dischargeAt,
+
+        /** Why no laboratory or radiology investigation was done, required for a Waseel insurance visit without any. */
+        String investigationNotPerformedReason
 
 ) implements Serializable {
 }
