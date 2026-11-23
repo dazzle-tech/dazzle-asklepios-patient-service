@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -29,6 +30,19 @@ public final class NahdiDoctorMessage {
     static final Map<String, String> DATA_ERRORS = Map.of();
 
     private static final Pattern ERROR_CODE = Pattern.compile("^\s*([A-Za-z0-9]+)\s*-");
+
+    /**
+     * Nahdi order statuses in which it skips an update, with the message shown to the doctor. Nahdi then answers
+     * e.g. "Order Stratus is 1, Order cannot changed" (its spelling), sometimes with {@code success=true}.
+     */
+    static final Map<String, String> LOCKED_ORDER_STATUSES = Map.of(
+            "1", "The pharmacy is already processing this prescription, so Nahdi did not apply the changes. "
+                    + "Contact the pharmacy if the changes are needed.",
+            "9", "The pharmacy already dispensed this prescription, so Nahdi did not apply the changes. "
+                    + "Contact Nahdi if the copay needs to be updated."
+    );
+
+    private static final Pattern ORDER_STATUS = Pattern.compile("(?i)order\\s+st\\w*\\s+is\\s+(\\d+)");
 
     /**
      * @param dataError true when the doctor can fix it in the prescription
@@ -55,6 +69,24 @@ public final class NahdiDoctorMessage {
             }
         }
         return messages.isEmpty() ? TECHNICAL_MESSAGE : new Message(true, String.join(" ", messages));
+    }
+
+    /**
+     * The message for an order Nahdi would not change (status 1 or 9), read from its reason text (message or
+     * error descriptions). Empty for any other answer.
+     */
+    public static Optional<Message> ofLockedOrder(String reason) {
+        if (!StringUtils.hasText(reason)) {
+            return Optional.empty();
+        }
+        Matcher matcher = ORDER_STATUS.matcher(reason);
+        while (matcher.find()) {
+            String text = LOCKED_ORDER_STATUSES.get(matcher.group(1));
+            if (text != null) {
+                return Optional.of(new Message(false, text));
+            }
+        }
+        return Optional.empty();
     }
 
     /** Error codes of a Nahdi {@code error} value, e.g. "ER01" from "ER01- Invalid Provider ID or Token". */

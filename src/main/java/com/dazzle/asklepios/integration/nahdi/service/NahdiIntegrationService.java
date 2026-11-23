@@ -93,18 +93,17 @@ public class NahdiIntegrationService {
         try {
             String response = nahdiClient.sendPrescription(request);
             NahdiSendPrescriptionResponse parsed = parseResponse(response);
-            // Nahdi answers HTTP 200 even on business errors; "success" in the body decides.
-            if (parsed != null && Boolean.TRUE.equals(parsed.success())) {
+            // Nahdi answers HTTP 200 even on business errors; "success" in the body decides, except for an order in
+            // status 1 or 9: Nahdi then skips the update but can still answer success=true.
+            Optional<NahdiDoctorMessage.Message> lockedOrder = lockedOrder(parsed);
+            if (parsed != null && Boolean.TRUE.equals(parsed.success()) && lockedOrder.isEmpty()) {
                 LOG.info("[NAHDI][SEND_PRESCRIPTION] success prescriptionId={}, orderNumber={}", prescriptionId, parsed.orderNumber());
                 record(prescriptionId, requestPayload, response, NahdiIntegrationStatus.SUCCESS, parsed.orderNumber());
                 return NahdiSendResult.success(parsed.orderNumber());
             }
             LOG.error("[NAHDI][SEND_PRESCRIPTION] rejected by Nahdi. prescriptionId={}, response={}", prescriptionId, response);
             record(prescriptionId, requestPayload, response, NahdiIntegrationStatus.FAILED, null);
-            NahdiDoctorMessage.Message doctorMessage = parsed == null
-                    ? NahdiDoctorMessage.technical()
-                    : NahdiDoctorMessage.ofNahdiError(parsed.error());
-            return NahdiSendResult.failed(doctorMessage.text(), rejectionMessage(parsed));
+            return NahdiSendResult.failed(doctorMessage(parsed).text(), rejectionMessage(parsed));
         } catch (RestClientResponseException e) {
             LOG.error("[NAHDI][SEND_PRESCRIPTION] Nahdi responded with status={} prescriptionId={}",
                     e.getStatusCode().value(), prescriptionId);
@@ -213,8 +212,22 @@ public class NahdiIntegrationService {
     private NahdiDoctorMessage.Message doctorMessage(NahdiIntegrationLog log) {
         String stored = log.getResponsePayload();
         String text = stored == null ? "" : stored.trim();
-        NahdiSendPrescriptionResponse parsed = text.startsWith("{") ? parseResponse(text) : null;
-        return parsed == null ? NahdiDoctorMessage.technical() : NahdiDoctorMessage.ofNahdiError(parsed.error());
+        return doctorMessage(text.startsWith("{") ? parseResponse(text) : null);
+    }
+
+    /** What the doctor is told about a Nahdi answer that was not accepted. */
+    private static NahdiDoctorMessage.Message doctorMessage(NahdiSendPrescriptionResponse parsed) {
+        if (parsed == null) {
+            return NahdiDoctorMessage.technical();
+        }
+        return lockedOrder(parsed).orElseGet(() -> NahdiDoctorMessage.ofNahdiError(parsed.error()));
+    }
+
+    /** The doctor's message when Nahdi skipped the update because the order is in status 1 or 9. */
+    private static Optional<NahdiDoctorMessage.Message> lockedOrder(NahdiSendPrescriptionResponse parsed) {
+        return parsed == null
+                ? Optional.empty()
+                : NahdiDoctorMessage.ofLockedOrder(NahdiErrorReason.of(parsed.message(), parsed.error()));
     }
 
     private static String rejectionMessage(NahdiSendPrescriptionResponse parsed) {
