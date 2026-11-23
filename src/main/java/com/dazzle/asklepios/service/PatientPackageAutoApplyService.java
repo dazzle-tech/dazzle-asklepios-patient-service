@@ -36,6 +36,9 @@ import java.util.Set;
  * Matching: an item line for the same item first, then a category line of the same type whose
  * repeat limit for that item is not reached. One unit per order; orders beyond the room left are
  * simply not counted (charged as usual). Never throws, so it cannot stop an order.
+ * <p>
+ * Orders from the package panel are counted on the line the user chose instead
+ * ({@link #withoutAutoApply} + {@link #consumeLine}), so the matching above is skipped for them.
  * Depends on repositories only, so the order services can call it without a dependency cycle.
  */
 @Service
@@ -46,6 +49,24 @@ public class PatientPackageAutoApplyService {
 
     /** order_source of a service line made from the usual services screen. */
     public static final String SOURCE_SERVICE_LINE = "SERVICE";
+
+    /** Set while the package panel makes its own orders: the hooks below then do nothing. */
+    private static final ThreadLocal<Boolean> SUPPRESSED = ThreadLocal.withInitial(() -> Boolean.FALSE);
+
+    /** Runs the work with the automatic matching turned off (the caller counts on the chosen line). */
+    public static <T> T withoutAutoApply(java.util.function.Supplier<T> work) {
+        boolean before = SUPPRESSED.get();
+        SUPPRESSED.set(Boolean.TRUE);
+        try {
+            return work.get();
+        } finally {
+            SUPPRESSED.set(before);
+        }
+    }
+
+    private static boolean suppressed() {
+        return Boolean.TRUE.equals(SUPPRESSED.get());
+    }
 
     private final PatientPackageRepository packageRepository;
     private final PatientPackageItemRepository itemRepository;
@@ -69,6 +90,9 @@ public class PatientPackageAutoApplyService {
 
     /** A diagnostic order was submitted: its tests are counted in the order they were added. */
     public void onDiagnosticOrderSubmitted(Long diagnosticOrderId) {
+        if (suppressed()) {
+            return;
+        }
         DiagnosticOrder order = diagnosticOrderRepository.findById(diagnosticOrderId).orElse(null);
         if (order == null || order.getEncounterId() == null || !hasActivePackage(order.getEncounterId())) {
             return;
@@ -91,7 +115,7 @@ public class PatientPackageAutoApplyService {
 
     /** A procedure was ordered. */
     public void onProcedureCreated(PatientProcedure procedure) {
-        if (procedure == null || procedure.getEncounter() == null || procedure.getProcedureId() == null) {
+        if (suppressed() || procedure == null || procedure.getEncounter() == null || procedure.getProcedureId() == null) {
             return;
         }
         consume(procedure.getEncounter().getId(), BillingItemTypes.PROCEDURE, procedure.getProcedureId(),
@@ -100,7 +124,7 @@ public class PatientPackageAutoApplyService {
 
     /** A service line was added from the services screen (package lines are counted by the package panel itself). */
     public void onServiceLineCreated(PatientServiceAndProduct line) {
-        if (line == null || line.getServiceSource() != ServiceSource.SERVICE_AND_PRODUCT
+        if (suppressed() || line == null || line.getServiceSource() != ServiceSource.SERVICE_AND_PRODUCT
                 || line.getBillingItemType() != BillingItemTypes.SERVICE || line.getServiceId() == null) {
             return;
         }
@@ -138,28 +162,45 @@ public class PatientPackageAutoApplyService {
                 .forEach(candidates::add);
 
         for (PatientPackageItem candidate : candidates) {
-            PatientPackageItem item = itemRepository.findByIdForUpdate(candidate.getId()).orElse(null);
-            if (item == null || item.getQuantityRemaining() < 1 || repeatLimitReached(item, sourceId)) {
-                continue;
+            Optional<PatientPackageUsage> usage = consumeLine(candidate.getId(), encounterId, sourceId, orderSource, orderId);
+            if (usage.isPresent()) {
+                return usage;
             }
-            PatientPackageUsage usage = usageRepository.save(PatientPackageUsage.builder()
-                    .patientPackageId(item.getPatientPackageId())
-                    .patientPackageItemId(item.getId())
-                    .encounterId(encounterId)
-                    .sourceId(sourceId)
-                    .quantity(1)
-                    .orderSource(orderSource)
-                    .orderId(orderId)
-                    .status(PatientPackageUsageStatus.USED)
-                    .build());
-            item.setQuantityUsed((item.getQuantityUsed() == null ? 0 : item.getQuantityUsed()) + 1);
-            itemRepository.saveAndFlush(item);
-            completeIfUsedUp(item.getPatientPackageId());
-            LOG.info("Package item {} took {} {} (order {} id={}) in encounter {}",
-                    item.getId(), type, sourceId, orderSource, orderId, encounterId);
-            return Optional.of(usage);
         }
         return Optional.empty();
+    }
+
+    /**
+     * Counts one unit on this exact package line (the one chosen in the panel), if it still has room and
+     * the repeat limit allows it. Empty when there is no room: the order is then charged as usual.
+     */
+    public Optional<PatientPackageUsage> consumeLine(
+            Long patientPackageItemId, Long encounterId, Long sourceId, String orderSource, Long orderId
+    ) {
+        PatientPackageItem item = itemRepository.findByIdForUpdate(patientPackageItemId).orElse(null);
+        if (item == null || item.getQuantityRemaining() < 1 || repeatLimitReached(item, sourceId)) {
+            return Optional.empty();
+        }
+        PatientPackage pkg = packageRepository.findById(item.getPatientPackageId()).orElse(null);
+        if (pkg == null || pkg.getStatus() != PatientPackageStatus.ACTIVE) {
+            return Optional.empty();
+        }
+        PatientPackageUsage usage = usageRepository.save(PatientPackageUsage.builder()
+                .patientPackageId(item.getPatientPackageId())
+                .patientPackageItemId(item.getId())
+                .encounterId(encounterId)
+                .sourceId(sourceId)
+                .quantity(1)
+                .orderSource(orderSource)
+                .orderId(orderId)
+                .status(PatientPackageUsageStatus.USED)
+                .build());
+        item.setQuantityUsed((item.getQuantityUsed() == null ? 0 : item.getQuantityUsed()) + 1);
+        itemRepository.saveAndFlush(item);
+        completeIfUsedUp(item.getPatientPackageId());
+        LOG.info("Package item {} took {} {} (order {} id={}) in encounter {}",
+                item.getId(), item.getItemType(), sourceId, orderSource, orderId, encounterId);
+        return Optional.of(usage);
     }
 
     /** Category lines can count the same item only maxRepeat times (no limit when empty). */

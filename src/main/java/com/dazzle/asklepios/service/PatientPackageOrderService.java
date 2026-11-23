@@ -65,6 +65,7 @@ public class PatientPackageOrderService {
     private final PatientProcedureService patientProcedureService;
     private final PatientServiceAndProductService patientServiceAndProductService;
     private final EntityManager entityManager;
+    private final PatientPackageAutoApplyService autoApplyService;
 
     public PatientPackageOrderService(
             PatientPackageRepository packageRepository,
@@ -75,7 +76,8 @@ public class PatientPackageOrderService {
             DiagnosticOrderTestService diagnosticOrderTestService,
             PatientProcedureService patientProcedureService,
             PatientServiceAndProductService patientServiceAndProductService,
-            EntityManager entityManager
+            EntityManager entityManager,
+            PatientPackageAutoApplyService autoApplyService
     ) {
         this.packageRepository = packageRepository;
         this.itemRepository = itemRepository;
@@ -86,6 +88,7 @@ public class PatientPackageOrderService {
         this.patientProcedureService = patientProcedureService;
         this.patientServiceAndProductService = patientServiceAndProductService;
         this.entityManager = entityManager;
+        this.autoApplyService = autoApplyService;
     }
 
     public record OrderResultVM(
@@ -96,9 +99,9 @@ public class PatientPackageOrderService {
     ) implements Serializable {}
 
     /**
-     * Orders one package item from the panel. Tests and procedures are made with the usual services and
-     * counted by {@link PatientPackageAutoApplyService} (the item's own line first); services are written
-     * here with source PACKAGE. Category lines are ordered through {@link #orderDiagnostics}.
+     * Orders one package item from the panel and counts it on that line (not on another package that has
+     * the same item). Tests and procedures are made with the usual services with the automatic matching off;
+     * services are written here with source PACKAGE. Category lines are ordered through {@link #orderDiagnostics}.
      */
     public OrderResultVM order(Long itemId, PatientPackageOrderVM vm) {
         PatientPackageItem item = itemRepository.findByIdForUpdate(itemId)
@@ -130,11 +133,13 @@ public class PatientPackageOrderService {
         switch (type) {
             case LABORATORY, RADIOLOGY, PATHOLOGY -> {
                 orderSource = type.name();
-                orderId = orderDiagnosticTest(pkg, item, encounter, vm);
+                orderId = PatientPackageAutoApplyService.withoutAutoApply(() -> orderDiagnosticTest(pkg, item, encounter, vm));
+                autoApplyService.consumeLine(item.getId(), encounter.getId(), item.getSourceId(), orderSource, orderId);
             }
             case PROCEDURE -> {
                 orderSource = PatientPackageUsageReversalService.SOURCE_PROCEDURE;
-                orderId = orderProcedure(pkg, item, encounter, vm);
+                orderId = PatientPackageAutoApplyService.withoutAutoApply(() -> orderProcedure(pkg, item, encounter, vm));
+                autoApplyService.consumeLine(item.getId(), encounter.getId(), item.getSourceId(), orderSource, orderId);
             }
             case SERVICE -> {
                 // The usage row is written first: the service line points back to it through source_id.
@@ -179,8 +184,9 @@ public class PatientPackageOrderService {
 
     /**
      * Several tests in ONE diagnostic order, submitted once. A line is either an item line (its own test)
-     * or a category line with the test picked. Tests are counted in the order sent: once a line has no room
-     * left (or a test reached its repeat limit) the rest are still ordered but charged as usual.
+     * or a category line with the test picked. Each test is counted on the line it was picked under, in the
+     * order sent: once that line has no room left (or the test reached its repeat limit) the rest are still
+     * ordered but charged as usual.
      */
     public DiagnosticsOrderResultVM orderDiagnostics(PatientPackageDiagnosticsOrderVM vm) {
         PatientEncounter encounter = encounterRepository.findById(vm.encounterId())
@@ -214,6 +220,34 @@ public class PatientPackageOrderService {
             lineTestIds.add(testId);
         }
 
+        // made with the automatic matching off: each test is counted below on the line it was picked under
+        List<Long> createdTestIds = new ArrayList<>();
+        DiagnosticOrder order = PatientPackageAutoApplyService.withoutAutoApply(
+                () -> createAndSubmitTests(vm, encounter, patientId, itemsById, lineTestIds, createdTestIds));
+
+        List<Long> countedTestIds = new ArrayList<>();
+        for (int i = 0; i < vm.items().size(); i++) {
+            PatientPackageItem item = itemsById.get(vm.items().get(i).itemId());
+            Long testOrderId = createdTestIds.get(i);
+            autoApplyService.consumeLine(item.getId(), encounter.getId(), lineTestIds.get(i), item.getItemType().name(), testOrderId)
+                    .ifPresent(u -> countedTestIds.add(testOrderId));
+        }
+
+        List<ResponseVM> packages = new ArrayList<>();
+        for (PatientPackage pkg : packagesById.values()) {
+            PatientPackage fresh = packageRepository.findById(pkg.getId()).orElse(pkg);
+            packages.add(ResponseVM.ofEntity(fresh, itemRepository.findByPatientPackageIdOrderByIdAsc(pkg.getId())));
+        }
+
+        LOG.info("Package tests ordered in encounter {}: diagnostic order {} with {} tests, {} taken from the package",
+                encounter.getId(), order.getId(), createdTestIds.size(), countedTestIds.size());
+        return new DiagnosticsOrderResultVM(order.getId(), createdTestIds, countedTestIds, packages);
+    }
+
+    private DiagnosticOrder createAndSubmitTests(
+            PatientPackageDiagnosticsOrderVM vm, PatientEncounter encounter, Long patientId,
+            Map<Long, PatientPackageItem> itemsById, List<Long> lineTestIds, List<Long> createdTestIds
+    ) {
         DiagnosticOrder order = diagnosticOrderService.create(new DiagnosticOrderCreateDTO(
                 patientId,
                 encounter.getId(),
@@ -223,8 +257,6 @@ public class PatientPackageOrderService {
                 encounter.getDepartmentId(),
                 encounter.getFacilityId()
         ));
-
-        List<Long> createdTestIds = new ArrayList<>();
         for (int i = 0; i < vm.items().size(); i++) {
             PatientPackageDiagnosticsOrderVM.Line line = vm.items().get(i);
             PatientPackageItem item = itemsById.get(line.itemId());
@@ -241,22 +273,8 @@ public class PatientPackageOrderService {
             createdTestIds.add(test.getId());
         }
 
-        // Submitting counts the tests against the visit's packages (see PatientPackageAutoApplyService).
         diagnosticOrderService.submit(order.getId(), SecurityUtils.getCurrentUserLogin().orElse("system"));
-
-        List<Long> countedTestIds = usageRepository.findByOrderSourceInAndOrderIdInAndStatus(
-                        PatientPackageUsageReversalService.DIAGNOSTIC_SOURCES, createdTestIds, PatientPackageUsageStatus.USED)
-                .stream().map(PatientPackageUsage::getOrderId).toList();
-
-        List<ResponseVM> packages = new ArrayList<>();
-        for (PatientPackage pkg : packagesById.values()) {
-            PatientPackage fresh = packageRepository.findById(pkg.getId()).orElse(pkg);
-            packages.add(ResponseVM.ofEntity(fresh, itemRepository.findByPatientPackageIdOrderByIdAsc(pkg.getId())));
-        }
-
-        LOG.info("Package tests ordered in encounter {}: diagnostic order {} with {} tests, {} taken from the package",
-                encounter.getId(), order.getId(), createdTestIds.size(), countedTestIds.size());
-        return new DiagnosticsOrderResultVM(order.getId(), createdTestIds, countedTestIds, packages);
+        return order;
     }
 
     private void checkPackageForVisit(PatientPackage pkg, PatientEncounter encounter) {
