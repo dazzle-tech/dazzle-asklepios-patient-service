@@ -232,7 +232,7 @@ public class DiagnosticOrderTestService {
         existing.setReason(dto.reason());
         existing.setNotes(dto.notes());
         existing.setIcdDiagnosisId(dto.icdDiagnosisId());
-        existing.setPrintNumber(dto.printNumber());
+        // printNumber is assigned once at submit (PrintNumberService) and never edited here.
 
 
         // Persist the updated entity
