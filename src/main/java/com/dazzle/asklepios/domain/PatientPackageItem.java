@@ -50,8 +50,8 @@ public class PatientPackageItem extends AbstractAuditingEntity<Long> implements 
     @Column(name = "item_type", nullable = false, length = 50)
     private BillingItemTypes itemType;
 
-    @NotNull
-    @Column(name = "source_id", nullable = false)
+    /** Empty for a category line (any item of itemType). */
+    @Column(name = "source_id")
     private Long sourceId;
 
     @Column(name = "item_code", length = 255)
@@ -68,6 +68,18 @@ public class PatientPackageItem extends AbstractAuditingEntity<Long> implements 
     @Column(name = "quantity_used", nullable = false)
     @Builder.Default
     private Integer quantityUsed = 0;
+
+    @NotNull
+    @Column(name = "is_category", nullable = false)
+    @Builder.Default
+    private Boolean isCategory = false;
+
+    /** Category lines: how many times the same item can be counted; empty = no limit. */
+    @Column(name = "max_repeat")
+    private Integer maxRepeat;
+
+    @Column(name = "discount_percent", precision = 5, scale = 2)
+    private java.math.BigDecimal discountPercent;
 
     public int getQuantityRemaining() {
         int total = quantityTotal == null ? 0 : quantityTotal;

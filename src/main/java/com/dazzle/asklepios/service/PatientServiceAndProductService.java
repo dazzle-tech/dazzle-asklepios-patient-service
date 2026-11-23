@@ -73,6 +73,13 @@ public class PatientServiceAndProductService {
         this.patientPackageUsageReversalService = patientPackageUsageReversalService;
     }
 
+    private PatientPackageAutoApplyService patientPackageAutoApplyService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setPatientPackageAutoApplyService(PatientPackageAutoApplyService patientPackageAutoApplyService) {
+        this.patientPackageAutoApplyService = patientPackageAutoApplyService;
+    }
+
     private static final Logger LOG = LoggerFactory.getLogger(PatientServiceAndProductService.class);
 
     private static final String CANCELLED_FROM_ACCOUNT_REASON = "Cancelled from patient account";
@@ -148,11 +155,16 @@ public class PatientServiceAndProductService {
     public PatientServiceAndProduct create(PatientServiceProductCreateDTO dto) {
         Long uomGroupUnitId = medicationUomGroupUnitId(dto.billingItemType(), dto.uomGroupUnitId());
 
-        return createItem(
+        PatientServiceAndProduct created = createItem(
                 dto,
                 uomGroupUnitId,
                 uomPriceFactorHelper.resolveBrandFactor(dto.brandMedicationId(), uomGroupUnitId)
         );
+        if (patientPackageAutoApplyService != null) {
+            // a service in the visit's package is taken from it
+            patientPackageAutoApplyService.onServiceLineCreated(created);
+        }
+        return created;
     }
 
     /**
@@ -505,6 +517,9 @@ public class PatientServiceAndProductService {
 
             List<PatientServiceAndProduct> saved = patientServiceAndProductRepository.saveAll(entities);
             patientServiceAndProductRepository.flush();
+            if (patientPackageAutoApplyService != null) {
+                saved.forEach(patientPackageAutoApplyService::onServiceLineCreated);
+            }
 
             saved.stream()
                     .map(PatientServiceAndProduct::getEncounterId)
@@ -737,8 +752,8 @@ public class PatientServiceAndProductService {
             throw handleConstraintViolation(ex);
         }
 
-        if (entity.getServiceSource() == ServiceSource.PACKAGE && patientPackageUsageReversalService != null) {
-            // ordered from a package: give the quantity back
+        if (patientPackageUsageReversalService != null) {
+            // counted against a package: give the quantity back
             patientPackageUsageReversalService.onServiceCancelled(id);
         }
 

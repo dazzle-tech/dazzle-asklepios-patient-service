@@ -35,4 +35,13 @@ public class PackageSetupView {
 
     @Column(name = "is_active")
     private Boolean isActive;
+
+    @Column(name = "valid_from")
+    private java.time.LocalDate validFrom;
+
+    @Column(name = "valid_to")
+    private java.time.LocalDate validTo;
+
+    @Column(name = "all_departments")
+    private Boolean allDepartments;
 }

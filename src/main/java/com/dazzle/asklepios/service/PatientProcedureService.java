@@ -55,6 +55,13 @@ public class PatientProcedureService {
         this.patientPackageUsageReversalService = patientPackageUsageReversalService;
     }
 
+    private PatientPackageAutoApplyService patientPackageAutoApplyService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setPatientPackageAutoApplyService(PatientPackageAutoApplyService patientPackageAutoApplyService) {
+        this.patientPackageAutoApplyService = patientPackageAutoApplyService;
+    }
+
     private static final Logger LOG = LoggerFactory.getLogger(PatientProcedureService.class);
 
     private final PatientProcedureRepository procedureRepository;
@@ -216,6 +223,10 @@ public class PatientProcedureService {
                     encounterCoverage
             );
 
+            if (patientPackageAutoApplyService != null) {
+                // a procedure in the visit's package is taken from it
+                patientPackageAutoApplyService.onProcedureCreated(savedProcedure);
+            }
             return savedProcedure;
 
         } catch (DataIntegrityViolationException | JpaSystemException ex) {

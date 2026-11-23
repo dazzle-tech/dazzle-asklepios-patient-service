@@ -54,6 +54,14 @@ public class DiagnosticOrderService {
 
     private static final Logger LOG = LoggerFactory.getLogger(DiagnosticOrderService.class);
 
+    private PatientPackageAutoApplyService patientPackageAutoApplyService;
+
+    /** Setter injection keeps the generated constructor (and tests that build this service) unchanged. */
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setPatientPackageAutoApplyService(PatientPackageAutoApplyService patientPackageAutoApplyService) {
+        this.patientPackageAutoApplyService = patientPackageAutoApplyService;
+    }
+
     private final DiagnosticOrderRepository diagnosticOrderRepository;
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
     private final PatientRepository patientRepository;
@@ -281,6 +289,10 @@ public class DiagnosticOrderService {
 
         notificationForUrgentDiagnosticOrder(saved);
         diagnosticOrderTestStatusService.chargeSubmittedOrder(saved.getId());
+        if (patientPackageAutoApplyService != null) {
+            // tests in the visit's package are taken from it
+            patientPackageAutoApplyService.onDiagnosticOrderSubmitted(saved.getId());
+        }
         recordSubmittedOrderActivities(saved);
 
         // Fixes each test's print group (by analyzer/tube) once at submit time, so

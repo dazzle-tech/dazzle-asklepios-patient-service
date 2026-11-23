@@ -61,6 +61,10 @@ public class PatientPackageUsage extends AbstractAuditingEntity<Long> implements
     @Column(name = "order_id")
     private Long orderId;
 
+    /** The item actually ordered (test, procedure or service id); for category lines this differs per usage. */
+    @Column(name = "source_id")
+    private Long sourceId;
+
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)

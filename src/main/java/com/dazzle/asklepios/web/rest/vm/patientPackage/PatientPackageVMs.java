@@ -38,7 +38,10 @@ public final class PatientPackageVMs {
             String itemName,
             Integer quantityTotal,
             Integer quantityUsed,
-            Integer quantityRemaining
+            Integer quantityRemaining,
+            Boolean isCategory,
+            Integer maxRepeat,
+            BigDecimal discountPercent
     ) implements Serializable {
 
         public static ItemVM ofEntity(PatientPackageItem e) {
@@ -51,7 +54,10 @@ public final class PatientPackageVMs {
                     e.getItemName(),
                     e.getQuantityTotal(),
                     e.getQuantityUsed(),
-                    e.getQuantityRemaining()
+                    e.getQuantityRemaining(),
+                    e.getIsCategory(),
+                    e.getMaxRepeat(),
+                    e.getDiscountPercent()
             );
         }
     }

@@ -62,7 +62,7 @@ public class PatientPackageUsageReversalService {
 
     /** A patient service/product line was cancelled. */
     public void onServiceCancelled(Long patientServiceAndProductId) {
-        reverse(Set.of(SOURCE_SERVICE), patientServiceAndProductId);
+        reverse(Set.of(SOURCE_SERVICE, PatientPackageAutoApplyService.SOURCE_SERVICE_LINE), patientServiceAndProductId);
     }
 
     private void reverse(Collection<String> sources, Long orderId) {

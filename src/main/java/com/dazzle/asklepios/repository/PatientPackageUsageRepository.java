@@ -13,6 +13,11 @@ public interface PatientPackageUsageRepository extends JpaRepository<PatientPack
 
     boolean existsByPatientPackageIdAndStatus(Long patientPackageId, PatientPackageUsageStatus status);
 
+    long countByPatientPackageItemIdAndSourceIdAndStatus(Long patientPackageItemId, Long sourceId, PatientPackageUsageStatus status);
+
+    List<PatientPackageUsage> findByOrderSourceInAndOrderIdInAndStatus(
+            Collection<String> orderSources, Collection<Long> orderIds, PatientPackageUsageStatus status);
+
     List<PatientPackageUsage> findByOrderSourceInAndOrderIdAndStatus(
             Collection<String> orderSources, Long orderId, PatientPackageUsageStatus status);
 }

@@ -95,23 +95,22 @@ public class PatientPackageOrderService {
             ResponseVM patientPackage
     ) implements Serializable {}
 
+    /**
+     * Orders one package item from the panel. Tests and procedures are made with the usual services and
+     * counted by {@link PatientPackageAutoApplyService} (the item's own line first); services are written
+     * here with source PACKAGE. Category lines are ordered through {@link #orderDiagnostics}.
+     */
     public OrderResultVM order(Long itemId, PatientPackageOrderVM vm) {
         PatientPackageItem item = itemRepository.findByIdForUpdate(itemId)
                 .orElseThrow(() -> new NotFoundAlertException("Package item not found with id " + itemId, ENTITY, "item.notfound"));
         PatientPackage pkg = packageRepository.findById(item.getPatientPackageId())
                 .orElseThrow(() -> new NotFoundAlertException("Patient package not found", ENTITY, "notfound"));
-        if (pkg.getStatus() != PatientPackageStatus.ACTIVE) {
-            throw new BadRequestAlertException("This package is " + pkg.getStatus().name().toLowerCase(), ENTITY, "package.notActive");
-        }
-
         PatientEncounter encounter = encounterRepository.findById(vm.encounterId())
                 .orElseThrow(() -> new NotFoundAlertException("Encounter not found with id " + vm.encounterId(), ENTITY, "encounter.notfound"));
-        Long encounterPatientId = encounter.getPatient() != null ? encounter.getPatient().getId() : null;
-        if (!pkg.getPatientId().equals(encounterPatientId)) {
-            throw new BadRequestAlertException("The encounter does not belong to the package's patient", ENTITY, "encounter.patient.mismatch");
-        }
-        if (!encounter.getId().equals(pkg.getEncounterId())) {
-            throw new BadRequestAlertException("Package " + pkg.getPackageName() + " belongs to another visit", ENTITY, "package.otherVisit");
+        checkPackageForVisit(pkg, encounter);
+        if (Boolean.TRUE.equals(item.getIsCategory())) {
+            throw new BadRequestAlertException(
+                    "Choose the item to order for " + item.getItemType().name().toLowerCase() + " in the package", ENTITY, "item.category");
         }
 
         int quantity = vm.quantity() == null ? 1 : vm.quantity();
@@ -126,15 +125,6 @@ public class PatientPackageOrderService {
                     "Only " + item.getQuantityRemaining() + " left of " + item.getItemName(), ENTITY, "item.notEnough");
         }
 
-        // The usage row is written first: a service line points back to it through source_id.
-        PatientPackageUsage usage = usageRepository.saveAndFlush(PatientPackageUsage.builder()
-                .patientPackageId(pkg.getId())
-                .patientPackageItemId(item.getId())
-                .encounterId(encounter.getId())
-                .quantity(quantity)
-                .status(PatientPackageUsageStatus.USED)
-                .build());
-
         String orderSource;
         Long orderId;
         switch (type) {
@@ -147,78 +137,81 @@ public class PatientPackageOrderService {
                 orderId = orderProcedure(pkg, item, encounter, vm);
             }
             case SERVICE -> {
+                // The usage row is written first: the service line points back to it through source_id.
+                PatientPackageUsage usage = usageRepository.saveAndFlush(PatientPackageUsage.builder()
+                        .patientPackageId(pkg.getId())
+                        .patientPackageItemId(item.getId())
+                        .encounterId(encounter.getId())
+                        .sourceId(item.getSourceId())
+                        .quantity(quantity)
+                        .status(PatientPackageUsageStatus.USED)
+                        .build());
                 orderSource = PatientPackageUsageReversalService.SOURCE_SERVICE;
                 orderId = orderService(pkg, item, encounter, usage, quantity, vm);
+                usage.setOrderSource(orderSource);
+                usage.setOrderId(orderId);
+                usageRepository.save(usage);
+                PatientPackageItem locked = itemRepository.findByIdForUpdate(item.getId()).orElse(item);
+                locked.setQuantityUsed((locked.getQuantityUsed() == null ? 0 : locked.getQuantityUsed()) + quantity);
+                itemRepository.saveAndFlush(locked);
             }
             default -> throw new BadRequestAlertException(
                     "Ordering " + type.name().toLowerCase() + " items from a package is not available yet", ENTITY, "item.typeNotSupported");
         }
 
-        usage.setOrderSource(orderSource);
-        usage.setOrderId(orderId);
-        usageRepository.save(usage);
-
-        item.setQuantityUsed((item.getQuantityUsed() == null ? 0 : item.getQuantityUsed()) + quantity);
-        itemRepository.saveAndFlush(item);
-
+        completeIfUsedUp(pkg);
+        Long usageId = usageRepository.findByOrderSourceInAndOrderIdAndStatus(
+                        List.of(orderSource), orderId, PatientPackageUsageStatus.USED).stream()
+                .map(PatientPackageUsage::getId).findFirst().orElse(null);
         List<PatientPackageItem> items = itemRepository.findByPatientPackageIdOrderByIdAsc(pkg.getId());
-        if (items.stream().allMatch(i -> i.getQuantityRemaining() == 0)) {
-            pkg.setStatus(PatientPackageStatus.COMPLETED);
-            packageRepository.save(pkg);
-        }
-
-        LOG.info("Package {} item {} ({}) ordered in encounter {}: {} id={} qty={}",
-                pkg.getId(), item.getId(), item.getItemName(), encounter.getId(), orderSource, orderId, quantity);
-        return new OrderResultVM(usage.getId(), orderSource, orderId, ResponseVM.ofEntity(pkg, items));
+        LOG.info("Package {} item {} ({}) ordered in encounter {}: {} id={} qty={} usage={}",
+                pkg.getId(), item.getId(), item.getItemName(), encounter.getId(), orderSource, orderId, quantity, usageId);
+        return new OrderResultVM(usageId, orderSource, orderId, ResponseVM.ofEntity(pkg, items));
     }
 
     public record DiagnosticsOrderResultVM(
             Long diagnosticOrderId,
             List<Long> diagnosticOrderTestIds,
+            /** Tests taken from the package; the others were over the room left and are charged as usual. */
+            List<Long> countedTestIds,
             List<ResponseVM> patientPackages
     ) implements Serializable {}
 
     /**
-     * Several package tests in ONE diagnostic order, submitted once. Each test takes one from its package item.
-     * All or nothing: if any test fails, nothing is ordered and nothing is taken.
+     * Several tests in ONE diagnostic order, submitted once. A line is either an item line (its own test)
+     * or a category line with the test picked. Tests are counted in the order sent: once a line has no room
+     * left (or a test reached its repeat limit) the rest are still ordered but charged as usual.
      */
     public DiagnosticsOrderResultVM orderDiagnostics(PatientPackageDiagnosticsOrderVM vm) {
         PatientEncounter encounter = encounterRepository.findById(vm.encounterId())
                 .orElseThrow(() -> new NotFoundAlertException("Encounter not found with id " + vm.encounterId(), ENTITY, "encounter.notfound"));
         Long patientId = encounter.getPatient() != null ? encounter.getPatient().getId() : null;
 
-        // Lock in id order so two users ordering overlapping items cannot deadlock.
-        List<Long> itemIds = vm.items().stream().map(PatientPackageDiagnosticsOrderVM.Line::itemId).distinct().sorted().toList();
-        if (itemIds.size() != vm.items().size()) {
-            throw new BadRequestAlertException("The same item is selected twice", ENTITY, "item.duplicate");
-        }
-        Map<Long, PatientPackageItem> itemsById = new LinkedHashMap<>();
-        Map<Long, PatientPackage> packagesById = new HashMap<>();
+        Map<Long, PatientPackageItem> itemsById = new HashMap<>();
+        Map<Long, PatientPackage> packagesById = new LinkedHashMap<>();
         Set<Long> testIds = new HashSet<>();
-        for (Long id : itemIds) {
-            PatientPackageItem item = itemRepository.findByIdForUpdate(id)
-                    .orElseThrow(() -> new NotFoundAlertException("Package item not found with id " + id, ENTITY, "item.notfound"));
+        List<Long> lineTestIds = new ArrayList<>();
+        for (PatientPackageDiagnosticsOrderVM.Line line : vm.items()) {
+            PatientPackageItem item = itemsById.computeIfAbsent(line.itemId(), id -> itemRepository.findById(id)
+                    .orElseThrow(() -> new NotFoundAlertException("Package item not found with id " + id, ENTITY, "item.notfound")));
             if (!PatientPackageUsageReversalService.DIAGNOSTIC_SOURCES.contains(item.getItemType().name())) {
-                throw new BadRequestAlertException(item.getItemName() + " is not a diagnostic test", ENTITY, "item.notDiagnostic");
+                throw new BadRequestAlertException(
+                        (item.getItemName() != null ? item.getItemName() : item.getItemType().name()) + " is not a diagnostic test",
+                        ENTITY, "item.notDiagnostic");
             }
             PatientPackage pkg = packagesById.computeIfAbsent(item.getPatientPackageId(), pid -> packageRepository.findById(pid)
                     .orElseThrow(() -> new NotFoundAlertException("Patient package not found", ENTITY, "notfound")));
-            if (pkg.getStatus() != PatientPackageStatus.ACTIVE) {
-                throw new BadRequestAlertException("Package " + pkg.getPackageName() + " is not active", ENTITY, "package.notActive");
+            checkPackageForVisit(pkg, encounter);
+
+            Long testId = Boolean.TRUE.equals(item.getIsCategory()) ? line.testId() : item.getSourceId();
+            if (testId == null) {
+                throw new BadRequestAlertException("Choose the test for each " + item.getItemType().name().toLowerCase() + " line",
+                        ENTITY, "item.testRequired");
             }
-            if (!pkg.getPatientId().equals(patientId)) {
-                throw new BadRequestAlertException("The encounter does not belong to the package's patient", ENTITY, "encounter.patient.mismatch");
+            if (!testIds.add(testId)) {
+                throw new BadRequestAlertException("The same test is selected twice", ENTITY, "item.duplicateTest");
             }
-            if (!encounter.getId().equals(pkg.getEncounterId())) {
-                throw new BadRequestAlertException("Package " + pkg.getPackageName() + " belongs to another visit", ENTITY, "package.otherVisit");
-            }
-            if (item.getQuantityRemaining() < 1) {
-                throw new BadRequestAlertException("Nothing left of " + item.getItemName(), ENTITY, "item.notEnough");
-            }
-            if (!testIds.add(item.getSourceId())) {
-                throw new BadRequestAlertException(item.getItemName() + " is selected twice (from two packages)", ENTITY, "item.duplicateTest");
-            }
-            itemsById.put(id, item);
+            lineTestIds.add(testId);
         }
 
         DiagnosticOrder order = diagnosticOrderService.create(new DiagnosticOrderCreateDTO(
@@ -232,11 +225,12 @@ public class PatientPackageOrderService {
         ));
 
         List<Long> createdTestIds = new ArrayList<>();
-        for (PatientPackageDiagnosticsOrderVM.Line line : vm.items()) {
+        for (int i = 0; i < vm.items().size(); i++) {
+            PatientPackageDiagnosticsOrderVM.Line line = vm.items().get(i);
             PatientPackageItem item = itemsById.get(line.itemId());
             DiagnosticOrderTest test = diagnosticOrderTestService.create(new DiagnosticOrderTestCreateDTO(
                     order.getId(),
-                    item.getSourceId(),
+                    lineTestIds.get(i),
                     null,
                     line.reason(),
                     vm.notes(),
@@ -245,36 +239,47 @@ public class PatientPackageOrderService {
                     vm.acceptUncoveredAsCash()
             ));
             createdTestIds.add(test.getId());
-
-            usageRepository.save(PatientPackageUsage.builder()
-                    .patientPackageId(item.getPatientPackageId())
-                    .patientPackageItemId(item.getId())
-                    .encounterId(encounter.getId())
-                    .quantity(1)
-                    .orderSource(item.getItemType().name())
-                    .orderId(test.getId())
-                    .status(PatientPackageUsageStatus.USED)
-                    .build());
-            item.setQuantityUsed((item.getQuantityUsed() == null ? 0 : item.getQuantityUsed()) + 1);
-            itemRepository.save(item);
         }
-        itemRepository.flush();
 
+        // Submitting counts the tests against the visit's packages (see PatientPackageAutoApplyService).
         diagnosticOrderService.submit(order.getId(), SecurityUtils.getCurrentUserLogin().orElse("system"));
+
+        List<Long> countedTestIds = usageRepository.findByOrderSourceInAndOrderIdInAndStatus(
+                        PatientPackageUsageReversalService.DIAGNOSTIC_SOURCES, createdTestIds, PatientPackageUsageStatus.USED)
+                .stream().map(PatientPackageUsage::getOrderId).toList();
 
         List<ResponseVM> packages = new ArrayList<>();
         for (PatientPackage pkg : packagesById.values()) {
-            List<PatientPackageItem> items = itemRepository.findByPatientPackageIdOrderByIdAsc(pkg.getId());
-            if (items.stream().allMatch(i -> i.getQuantityRemaining() == 0)) {
-                pkg.setStatus(PatientPackageStatus.COMPLETED);
-                packageRepository.save(pkg);
-            }
-            packages.add(ResponseVM.ofEntity(pkg, items));
+            PatientPackage fresh = packageRepository.findById(pkg.getId()).orElse(pkg);
+            packages.add(ResponseVM.ofEntity(fresh, itemRepository.findByPatientPackageIdOrderByIdAsc(pkg.getId())));
         }
 
-        LOG.info("Package tests ordered in encounter {}: diagnostic order {} with {} tests",
-                encounter.getId(), order.getId(), createdTestIds.size());
-        return new DiagnosticsOrderResultVM(order.getId(), createdTestIds, packages);
+        LOG.info("Package tests ordered in encounter {}: diagnostic order {} with {} tests, {} taken from the package",
+                encounter.getId(), order.getId(), createdTestIds.size(), countedTestIds.size());
+        return new DiagnosticsOrderResultVM(order.getId(), createdTestIds, countedTestIds, packages);
+    }
+
+    private void checkPackageForVisit(PatientPackage pkg, PatientEncounter encounter) {
+        if (pkg.getStatus() != PatientPackageStatus.ACTIVE) {
+            throw new BadRequestAlertException(
+                    "Package " + pkg.getPackageName() + " is " + pkg.getStatus().name().toLowerCase(), ENTITY, "package.notActive");
+        }
+        Long encounterPatientId = encounter.getPatient() != null ? encounter.getPatient().getId() : null;
+        if (!pkg.getPatientId().equals(encounterPatientId)) {
+            throw new BadRequestAlertException("The encounter does not belong to the package's patient", ENTITY, "encounter.patient.mismatch");
+        }
+        if (!encounter.getId().equals(pkg.getEncounterId())) {
+            throw new BadRequestAlertException("Package " + pkg.getPackageName() + " belongs to another visit", ENTITY, "package.otherVisit");
+        }
+    }
+
+    private void completeIfUsedUp(PatientPackage pkg) {
+        PatientPackage fresh = packageRepository.findById(pkg.getId()).orElse(pkg);
+        if (fresh.getStatus() == PatientPackageStatus.ACTIVE
+                && itemRepository.findByPatientPackageIdOrderByIdAsc(fresh.getId()).stream().allMatch(i -> i.getQuantityRemaining() == 0)) {
+            fresh.setStatus(PatientPackageStatus.COMPLETED);
+            packageRepository.save(fresh);
+        }
     }
 
     /** New diagnostic order with the one test, submitted right away (the same as Submit on the order screen). */

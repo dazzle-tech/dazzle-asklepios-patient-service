@@ -43,4 +43,13 @@ public class PackageSetupItemView {
 
     @Column(name = "is_active")
     private Boolean isActive;
+
+    @Column(name = "is_category")
+    private Boolean isCategory;
+
+    @Column(name = "max_repeat")
+    private Integer maxRepeat;
+
+    @Column(name = "discount_percent")
+    private java.math.BigDecimal discountPercent;
 }

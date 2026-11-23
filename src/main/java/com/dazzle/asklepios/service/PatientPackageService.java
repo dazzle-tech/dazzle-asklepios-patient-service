@@ -48,6 +48,7 @@ public class PatientPackageService {
     private final PackageSetupItemViewRepository packageSetupItemViewRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
+    private final jakarta.persistence.EntityManager entityManager;
 
     public PatientPackageService(
             PatientPackageRepository patientPackageRepository,
@@ -56,7 +57,8 @@ public class PatientPackageService {
             PackageSetupViewRepository packageSetupViewRepository,
             PackageSetupItemViewRepository packageSetupItemViewRepository,
             PatientRepository patientRepository,
-            PatientEncounterRepository patientEncounterRepository
+            PatientEncounterRepository patientEncounterRepository,
+            jakarta.persistence.EntityManager entityManager
     ) {
         this.patientPackageRepository = patientPackageRepository;
         this.patientPackageItemRepository = patientPackageItemRepository;
@@ -65,6 +67,7 @@ public class PatientPackageService {
         this.packageSetupItemViewRepository = packageSetupItemViewRepository;
         this.patientRepository = patientRepository;
         this.patientEncounterRepository = patientEncounterRepository;
+        this.entityManager = entityManager;
     }
 
     /** Gives a package to a patient in a visit: copies the package price and every item with its quantity. */
@@ -95,6 +98,23 @@ public class PatientPackageService {
         if (!Boolean.TRUE.equals(setup.getIsActive())) {
             throw new BadRequestAlertException("This package is not active", ENTITY, "package.inactive");
         }
+        java.time.LocalDate today = java.time.LocalDate.now();
+        if ((setup.getValidFrom() != null && today.isBefore(setup.getValidFrom()))
+                || (setup.getValidTo() != null && today.isAfter(setup.getValidTo()))) {
+            throw new BadRequestAlertException("This package is not valid today", ENTITY, "package.outOfDate");
+        }
+        if (Boolean.FALSE.equals(setup.getAllDepartments())) {
+            List<?> departments = entityManager
+                    .createNativeQuery("select department_id from package_setup_department where package_setup_id = :id")
+                    .setParameter("id", setup.getId())
+                    .getResultList();
+            boolean allowed = encounter.getDepartmentId() != null && departments.stream()
+                    .anyMatch(d -> d != null && Long.valueOf(d.toString()).equals(encounter.getDepartmentId()));
+            if (!allowed) {
+                throw new BadRequestAlertException(
+                        "This package is not available in the visit's department", ENTITY, "package.department");
+            }
+        }
 
         // inactive items are left out of the patient's package
         List<PackageSetupItemView> setupItems = packageSetupItemViewRepository.findByPackageSetupIdOrderByIdAsc(setup.getId())
@@ -123,6 +143,9 @@ public class PatientPackageService {
                         .itemName(s.getItemName())
                         .quantityTotal(s.getQuantity())
                         .quantityUsed(0)
+                        .isCategory(Boolean.TRUE.equals(s.getIsCategory()))
+                        .maxRepeat(s.getMaxRepeat())
+                        .discountPercent(s.getDiscountPercent())
                         .build())
                 .toList());
 
