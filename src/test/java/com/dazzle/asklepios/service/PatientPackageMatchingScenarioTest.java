@@ -233,7 +233,60 @@ class PatientPackageMatchingScenarioTest {
         assertThat(anyLab.getQuantityUsed()).isZero();
     }
 
+    // ---------- UCC medication and vaccination ----------
+
+    @Test
+    void uccMedicationDoseIsTakenFromThePackage() {
+        addPackage(1L);
+        PatientPackageItem paracetamol = addItem(1L, 21L, BillingItemTypes.MEDICATION, 300L, 2, false, null);
+
+        service.onServiceLineCreated(line(com.dazzle.asklepios.domain.enumeration.ServiceSource.URGENT_CARE_MEDICATION_ORDER,
+                BillingItemTypes.MEDICATION, 300L));
+
+        assertThat(paracetamol.getQuantityUsed()).isEqualTo(1);
+    }
+
+    @Test
+    void prescriptionMedicationIsNotTakenFromThePackage() {
+        addPackage(1L);
+        PatientPackageItem paracetamol = addItem(1L, 21L, BillingItemTypes.MEDICATION, 300L, 2, false, null);
+
+        service.onServiceLineCreated(line(com.dazzle.asklepios.domain.enumeration.ServiceSource.PRESCRIPTION,
+                BillingItemTypes.MEDICATION, 300L));
+
+        assertThat(paracetamol.getQuantityUsed()).isZero();
+    }
+
+    @Test
+    void vaccinationIsTakenFromTheVaccineCategory() {
+        addPackage(1L);
+        PatientPackageItem anyVaccine = addItem(1L, 22L, BillingItemTypes.VACCINE, null, 1, true, null);
+
+        service.onServiceLineCreated(line(com.dazzle.asklepios.domain.enumeration.ServiceSource.VACCINATION,
+                BillingItemTypes.VACCINE, 77L));
+
+        assertThat(anyVaccine.getQuantityUsed()).isEqualTo(1);
+    }
+
     // ---------- helpers ----------
+
+    private com.dazzle.asklepios.domain.PatientServiceAndProduct line(
+            com.dazzle.asklepios.domain.enumeration.ServiceSource source, BillingItemTypes type, long itemId
+    ) {
+        com.dazzle.asklepios.domain.PatientServiceAndProduct l = new com.dazzle.asklepios.domain.PatientServiceAndProduct();
+        l.setId(nextOrderId++);
+        l.setEncounterId(ENCOUNTER);
+        l.setServiceSource(source);
+        l.setBillingItemType(type);
+        if (type == BillingItemTypes.MEDICATION) {
+            l.setBrandMedicationId(itemId);
+        } else if (type == BillingItemTypes.VACCINE) {
+            l.setVaccineBrandId(itemId);
+        } else {
+            l.setServiceId(itemId);
+        }
+        return l;
+    }
 
     private Optional<PatientPackageUsage> orderLab(long testId) {
         return service.consume(ENCOUNTER, BillingItemTypes.LABORATORY, testId, "LABORATORY", nextOrderId++);

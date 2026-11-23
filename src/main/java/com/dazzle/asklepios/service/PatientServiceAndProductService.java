@@ -202,7 +202,12 @@ public class PatientServiceAndProductService {
                 null
         );
 
-        return createItem(dto, uomGroupUnitId, uomPriceFactor);
+        PatientServiceAndProduct created = createItem(dto, uomGroupUnitId, uomPriceFactor);
+        if (patientPackageAutoApplyService != null) {
+            // a medication in the visit's package is taken from it when the dose is given
+            patientPackageAutoApplyService.onServiceLineCreated(created);
+        }
+        return created;
     }
 
     /**
@@ -236,7 +241,12 @@ public class PatientServiceAndProductService {
                 vaccineBrandId
         );
 
-        return createItem(dto, null, null);
+        PatientServiceAndProduct created = createItem(dto, null, null);
+        if (patientPackageAutoApplyService != null) {
+            // a vaccine in the visit's package is taken from it
+            patientPackageAutoApplyService.onServiceLineCreated(created);
+        }
+        return created;
     }
 
     private PatientServiceAndProduct createItem(

@@ -47,7 +47,7 @@ public class PatientPackageAutoApplyService {
 
     private static final Logger LOG = LoggerFactory.getLogger(PatientPackageAutoApplyService.class);
 
-    /** order_source of a service line made from the usual services screen. */
+    /** order_source of a patient_services_and_products line counted automatically (service, UCC dose, vaccination). */
     public static final String SOURCE_SERVICE_LINE = "SERVICE";
 
     /** Set while the package panel makes its own orders: the hooks below then do nothing. */
@@ -122,13 +122,25 @@ public class PatientPackageAutoApplyService {
                 PatientPackageUsageReversalService.SOURCE_PROCEDURE, procedure.getId());
     }
 
-    /** A service line was added from the services screen (package lines are counted by the package panel itself). */
+    /**
+     * A charge line was added: a service from the services screen, a UCC medication dose when it is given,
+     * or a vaccination when it is recorded. Package service lines are counted by the package panel itself.
+     */
     public void onServiceLineCreated(PatientServiceAndProduct line) {
-        if (suppressed() || line == null || line.getServiceSource() != ServiceSource.SERVICE_AND_PRODUCT
-                || line.getBillingItemType() != BillingItemTypes.SERVICE || line.getServiceId() == null) {
+        if (suppressed() || line == null || line.getServiceSource() == null || line.getBillingItemType() == null) {
             return;
         }
-        consume(line.getEncounterId(), BillingItemTypes.SERVICE, line.getServiceId(), SOURCE_SERVICE_LINE, line.getId());
+        Long sourceId = switch (line.getServiceSource()) {
+            case SERVICE_AND_PRODUCT -> line.getBillingItemType() == BillingItemTypes.SERVICE ? line.getServiceId() : null;
+            case URGENT_CARE_MEDICATION_ORDER ->
+                    line.getBillingItemType() == BillingItemTypes.MEDICATION ? line.getBrandMedicationId() : null;
+            case VACCINATION -> line.getBillingItemType() == BillingItemTypes.VACCINE ? line.getVaccineBrandId() : null;
+            default -> null; // prescriptions and the rest are not taken from packages
+        };
+        if (sourceId == null) {
+            return;
+        }
+        consume(line.getEncounterId(), line.getBillingItemType(), sourceId, SOURCE_SERVICE_LINE, line.getId());
     }
 
     /**
