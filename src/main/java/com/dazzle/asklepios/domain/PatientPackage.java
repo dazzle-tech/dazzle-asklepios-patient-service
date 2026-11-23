@@ -58,7 +58,7 @@ public class PatientPackage extends AbstractAuditingEntity<Long> implements Seri
     private String packageName;
 
     @NotNull
-    @Column(name = "package_price", nullable = false, precision = 19, scale = 4)
+    @Column(name = "package_price", precision = 19, scale = 4)
     private BigDecimal packagePrice;
 
     @NotNull

@@ -18,11 +18,11 @@ public final class PatientPackageVMs {
 
     private PatientPackageVMs() {}
 
-    /** Give a package to a patient, usually right after the visit is opened. */
+    /** Give a package to a patient in a visit; its items can be ordered in that visit only. */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record AssignVM(
             @NotNull Long patientId,
-            Long encounterId,
+            @NotNull Long encounterId,
             @NotNull Long packageSetupId
     ) implements Serializable {}
 

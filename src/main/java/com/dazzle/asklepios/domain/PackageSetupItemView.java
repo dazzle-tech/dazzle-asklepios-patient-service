@@ -40,4 +40,7 @@ public class PackageSetupItemView {
 
     @Column(name = "quantity")
     private Integer quantity;
+
+    @Column(name = "is_active")
+    private Boolean isActive;
 }

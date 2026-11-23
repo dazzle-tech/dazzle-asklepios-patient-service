@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
 
 /**
  * Packages bought for patients. Choosing a package copies its items and quantities from the setup;
- * the patient can then order them over this visit and later ones. The full package price is owed
+ * the patient can then order them in that visit only. The full package price is owed
  * whatever is used (billing is not linked yet).
  */
 @Service
@@ -67,7 +67,7 @@ public class PatientPackageService {
         this.patientEncounterRepository = patientEncounterRepository;
     }
 
-    /** Gives a package to a patient: copies the package price and every item with its quantity. */
+    /** Gives a package to a patient in a visit: copies the package price and every item with its quantity. */
     public ResponseVM assign(AssignVM vm) {
         LOG.info("[ASSIGN] package={} patient={} encounter={}", vm.packageSetupId(), vm.patientId(), vm.encounterId());
 
@@ -75,20 +75,18 @@ public class PatientPackageService {
             throw new NotFoundAlertException("Patient not found with id " + vm.patientId(), ENTITY, "patient.notfound");
         }
 
-        if (vm.encounterId() != null) {
-            PatientEncounter encounter = patientEncounterRepository.findById(vm.encounterId())
-                    .orElseThrow(() -> new NotFoundAlertException(
-                            "Encounter not found with id " + vm.encounterId(), ENTITY, "encounter.notfound"));
-            Long encounterPatientId = encounter.getPatient() != null ? encounter.getPatient().getId() : null;
-            if (!vm.patientId().equals(encounterPatientId)) {
-                throw new BadRequestAlertException(
-                        "The encounter does not belong to this patient", ENTITY, "encounter.patient.mismatch");
-            }
-            if (patientPackageRepository.existsByEncounterIdAndPackageSetupIdAndStatusNot(
-                    vm.encounterId(), vm.packageSetupId(), PatientPackageStatus.CANCELLED)) {
-                throw new BadRequestAlertException(
-                        "This package is already added to this visit", ENTITY, "package.duplicate");
-            }
+        PatientEncounter encounter = patientEncounterRepository.findById(vm.encounterId())
+                .orElseThrow(() -> new NotFoundAlertException(
+                        "Encounter not found with id " + vm.encounterId(), ENTITY, "encounter.notfound"));
+        Long encounterPatientId = encounter.getPatient() != null ? encounter.getPatient().getId() : null;
+        if (!vm.patientId().equals(encounterPatientId)) {
+            throw new BadRequestAlertException(
+                    "The encounter does not belong to this patient", ENTITY, "encounter.patient.mismatch");
+        }
+        if (patientPackageRepository.existsByEncounterIdAndPackageSetupIdAndStatusNot(
+                vm.encounterId(), vm.packageSetupId(), PatientPackageStatus.CANCELLED)) {
+            throw new BadRequestAlertException(
+                    "This package is already added to this visit", ENTITY, "package.duplicate");
         }
 
         PackageSetupView setup = packageSetupViewRepository.findById(vm.packageSetupId())
@@ -98,9 +96,11 @@ public class PatientPackageService {
             throw new BadRequestAlertException("This package is not active", ENTITY, "package.inactive");
         }
 
-        List<PackageSetupItemView> setupItems = packageSetupItemViewRepository.findByPackageSetupIdOrderByIdAsc(setup.getId());
+        // inactive items are left out of the patient's package
+        List<PackageSetupItemView> setupItems = packageSetupItemViewRepository.findByPackageSetupIdOrderByIdAsc(setup.getId())
+                .stream().filter(i -> !Boolean.FALSE.equals(i.getIsActive())).toList();
         if (setupItems.isEmpty()) {
-            throw new BadRequestAlertException("This package has no items", ENTITY, "package.empty");
+            throw new BadRequestAlertException("This package has no active items", ENTITY, "package.empty");
         }
 
         PatientPackage saved = patientPackageRepository.saveAndFlush(PatientPackage.builder()

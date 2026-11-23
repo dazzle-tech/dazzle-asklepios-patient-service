@@ -110,6 +110,9 @@ public class PatientPackageOrderService {
         if (!pkg.getPatientId().equals(encounterPatientId)) {
             throw new BadRequestAlertException("The encounter does not belong to the package's patient", ENTITY, "encounter.patient.mismatch");
         }
+        if (!encounter.getId().equals(pkg.getEncounterId())) {
+            throw new BadRequestAlertException("Package " + pkg.getPackageName() + " belongs to another visit", ENTITY, "package.otherVisit");
+        }
 
         int quantity = vm.quantity() == null ? 1 : vm.quantity();
         BillingItemTypes type = item.getItemType();
@@ -205,6 +208,9 @@ public class PatientPackageOrderService {
             }
             if (!pkg.getPatientId().equals(patientId)) {
                 throw new BadRequestAlertException("The encounter does not belong to the package's patient", ENTITY, "encounter.patient.mismatch");
+            }
+            if (!encounter.getId().equals(pkg.getEncounterId())) {
+                throw new BadRequestAlertException("Package " + pkg.getPackageName() + " belongs to another visit", ENTITY, "package.otherVisit");
             }
             if (item.getQuantityRemaining() < 1) {
                 throw new BadRequestAlertException("Nothing left of " + item.getItemName(), ENTITY, "item.notEnough");
