@@ -47,6 +47,14 @@ import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 @Transactional
 public class PatientProcedureService {
 
+    private PatientPackageUsageReversalService patientPackageUsageReversalService;
+
+    /** Setter injection keeps the existing constructor (and tests that build this service) unchanged. */
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setPatientPackageUsageReversalService(PatientPackageUsageReversalService patientPackageUsageReversalService) {
+        this.patientPackageUsageReversalService = patientPackageUsageReversalService;
+    }
+
     private static final Logger LOG = LoggerFactory.getLogger(PatientProcedureService.class);
 
     private final PatientProcedureRepository procedureRepository;
@@ -280,7 +288,12 @@ public class PatientProcedureService {
             procedureEntity.setCancelledBy(currentUsername());
             procedureEntity.setCancellationReason(cancelReason);
 
-            return procedureRepository.saveAndFlush(procedureEntity);
+            PatientProcedure cancelled = procedureRepository.saveAndFlush(procedureEntity);
+            if (patientPackageUsageReversalService != null) {
+                // ordered from a package: give the quantity back
+                patientPackageUsageReversalService.onProcedureCancelled(cancelled.getId());
+            }
+            return cancelled;
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);
         }

@@ -13,5 +13,7 @@ public enum ServiceSource {
     DENTAL_CHART_MANUAL_SERVICE,
     URGENT_CARE_MEDICATION_ORDER,
     VACCINATION,
-    DENTAL_PLANNED_TREATMENT
+    DENTAL_PLANNED_TREATMENT,
+    /** A service ordered from a patient package (sourceId = patient_package_usage.id). */
+    PACKAGE
 }

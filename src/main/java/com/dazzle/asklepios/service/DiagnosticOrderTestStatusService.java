@@ -43,6 +43,14 @@ import java.util.Set;
 @Transactional
 public class DiagnosticOrderTestStatusService {
 
+    private PatientPackageUsageReversalService patientPackageUsageReversalService;
+
+    /** Setter injection keeps the existing constructor (and tests that build this service) unchanged. */
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setPatientPackageUsageReversalService(PatientPackageUsageReversalService patientPackageUsageReversalService) {
+        this.patientPackageUsageReversalService = patientPackageUsageReversalService;
+    }
+
     private static final Logger LOG = LoggerFactory.getLogger(DiagnosticOrderTestStatusService.class);
 
     private final DiagnosticOrderRepository diagnosticOrderRepository;
@@ -375,6 +383,10 @@ public class DiagnosticOrderTestStatusService {
 
         DiagnosticOrderTest saved = diagnosticOrderTestRepository.save(test);
         diagnosticOrderStatusService.recomputeLabRadStatuses(saved.getOrderId());
+        if (patientPackageUsageReversalService != null) {
+            // ordered from a package: give the quantity back
+            patientPackageUsageReversalService.onDiagnosticTestCancelled(saved.getId());
+        }
 
         return saved;
     }

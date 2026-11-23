@@ -65,6 +65,14 @@ import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 @Transactional
 public class PatientServiceAndProductService {
 
+    private PatientPackageUsageReversalService patientPackageUsageReversalService;
+
+    /** Setter injection keeps the existing constructor (and tests that build this service) unchanged. */
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setPatientPackageUsageReversalService(PatientPackageUsageReversalService patientPackageUsageReversalService) {
+        this.patientPackageUsageReversalService = patientPackageUsageReversalService;
+    }
+
     private static final Logger LOG = LoggerFactory.getLogger(PatientServiceAndProductService.class);
 
     private static final String CANCELLED_FROM_ACCOUNT_REASON = "Cancelled from patient account";
@@ -727,6 +735,11 @@ public class PatientServiceAndProductService {
             );
         } catch (DataIntegrityViolationException | JpaSystemException ex) {
             throw handleConstraintViolation(ex);
+        }
+
+        if (entity.getServiceSource() == ServiceSource.PACKAGE && patientPackageUsageReversalService != null) {
+            // ordered from a package: give the quantity back
+            patientPackageUsageReversalService.onServiceCancelled(id);
         }
 
         LOG.debug("Cancelled Patient billing item : id={}", id);
