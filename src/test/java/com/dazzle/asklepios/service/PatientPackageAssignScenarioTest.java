@@ -174,6 +174,27 @@ class PatientPackageAssignScenarioTest {
         assertThatThrownBy(this::assign).isInstanceOf(BadRequestAlertException.class).hasMessageContaining("no active items");
     }
 
+    @Test
+    void theSamePackageTwiceInOneVisitIsRefused() {
+        when(patientPackageRepository.existsByEncounterIdAndPackageSetupIdAndStatusNot(anyLong(), anyLong(), any())).thenReturn(true);
+
+        assertThatThrownBy(this::assign).isInstanceOf(BadRequestAlertException.class).hasMessageContaining("already added");
+    }
+
+    @Test
+    void visitOfAnotherPatientIsRefused() {
+        when(patientRepository.existsById(PATIENT + 1)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.assign(new AssignVM(PATIENT + 1, ENCOUNTER, SETUP)))
+                .isInstanceOf(BadRequestAlertException.class).hasMessageContaining("does not belong");
+    }
+
+    @Test
+    void packageWithoutAPriceIsGiven() {
+        // a package without a fixed price (its items carry discounts) is given like any other
+        assertThat(assign().packagePrice()).isNull();
+    }
+
     // ---------- builders (the views are read-only, so fields are set directly) ----------
 
     private static PackageSetupView setupView(boolean active, LocalDate from, LocalDate to, boolean allDepartments) {
