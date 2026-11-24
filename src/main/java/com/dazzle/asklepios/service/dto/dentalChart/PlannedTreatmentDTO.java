@@ -95,7 +95,7 @@ public record PlannedTreatmentDTO(
                 scope,
                 parseCoveredToothIds(entity.getCoveredToothIds()),
                 entity.getNote(),
-                List.copyOf(entity.surfaceValues()),
+                entity.getSurfaces() == null ? List.of() : List.copyOf(entity.getSurfaces()),
                 entity.getInsurance(),
                 entity.getServiceId(),
                 entity.getProcedureId(),

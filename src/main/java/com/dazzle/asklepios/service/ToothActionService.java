@@ -415,6 +415,7 @@ public class ToothActionService {
                     .cdtCodeId(dto.cdtCodeId())
                     .toothId(tooth.getId())
                     .note(savedToothAction.getNote())
+                    .surfaces(List.of(dto.surface()))
                     .insurance(BigDecimal.ZERO)
                     .serviceId(mapping.serviceId())
                     .price(setupService.price())
@@ -425,7 +426,6 @@ public class ToothActionService {
                     .toothActionId(savedToothAction.getId())
                     .cancelled(false)
                     .build();
-            plannedTreatment.replaceSurfaces(dto.surface() == null ? List.of() : List.of(dto.surface()));
             DentalPlannedTreatment saved =
                     dentalPlannedTreatmentRepository.save(plannedTreatment);
             dentalPlannedTreatmentService.recordCreatedHistory(saved);

@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -98,7 +99,9 @@ public class PlannedTreatmentChartEffectService {
         DentalActionSetupDTO action = requireChartAction(dentalActionId);
         // Chart form: "Existing" is only available for treatment actions; conditions are saved without it.
         boolean existing = TREATMENT.equalsIgnoreCase(action.type());
-        List<ToothSurface> planSurfaces = plan.surfaceValues();
+        List<ToothSurface> planSurfaces = plan.getSurfaces() == null
+                ? List.of()
+                : plan.getSurfaces().stream().filter(Objects::nonNull).distinct().toList();
         if (planSurfaces.isEmpty()) {
             throw new BadRequestAlertException(
                     "Select a surface on this treatment before completing it, so it can be drawn on the chart.",
@@ -107,15 +110,20 @@ public class PlannedTreatmentChartEffectService {
             );
         }
 
-        ToothSurface surface = planSurfaces.get(0);
-
         PlannedTreatmentClinicalDetails clinical = PlannedTreatmentClinicalDetails.fromJson(plan.getClinicalDetails());
         String dose = clinical.dose() == null
                 ? null
                 : (clinical.dose().stripTrailingZeros().toPlainString()
                 + (clinical.unit() == null || clinical.unit().isBlank() ? "" : " " + clinical.unit()));
 
-        List<DentalChartTooth> targets = new ArrayList<>();
+        // The chart keeps one action per tooth and surface, so every selected surface is recorded separately.
+        List<ToothAction> recorded = toothActionRepository.findBySourcePlannedTreatmentIdAndCancelledFalse(plan.getId());
+        ToothAction planned = plan.getToothActionId() == null
+                ? null
+                : toothActionRepository.findById(plan.getToothActionId()).filter(a -> !a.isCancelled()).orElse(null);
+
+        List<DentalChartTooth> targetTeeth = new ArrayList<>();
+        List<ToothSurface> targetSurfaces = new ArrayList<>();
         List<String> occupied = new ArrayList<>();
         int alreadyRecorded = 0;
         int missing = 0;
@@ -127,22 +135,27 @@ public class PlannedTreatmentChartEffectService {
                 missing++;
                 continue;
             }
-            if (toothActionRepository
-                    .findBySourcePlannedTreatmentIdAndToothIdAndCancelledFalse(plan.getId(), tooth.getId()).isPresent()) {
+            Set<ToothSurface> covered = new HashSet<>();
+            recorded.stream()
+                    .filter(a -> Objects.equals(a.getToothId(), tooth.getId()))
+                    .forEach(a -> covered.add(a.getSurface()));
+            if (planned != null && Objects.equals(planned.getToothId(), tooth.getId())) {
+                covered.add(planned.getSurface());
+            }
+            List<ToothSurface> pending = planSurfaces.stream().filter(s -> !covered.contains(s)).toList();
+            if (pending.isEmpty()) {
                 alreadyRecorded++;
                 continue;
             }
-            if (plan.getToothActionId() != null && toothActionRepository.findById(plan.getToothActionId())
-                    .filter(a -> !a.isCancelled() && Objects.equals(a.getToothId(), tooth.getId())).isPresent()) {
-                alreadyRecorded++;
-                continue;
+            for (ToothSurface surface : pending) {
+                if (toothActionRepository
+                        .findByToothIdAndDentalActionIdAndSurfaceAndCancelledFalse(tooth.getId(), action.id(), surface).isPresent()) {
+                    occupied.add(tooth.getToothNumber() + " (" + surface + ")");
+                    continue;
+                }
+                targetTeeth.add(tooth);
+                targetSurfaces.add(surface);
             }
-            if (toothActionRepository
-                    .findByToothIdAndDentalActionIdAndSurfaceAndCancelledFalse(tooth.getId(), action.id(), surface).isPresent()) {
-                occupied.add(tooth.getToothNumber());
-                continue;
-            }
-            targets.add(tooth);
         }
         if (!occupied.isEmpty()) {
             throw new ConflictAlertException(
@@ -153,7 +166,7 @@ public class PlannedTreatmentChartEffectService {
                     "chartEffectConflict"
             );
         }
-        if (targets.isEmpty() && alreadyRecorded == 0) {
+        if (targetTeeth.isEmpty() && alreadyRecorded == 0) {
             throw new BadRequestAlertException(
                     missing > 0
                             ? "The tooth is marked missing, so the selected action cannot be drawn on the chart."
@@ -162,11 +175,12 @@ public class PlannedTreatmentChartEffectService {
                     "chartEffectNoTarget"
             );
         }
-        for (DentalChartTooth tooth : targets) {
+        for (int i = 0; i < targetTeeth.size(); i++) {
+            DentalChartTooth tooth = targetTeeth.get(i);
             toothActionRepository.save(ToothAction.builder()
                     .toothId(tooth.getId())
                     .dentalActionId(action.id())
-                    .surface(surface)
+                    .surface(targetSurfaces.get(i))
                     .existing(existing)
                     .imageName(action.imageName())
                     .toothNumber(tooth.getToothNumber())
@@ -185,8 +199,9 @@ public class PlannedTreatmentChartEffectService {
                     .logOwner(currentUser)
                     .build());
         }
-        if (!targets.isEmpty()) {
-            return "Chart updated on " + targets.size() + (targets.size() == 1 ? " tooth." : " teeth.");
+        if (!targetTeeth.isEmpty()) {
+            long teeth = targetTeeth.stream().map(DentalChartTooth::getId).distinct().count();
+            return "Chart updated on " + teeth + (teeth == 1 ? " tooth." : " teeth.");
         }
         return "Already shown on the chart.";
     }

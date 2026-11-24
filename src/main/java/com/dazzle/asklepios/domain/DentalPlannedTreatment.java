@@ -1,13 +1,14 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.converter.ToothSurfaceListConverter;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentDiscountType;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentType;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.ToothSurface;
 import com.dazzle.asklepios.domain.enumeration.TreatmentScope;
-import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -17,7 +18,6 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
-import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -30,7 +30,6 @@ import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 
 @Entity
@@ -104,9 +103,10 @@ public class DentalPlannedTreatment extends AbstractAuditingEntity<Long> impleme
     @Column(name = "note", columnDefinition = "TEXT")
     private String note;
 
-    @OneToMany(mappedBy = "plannedTreatment", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @Convert(converter = ToothSurfaceListConverter.class)
+    @Column(name = "surface", length = 255)
     @Builder.Default
-    private List<DentalPlannedTreatmentSurface> surfaceEntries = new ArrayList<>();
+    private List<ToothSurface> surfaces = new ArrayList<>();
 
     @Column(name = "insurance", nullable = false, precision = 10, scale = 2)
     @Builder.Default
@@ -172,30 +172,4 @@ public class DentalPlannedTreatment extends AbstractAuditingEntity<Long> impleme
 
     @Column(name = "cancellation_reason", columnDefinition = "TEXT")
     private String cancellationReason;
-
-    public List<ToothSurface> surfaceValues() {
-        if (surfaceEntries == null) {
-            return new ArrayList<>();
-        }
-        return ToothSurface.normalize(
-                surfaceEntries.stream().map(DentalPlannedTreatmentSurface::getSurface).toList()
-        );
-    }
-
-    public void replaceSurfaces(Collection<ToothSurface> values) {
-        if (surfaceEntries == null) {
-            surfaceEntries = new ArrayList<>();
-        }
-        List<ToothSurface> wanted = ToothSurface.normalize(values);
-        surfaceEntries.removeIf(entry -> !wanted.contains(entry.getSurface()));
-        List<ToothSurface> present = surfaceEntries.stream().map(DentalPlannedTreatmentSurface::getSurface).toList();
-        for (ToothSurface surface : wanted) {
-            if (!present.contains(surface)) {
-                surfaceEntries.add(DentalPlannedTreatmentSurface.builder()
-                        .plannedTreatment(this)
-                        .surface(surface)
-                        .build());
-            }
-        }
-    }
 }

@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record ProcedureSetupDTO(
@@ -20,6 +21,7 @@ public record ProcedureSetupDTO(
         Long facilityId,
         Currency currency,
         BigDecimal price,
-        Long billingRuleId
+        Long billingRuleId,
+        List<String> relatedSurfaces
 ) {
 }
