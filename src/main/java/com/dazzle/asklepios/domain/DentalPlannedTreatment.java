@@ -6,6 +6,7 @@ import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentType;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.ToothSurface;
 import com.dazzle.asklepios.domain.enumeration.TreatmentScope;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -16,6 +17,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -27,6 +29,9 @@ import lombok.Setter;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 
 @Entity
 @Table(name = "dental_planned_treatment")
@@ -99,9 +104,9 @@ public class DentalPlannedTreatment extends AbstractAuditingEntity<Long> impleme
     @Column(name = "note", columnDefinition = "TEXT")
     private String note;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "surface")
-    private ToothSurface surface;
+    @OneToMany(mappedBy = "plannedTreatment", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    @Builder.Default
+    private List<DentalPlannedTreatmentSurface> surfaceEntries = new ArrayList<>();
 
     @Column(name = "insurance", nullable = false, precision = 10, scale = 2)
     @Builder.Default
@@ -167,4 +172,30 @@ public class DentalPlannedTreatment extends AbstractAuditingEntity<Long> impleme
 
     @Column(name = "cancellation_reason", columnDefinition = "TEXT")
     private String cancellationReason;
+
+    public List<ToothSurface> surfaceValues() {
+        if (surfaceEntries == null) {
+            return new ArrayList<>();
+        }
+        return ToothSurface.normalize(
+                surfaceEntries.stream().map(DentalPlannedTreatmentSurface::getSurface).toList()
+        );
+    }
+
+    public void replaceSurfaces(Collection<ToothSurface> values) {
+        if (surfaceEntries == null) {
+            surfaceEntries = new ArrayList<>();
+        }
+        List<ToothSurface> wanted = ToothSurface.normalize(values);
+        surfaceEntries.removeIf(entry -> !wanted.contains(entry.getSurface()));
+        List<ToothSurface> present = surfaceEntries.stream().map(DentalPlannedTreatmentSurface::getSurface).toList();
+        for (ToothSurface surface : wanted) {
+            if (!present.contains(surface)) {
+                surfaceEntries.add(DentalPlannedTreatmentSurface.builder()
+                        .plannedTreatment(this)
+                        .surface(surface)
+                        .build());
+            }
+        }
+    }
 }

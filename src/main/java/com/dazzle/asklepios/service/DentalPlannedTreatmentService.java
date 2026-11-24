@@ -261,7 +261,7 @@ public class DentalPlannedTreatmentService {
                 resolved.scope(),
                 resolved.coveredToothIds(),
                 dto.note(),
-                resolved.surface(),
+                resolved.surfaces(),
                 dto.insurance(),
                 dto.serviceId(),
                 dto.procedureId(),
@@ -326,7 +326,7 @@ public class DentalPlannedTreatmentService {
                 TreatmentScope.SPECIFIC_TOOTH,
                 null,
                 dto.note(),
-                dto.surface(),
+                dto.surfaces(),
                 dto.insurance(),
                 dto.serviceId(),
                 dto.procedureId(),
@@ -372,7 +372,7 @@ public class DentalPlannedTreatmentService {
                     TreatmentScope.SPECIFIC_TOOTH,
                     List.of(),
                     dto.note(),
-                    dto.surface(),
+                    dto.surfaces(),
                     dto.insurance(),
                     dto.serviceId(),
                     dto.procedureId(),
@@ -433,7 +433,7 @@ public class DentalPlannedTreatmentService {
         entity.setTreatmentScope(resolved.scope());
         entity.setCoveredToothIds(PlannedTreatmentDTO.encodeCoveredToothIds(resolved.coveredToothIds()));
         entity.setNote(dto.note());
-        entity.setSurface(resolved.surface());
+        entity.replaceSurfaces(resolved.surfaces());
         entity.setInsurance(defaultMoney(dto.insurance()));
         entity.setServiceId(dto.serviceId());
         entity.setProcedureId(dto.procedureId());
@@ -765,7 +765,7 @@ public class DentalPlannedTreatmentService {
             Long planningToothId = dto.toothId() == null
                     ? null
                     : mapToPlanningChart(dto.toothId(), planningChart).getId();
-            return new ResolvedScope(scope, planningToothId, List.of(), dto.surface());
+            return new ResolvedScope(scope, planningToothId, List.of(), dto.surfaces());
         }
 
         List<Long> expectedIds = resolveChartScopeToothIds(planningChart, scope);
@@ -787,7 +787,7 @@ public class DentalPlannedTreatmentService {
                     "planningCoverageUnmatched"
             );
         }
-        return new ResolvedScope(scope, null, covered, dto.surface());
+        return new ResolvedScope(scope, null, covered, dto.surfaces());
     }
 
     /**
@@ -862,7 +862,7 @@ public class DentalPlannedTreatmentService {
                         "coveredTeethNotAllowed"
                 );
             }
-            return new ResolvedScope(scope, dto.toothId(), List.of(), dto.surface());
+            return new ResolvedScope(scope, dto.toothId(), List.of(), dto.surfaces());
         }
 
         List<Long> expectedIds = resolveChartScopeToothIds(chart, scope);
@@ -888,12 +888,12 @@ public class DentalPlannedTreatmentService {
         assertTeethOnChart(chart, covered, false);
 
         // Grouped rows: no single-tooth linkage.
-        return new ResolvedScope(scope, null, covered, dto.surface());
+        return new ResolvedScope(scope, null, covered, dto.surfaces());
     }
 
     private void validateSaveCommon(PlannedTreatmentSaveDTO dto) {
-        if (dto.surface() == null) {
-            throw new BadRequestAlertException("Surface is required", ENTITY, "surfaceRequired");
+        if (dto.surfaces() == null || dto.surfaces().stream().noneMatch(Objects::nonNull)) {
+            throw new BadRequestAlertException("Select at least one surface", ENTITY, "surfaceRequired");
         }
         if (dto.visitNumber() != null) {
             dentalVisitNumberService.validatePositive(dto.visitNumber());
@@ -1250,7 +1250,7 @@ public class DentalPlannedTreatmentService {
             TreatmentScope scope,
             List<Long> coveredToothIds,
             String note,
-            ToothSurface surface,
+            List<ToothSurface> surfaces,
             BigDecimal insurance,
             Long serviceId,
             Long procedureId,
@@ -1260,7 +1260,7 @@ public class DentalPlannedTreatmentService {
             PlannedTreatmentDiscountType discountType,
             PlannedTreatmentClinicalDetails clinical
     ) {
-        return DentalPlannedTreatment.builder()
+        DentalPlannedTreatment entity = DentalPlannedTreatment.builder()
                 .patientId(patientId)
                 .encounterId(encounterId)
                 .type(type)
@@ -1271,7 +1271,6 @@ public class DentalPlannedTreatmentService {
                 .coveredToothIds(PlannedTreatmentDTO.encodeCoveredToothIds(coveredToothIds))
                 .clinicalDetails(clinical != null ? clinical.toJson() : null)
                 .note(note)
-                .surface(surface)
                 .insurance(defaultMoney(insurance))
                 .serviceId(serviceId)
                 .procedureId(procedureId)
@@ -1283,6 +1282,8 @@ public class DentalPlannedTreatmentService {
                 .patientServiceAndProduct(null)
                 .cancelled(false)
                 .build();
+        entity.replaceSurfaces(surfaces);
+        return entity;
     }
 
     /**
@@ -1393,7 +1394,7 @@ public class DentalPlannedTreatmentService {
                     TreatmentScope.SPECIFIC_TOOTH,
                     List.of(),
                     action.getNote(),
-                    action.getSurface(),
+                    action.getSurface() == null ? List.of() : List.of(action.getSurface()),
                     null,
                     serviceId,
                     null,
@@ -1543,7 +1544,7 @@ public class DentalPlannedTreatmentService {
         if (!Objects.equals(entity.getToothId(), resolved.toothId())) {
             return true;
         }
-        if (!Objects.equals(entity.getSurface(), resolved.surface())) {
+        if (!Objects.equals(entity.surfaceValues(), ToothSurface.normalize(resolved.surfaces()))) {
             return true;
         }
         if (!Objects.equals(entity.getCdtCodeId(), dto.cdtCodeId())) {
@@ -1670,6 +1671,6 @@ public class DentalPlannedTreatmentService {
             TreatmentScope scope,
             Long toothId,
             List<Long> coveredToothIds,
-            ToothSurface surface
+            List<ToothSurface> surfaces
     ) {}
 }

@@ -4,6 +4,8 @@ import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentDiscountType;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentType;
 import com.dazzle.asklepios.domain.enumeration.ToothSurface;
 import jakarta.validation.constraints.NotEmpty;
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.validation.constraints.NotNull;
 
 import java.io.Serializable;
@@ -23,7 +25,9 @@ public record PlannedTreatmentBatchSaveDTO(
         Long cdtCodeId,
         @NotEmpty List<Long> toothIds,
         String note,
-        ToothSurface surface,
+        @JsonAlias("surface")
+        @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
+        List<ToothSurface> surfaces,
         BigDecimal insurance,
         Long serviceId,
         Long procedureId,

@@ -98,14 +98,16 @@ public class PlannedTreatmentChartEffectService {
         DentalActionSetupDTO action = requireChartAction(dentalActionId);
         // Chart form: "Existing" is only available for treatment actions; conditions are saved without it.
         boolean existing = TREATMENT.equalsIgnoreCase(action.type());
-        ToothSurface surface = plan.getSurface();
-        if (surface == null) {
+        List<ToothSurface> planSurfaces = plan.surfaceValues();
+        if (planSurfaces.isEmpty()) {
             throw new BadRequestAlertException(
                     "Select a surface on this treatment before completing it, so it can be drawn on the chart.",
                     ENTITY,
                     "surfaceRequiredForChartEffect"
             );
         }
+
+        ToothSurface surface = planSurfaces.get(0);
 
         PlannedTreatmentClinicalDetails clinical = PlannedTreatmentClinicalDetails.fromJson(plan.getClinicalDetails());
         String dose = clinical.dose() == null

@@ -7,6 +7,7 @@ import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentType;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.ToothSurface;
 import com.dazzle.asklepios.domain.enumeration.TreatmentScope;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
@@ -33,7 +34,7 @@ public record PlannedTreatmentDTO(
         TreatmentScope treatmentScope,
         List<Long> coveredToothIds,
         String note,
-        ToothSurface surface,
+        List<ToothSurface> surfaces,
         BigDecimal insurance,
         Long serviceId,
         Long procedureId,
@@ -65,6 +66,12 @@ public record PlannedTreatmentDTO(
         String chartEffect
 ) implements Serializable {
 
+    /** First selected surface, kept for clients that still read the single {@code surface} field. */
+    @JsonProperty("surface")
+    public ToothSurface primarySurface() {
+        return surfaces == null || surfaces.isEmpty() ? null : surfaces.get(0);
+    }
+
     public static PlannedTreatmentDTO fromEntity(DentalPlannedTreatment entity, DentalChartToothSummaryDTO tooth) {
         return fromEntity(entity, tooth, null);
     }
@@ -88,7 +95,7 @@ public record PlannedTreatmentDTO(
                 scope,
                 parseCoveredToothIds(entity.getCoveredToothIds()),
                 entity.getNote(),
-                entity.getSurface(),
+                List.copyOf(entity.surfaceValues()),
                 entity.getInsurance(),
                 entity.getServiceId(),
                 entity.getProcedureId(),
