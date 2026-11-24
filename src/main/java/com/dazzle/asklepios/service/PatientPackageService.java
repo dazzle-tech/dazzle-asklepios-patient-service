@@ -49,6 +49,17 @@ public class PatientPackageService {
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final jakarta.persistence.EntityManager entityManager;
+    private PatientPackageAutoApplyService patientPackageAutoApplyService;
+    private com.dazzle.asklepios.repository.PatientServiceAndProductRepository patientServiceAndProductRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setPackageDefaultServiceLink(
+            PatientPackageAutoApplyService patientPackageAutoApplyService,
+            com.dazzle.asklepios.repository.PatientServiceAndProductRepository patientServiceAndProductRepository
+    ) {
+        this.patientPackageAutoApplyService = patientPackageAutoApplyService;
+        this.patientServiceAndProductRepository = patientServiceAndProductRepository;
+    }
 
     public PatientPackageService(
             PatientPackageRepository patientPackageRepository,
@@ -148,6 +159,16 @@ public class PatientPackageService {
                         .discountPercent(s.getDiscountPercent())
                         .build())
                 .toList());
+
+        if (patientPackageAutoApplyService != null && patientServiceAndProductRepository != null) {
+            // the visit's default service, made when the visit opened, is taken from the package if it covers it
+            patientPackageAutoApplyService.onPackageGiven(
+                    vm.encounterId(),
+                    patientServiceAndProductRepository
+                            .findAllByEncounterId(vm.encounterId(), org.springframework.data.domain.Pageable.unpaged())
+                            .getContent());
+            items = patientPackageItemRepository.findByPatientPackageIdOrderByIdAsc(saved.getId());
+        }
 
         LOG.info("Assigned package id={} ({}) to patient={} with {} items",
                 saved.getId(), saved.getPackageCode(), saved.getPatientId(), items.size());

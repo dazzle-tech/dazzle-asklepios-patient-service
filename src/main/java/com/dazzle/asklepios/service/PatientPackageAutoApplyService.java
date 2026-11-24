@@ -73,6 +73,12 @@ public class PatientPackageAutoApplyService {
     private final PatientPackageUsageRepository usageRepository;
     private final DiagnosticOrderRepository diagnosticOrderRepository;
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
+    private PatientPackageUsageReversalService reversalService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setReversalService(PatientPackageUsageReversalService reversalService) {
+        this.reversalService = reversalService;
+    }
 
     public PatientPackageAutoApplyService(
             PatientPackageRepository packageRepository,
@@ -130,8 +136,14 @@ public class PatientPackageAutoApplyService {
         if (suppressed() || line == null || line.getServiceSource() == null || line.getBillingItemType() == null) {
             return;
         }
+        // counted once: a line seen again (e.g. the visit's default service when the package is given) is skipped
+        if (line.getId() != null && !usageRepository.findByOrderSourceInAndOrderIdAndStatus(
+                List.of(SOURCE_SERVICE_LINE), line.getId(), PatientPackageUsageStatus.USED).isEmpty()) {
+            return;
+        }
         Long sourceId = switch (line.getServiceSource()) {
-            case SERVICE_AND_PRODUCT -> line.getBillingItemType() == BillingItemTypes.SERVICE ? line.getServiceId() : null;
+            case SERVICE_AND_PRODUCT, ENCOUNTER_DEFAULT_SERVICE ->
+                    line.getBillingItemType() == BillingItemTypes.SERVICE ? line.getServiceId() : null;
             case URGENT_CARE_MEDICATION_ORDER ->
                     line.getBillingItemType() == BillingItemTypes.MEDICATION ? line.getBrandMedicationId() : null;
             case VACCINATION -> line.getBillingItemType() == BillingItemTypes.VACCINE ? line.getVaccineBrandId() : null;
@@ -140,7 +152,40 @@ public class PatientPackageAutoApplyService {
         if (sourceId == null) {
             return;
         }
-        consume(line.getEncounterId(), line.getBillingItemType(), sourceId, SOURCE_SERVICE_LINE, line.getId());
+        // a service line (and the visit's default service) counts its quantity; a UCC dose or a vaccination counts once
+        int quantity = line.getBillingItemType() == BillingItemTypes.SERVICE && line.getQuantity() != null
+                ? (int) Math.max(1L, line.getQuantity())
+                : 1;
+        consume(line.getEncounterId(), line.getBillingItemType(), sourceId, SOURCE_SERVICE_LINE, line.getId(), quantity);
+    }
+
+    /**
+     * The package was just given to the visit: the visit's default service (made when the visit opened)
+     * is taken from it if the package covers it.
+     */
+    public void onPackageGiven(Long encounterId, List<PatientServiceAndProduct> encounterLines) {
+        if (suppressed() || encounterId == null || encounterLines == null) {
+            return;
+        }
+        encounterLines.stream()
+                .filter(l -> l.getServiceSource() == ServiceSource.ENCOUNTER_DEFAULT_SERVICE)
+                .filter(l -> l.getPaymentStatus() != com.dazzle.asklepios.domain.enumeration.PaymentStatus.CANCELLED)
+                .sorted(Comparator.comparing(PatientServiceAndProduct::getId))
+                .forEach(this::onServiceLineCreated);
+    }
+
+    /**
+     * A counted line's item or quantity was edited: give back what it took and count it again as it is now.
+     * Lines ordered from the package panel (source PACKAGE) are left as they are.
+     */
+    public void onServiceLineUpdated(PatientServiceAndProduct line) {
+        if (suppressed() || line == null || line.getId() == null || line.getServiceSource() == ServiceSource.PACKAGE) {
+            return;
+        }
+        if (reversalService != null) {
+            reversalService.onServiceCancelled(line.getId());
+        }
+        onServiceLineCreated(line);
     }
 
     /**
@@ -150,14 +195,24 @@ public class PatientPackageAutoApplyService {
     public Optional<PatientPackageUsage> consume(
             Long encounterId, BillingItemTypes type, Long sourceId, String orderSource, Long orderId
     ) {
-        if (encounterId == null || type == null || sourceId == null) {
-            return Optional.empty();
+        return consume(encounterId, type, sourceId, orderSource, orderId, 1).stream().findFirst();
+    }
+
+    /**
+     * Counts up to {@code quantity} units, spread over the matching lines in order (own item line, then category).
+     * Units beyond the room left are not counted. Returns the usages written (empty when nothing matched).
+     */
+    public List<PatientPackageUsage> consume(
+            Long encounterId, BillingItemTypes type, Long sourceId, String orderSource, Long orderId, int quantity
+    ) {
+        if (encounterId == null || type == null || sourceId == null || quantity < 1) {
+            return List.of();
         }
         List<PatientPackage> packages = packageRepository.findByEncounterIdOrderByIdAsc(encounterId).stream()
                 .filter(p -> p.getStatus() == PatientPackageStatus.ACTIVE)
                 .toList();
         if (packages.isEmpty()) {
-            return Optional.empty();
+            return List.of();
         }
 
         List<PatientPackageItem> lines = new ArrayList<>();
@@ -173,13 +228,19 @@ public class PatientPackageAutoApplyService {
                 .filter(i -> i.getItemType() == type && Boolean.TRUE.equals(i.getIsCategory()))
                 .forEach(candidates::add);
 
+        List<PatientPackageUsage> written = new ArrayList<>();
+        int left = quantity;
         for (PatientPackageItem candidate : candidates) {
-            Optional<PatientPackageUsage> usage = consumeLine(candidate.getId(), encounterId, sourceId, orderSource, orderId);
+            if (left < 1) {
+                break;
+            }
+            Optional<PatientPackageUsage> usage = consumeLine(candidate.getId(), encounterId, sourceId, orderSource, orderId, left);
             if (usage.isPresent()) {
-                return usage;
+                written.add(usage.get());
+                left -= usage.get().getQuantity();
             }
         }
-        return Optional.empty();
+        return written;
     }
 
     /**
@@ -189,8 +250,19 @@ public class PatientPackageAutoApplyService {
     public Optional<PatientPackageUsage> consumeLine(
             Long patientPackageItemId, Long encounterId, Long sourceId, String orderSource, Long orderId
     ) {
+        return consumeLine(patientPackageItemId, encounterId, sourceId, orderSource, orderId, 1);
+    }
+
+    /** As above for up to {@code quantity} units: takes what the line's room and repeat limit allow. */
+    public Optional<PatientPackageUsage> consumeLine(
+            Long patientPackageItemId, Long encounterId, Long sourceId, String orderSource, Long orderId, int quantity
+    ) {
         PatientPackageItem item = itemRepository.findByIdForUpdate(patientPackageItemId).orElse(null);
-        if (item == null || item.getQuantityRemaining() < 1 || repeatLimitReached(item, sourceId)) {
+        if (item == null || quantity < 1) {
+            return Optional.empty();
+        }
+        int take = Math.min(quantity, Math.min(item.getQuantityRemaining(), repeatRoom(item, sourceId)));
+        if (take < 1) {
             return Optional.empty();
         }
         PatientPackage pkg = packageRepository.findById(item.getPatientPackageId()).orElse(null);
@@ -202,12 +274,12 @@ public class PatientPackageAutoApplyService {
                 .patientPackageItemId(item.getId())
                 .encounterId(encounterId)
                 .sourceId(sourceId)
-                .quantity(1)
+                .quantity(take)
                 .orderSource(orderSource)
                 .orderId(orderId)
                 .status(PatientPackageUsageStatus.USED)
                 .build());
-        item.setQuantityUsed((item.getQuantityUsed() == null ? 0 : item.getQuantityUsed()) + 1);
+        item.setQuantityUsed((item.getQuantityUsed() == null ? 0 : item.getQuantityUsed()) + take);
         itemRepository.saveAndFlush(item);
         completeIfUsedUp(item.getPatientPackageId());
         LOG.info("Package item {} took {} {} (order {} id={}) in encounter {}",
@@ -216,13 +288,12 @@ public class PatientPackageAutoApplyService {
     }
 
     /** Category lines can count the same item only maxRepeat times (no limit when empty). */
-    private boolean repeatLimitReached(PatientPackageItem item, Long sourceId) {
+    private int repeatRoom(PatientPackageItem item, Long sourceId) {
         if (!Boolean.TRUE.equals(item.getIsCategory()) || item.getMaxRepeat() == null) {
-            return false;
+            return Integer.MAX_VALUE;
         }
-        long used = usageRepository.countByPatientPackageItemIdAndSourceIdAndStatus(
-                item.getId(), sourceId, PatientPackageUsageStatus.USED);
-        return used >= item.getMaxRepeat();
+        long used = usageRepository.sumQuantity(item.getId(), sourceId, PatientPackageUsageStatus.USED);
+        return (int) Math.max(0, item.getMaxRepeat() - used);
     }
 
     private void completeIfUsedUp(Long patientPackageId) {

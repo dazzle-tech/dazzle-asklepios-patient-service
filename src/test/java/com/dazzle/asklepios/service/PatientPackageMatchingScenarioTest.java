@@ -70,9 +70,10 @@ class PatientPackageMatchingScenarioTest {
             usages.add(u);
             return u;
         });
-        when(usageRepository.countByPatientPackageItemIdAndSourceIdAndStatus(anyLong(), anyLong(), any())).thenAnswer(i ->
+        when(usageRepository.sumQuantity(anyLong(), anyLong(), any())).thenAnswer(i ->
                 usages.stream().filter(u -> u.getPatientPackageItemId().equals(i.getArgument(0))
-                        && u.getSourceId().equals(i.getArgument(1)) && u.getStatus() == i.getArgument(2)).count());
+                        && u.getSourceId().equals(i.getArgument(1)) && u.getStatus() == i.getArgument(2))
+                        .mapToLong(PatientPackageUsage::getQuantity).sum());
     }
 
     // ---------- usual screens: automatic matching ----------
@@ -266,6 +267,96 @@ class PatientPackageMatchingScenarioTest {
                 BillingItemTypes.VACCINE, 77L));
 
         assertThat(anyVaccine.getQuantityUsed()).isEqualTo(1);
+    }
+
+    // ---------- line quantity ----------
+
+    @Test
+    void serviceLineCountsItsQuantityAcrossItemLineThenCategory() {
+        addPackage(1L);
+        PatientPackageItem dental = addItem(1L, 31L, BillingItemTypes.SERVICE, 1501L, 1, false, null);
+        PatientPackageItem anyService = addItem(1L, 32L, BillingItemTypes.SERVICE, null, 5, true, null);
+        com.dazzle.asklepios.domain.PatientServiceAndProduct l =
+                line(com.dazzle.asklepios.domain.enumeration.ServiceSource.SERVICE_AND_PRODUCT, BillingItemTypes.SERVICE, 1501L);
+        l.setQuantity(3L);
+
+        service.onServiceLineCreated(l);
+
+        assertThat(dental.getQuantityUsed()).isEqualTo(1);
+        assertThat(anyService.getQuantityUsed()).isEqualTo(2);
+    }
+
+    @Test
+    void quantityBeyondTheRoomLeftIsNotCounted() {
+        addPackage(1L);
+        PatientPackageItem dental = addItem(1L, 31L, BillingItemTypes.SERVICE, 1501L, 2, false, null);
+        com.dazzle.asklepios.domain.PatientServiceAndProduct l =
+                line(com.dazzle.asklepios.domain.enumeration.ServiceSource.SERVICE_AND_PRODUCT, BillingItemTypes.SERVICE, 1501L);
+        l.setQuantity(5L);
+
+        service.onServiceLineCreated(l);
+
+        assertThat(dental.getQuantityUsed()).isEqualTo(2);
+        assertThat(usages).hasSize(1);
+        assertThat(usages.get(0).getQuantity()).isEqualTo(2);
+    }
+
+    @Test
+    void repeatLimitCountsUnitsNotLines() {
+        addPackage(1L);
+        PatientPackageItem anyService = addItem(1L, 32L, BillingItemTypes.SERVICE, null, 10, true, 2);
+        com.dazzle.asklepios.domain.PatientServiceAndProduct l =
+                line(com.dazzle.asklepios.domain.enumeration.ServiceSource.SERVICE_AND_PRODUCT, BillingItemTypes.SERVICE, 1501L);
+        l.setQuantity(3L);
+
+        service.onServiceLineCreated(l);
+
+        assertThat(anyService.getQuantityUsed()).as("same service up to 2 times").isEqualTo(2);
+    }
+
+    // ---------- the visit's default service ----------
+
+    @Test
+    void defaultServiceMadeBeforeThePackageIsTakenWhenThePackageIsGiven() {
+        addPackage(1L);
+        PatientPackageItem consult = addItem(1L, 41L, BillingItemTypes.SERVICE, 900L, 1, false, null);
+        com.dazzle.asklepios.domain.PatientServiceAndProduct fee =
+                line(com.dazzle.asklepios.domain.enumeration.ServiceSource.ENCOUNTER_DEFAULT_SERVICE, BillingItemTypes.SERVICE, 900L);
+        fee.setQuantity(1L);
+
+        service.onPackageGiven(ENCOUNTER, List.of(fee));
+
+        assertThat(consult.getQuantityUsed()).isEqualTo(1);
+    }
+
+    @Test
+    void cancelledDefaultServiceIsNotTaken() {
+        addPackage(1L);
+        PatientPackageItem consult = addItem(1L, 41L, BillingItemTypes.SERVICE, 900L, 1, false, null);
+        com.dazzle.asklepios.domain.PatientServiceAndProduct fee =
+                line(com.dazzle.asklepios.domain.enumeration.ServiceSource.ENCOUNTER_DEFAULT_SERVICE, BillingItemTypes.SERVICE, 900L);
+        fee.setPaymentStatus(com.dazzle.asklepios.domain.enumeration.PaymentStatus.CANCELLED);
+
+        service.onPackageGiven(ENCOUNTER, List.of(fee));
+
+        assertThat(consult.getQuantityUsed()).isZero();
+    }
+
+    @Test
+    void aLineAlreadyCountedIsNotCountedTwice() {
+        addPackage(1L);
+        PatientPackageItem anyService = addItem(1L, 42L, BillingItemTypes.SERVICE, null, 5, true, null);
+        com.dazzle.asklepios.domain.PatientServiceAndProduct fee =
+                line(com.dazzle.asklepios.domain.enumeration.ServiceSource.ENCOUNTER_DEFAULT_SERVICE, BillingItemTypes.SERVICE, 900L);
+        fee.setQuantity(1L);
+        when(usageRepository.findByOrderSourceInAndOrderIdAndStatus(any(), anyLong(), any())).thenAnswer(i ->
+                usages.stream().filter(u -> u.getOrderId().equals(i.getArgument(1))
+                        && u.getStatus() == i.getArgument(2)).toList());
+
+        service.onServiceLineCreated(fee);
+        service.onPackageGiven(ENCOUNTER, List.of(fee));
+
+        assertThat(anyService.getQuantityUsed()).isEqualTo(1);
     }
 
     // ---------- helpers ----------

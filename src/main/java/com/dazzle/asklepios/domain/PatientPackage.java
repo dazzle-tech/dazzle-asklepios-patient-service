@@ -57,7 +57,7 @@ public class PatientPackage extends AbstractAuditingEntity<Long> implements Seri
     @Column(name = "package_name", length = 255)
     private String packageName;
 
-    @NotNull
+    /** Empty when the package has no fixed price (its items carry discounts instead). */
     @Column(name = "package_price", precision = 19, scale = 4)
     private BigDecimal packagePrice;
 

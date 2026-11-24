@@ -86,6 +86,14 @@ import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCause;
 @Transactional
 public class PatientPaymentsService {
 
+    private PatientPackageAutoApplyService patientPackageAutoApplyService;
+
+    /** Setter injection keeps the generated constructor (and tests that build this service) unchanged. */
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setPatientPackageAutoApplyService(PatientPackageAutoApplyService patientPackageAutoApplyService) {
+        this.patientPackageAutoApplyService = patientPackageAutoApplyService;
+    }
+
     private static final Logger LOG = LoggerFactory.getLogger(PatientPaymentsService.class);
 
     private static final BigDecimal ZERO_AMOUNT = BigDecimal.ZERO;
@@ -1331,7 +1339,12 @@ public class PatientPaymentsService {
                 })
                 .toList();
 
-        return serviceRepository.saveAll(rows);
+        List<PatientServiceAndProduct> savedRows = serviceRepository.saveAll(rows);
+        if (patientPackageAutoApplyService != null) {
+            // the default service is taken from the visit's package when the package covers it
+            savedRows.forEach(patientPackageAutoApplyService::onServiceLineCreated);
+        }
+        return savedRows;
     }
 
     private List<PatientServiceAndProduct> buildSkippedServiceRows(

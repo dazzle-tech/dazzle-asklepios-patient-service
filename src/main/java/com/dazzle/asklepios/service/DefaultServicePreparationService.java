@@ -58,6 +58,14 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class DefaultServicePreparationService {
 
+    private PatientPackageAutoApplyService patientPackageAutoApplyService;
+
+    /** Setter injection keeps the generated constructor (and tests that build this service) unchanged. */
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setPatientPackageAutoApplyService(PatientPackageAutoApplyService patientPackageAutoApplyService) {
+        this.patientPackageAutoApplyService = patientPackageAutoApplyService;
+    }
+
     private static final Logger LOG =
             LoggerFactory.getLogger(DefaultServicePreparationService.class);
 
@@ -704,7 +712,12 @@ public class DefaultServicePreparationService {
         PatientServiceAndProduct item = itemBuilder.build();
         patientItemPricingApplicationService.applyToItem(item, encounter.getFacilityId());
 
-        return patientServiceAndProductRepository.saveAndFlush(item);
+        PatientServiceAndProduct saved = patientServiceAndProductRepository.saveAndFlush(item);
+        if (patientPackageAutoApplyService != null) {
+            // the default service is taken from the visit's package when the package covers it
+            patientPackageAutoApplyService.onServiceLineCreated(saved);
+        }
+        return saved;
     }
 
     private void validateExistingItem(

@@ -1,5 +1,7 @@
 package com.dazzle.asklepios.web.rest;
 
+import com.dazzle.asklepios.service.PatientPackageHistoryService;
+import com.dazzle.asklepios.service.PatientPackageHistoryService.HistoryVM;
 import com.dazzle.asklepios.service.PatientPackageOrderService;
 import com.dazzle.asklepios.service.PatientPackageOrderService.DiagnosticsOrderResultVM;
 import com.dazzle.asklepios.service.PatientPackageOrderService.OrderResultVM;
@@ -28,13 +30,16 @@ public class PatientPackageController {
 
     private final PatientPackageService patientPackageService;
     private final PatientPackageOrderService patientPackageOrderService;
+    private final PatientPackageHistoryService patientPackageHistoryService;
 
     public PatientPackageController(
             PatientPackageService patientPackageService,
-            PatientPackageOrderService patientPackageOrderService
+            PatientPackageOrderService patientPackageOrderService,
+            PatientPackageHistoryService patientPackageHistoryService
     ) {
         this.patientPackageService = patientPackageService;
         this.patientPackageOrderService = patientPackageOrderService;
+        this.patientPackageHistoryService = patientPackageHistoryService;
     }
 
     /** Gives a package to a patient (usually right after the visit is opened). */
@@ -56,6 +61,12 @@ public class PatientPackageController {
             @RequestParam(defaultValue = "false") boolean activeOnly
     ) {
         return ResponseEntity.ok(patientPackageService.findByPatient(patientId, activeOnly));
+    }
+
+    /** When the package was given and every order counted against it or returned to it, newest first. */
+    @GetMapping("/patient-packages/{id}/history")
+    public ResponseEntity<HistoryVM> history(@PathVariable Long id) {
+        return ResponseEntity.ok(patientPackageHistoryService.history(id));
     }
 
     @GetMapping("/patient-packages/by-encounter/{encounterId}")

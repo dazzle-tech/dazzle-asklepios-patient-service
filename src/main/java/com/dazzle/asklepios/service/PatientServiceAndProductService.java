@@ -271,7 +271,6 @@ public class PatientServiceAndProductService {
                 ));
 
         validateReferences(dto);
-        validateNoDuplicateEncounterItem(dto, encounter.getId());
         billingRuleEvaluationService.requireConfiguredRule(
                 dto,
                 resolveBillingEvent(dto)
@@ -342,6 +341,9 @@ public class PatientServiceAndProductService {
                 ));
 
         assertItemMutableForServiceAndProductScreen(entity);
+
+        // what the line was before the edit, to count it against the package again if it changes
+        String countedBefore = packageCountKey(entity);
 
         entity.setBillingItemType(dto.billingItemType());
 
@@ -440,6 +442,11 @@ public class PatientServiceAndProductService {
             // Quantity/item edits must reprice an existing charge line — not re-run ITEM_ORDERED create.
             syncBillingAfterItemUpdate(updated);
 
+            if (patientPackageAutoApplyService != null && !packageCountKey(updated).equals(countedBefore)) {
+                // item or quantity changed: what was taken from the package is given back and taken again
+                patientPackageAutoApplyService.onServiceLineUpdated(updated);
+            }
+
             LOG.debug("Updated Patient billing item : {}", updated);
             return updated;
 
@@ -510,8 +517,7 @@ public class PatientServiceAndProductService {
                                 ));
 
                         validateReferences(dto);
-                        validateNoDuplicateEncounterItem(dto, encounter.getId());
-
+                
                         Long uomGroupUnitId =
                                 medicationUomGroupUnitId(dto.billingItemType(), dto.uomGroupUnitId());
 
@@ -1047,76 +1053,6 @@ public class PatientServiceAndProductService {
         }
     }
 
-    private void validateNoDuplicateEncounterItem(
-            PatientServiceProductCreateDTO dto,
-            Long encounterId
-    ) {
-        if (encounterId == null || dto.billingItemType() == null) {
-            return;
-        }
-
-        // Each administered UCC dose is charged on its own line
-        if (dto.billingItemType() == BillingItemTypes.MEDICATION
-                && dto.brandMedicationId() != null
-                && dto.serviceSource() != ServiceSource.URGENT_CARE_MEDICATION_ORDER
-                && patientServiceAndProductRepository
-                        .existsByEncounterIdAndBillingItemTypeAndBrandMedicationId(
-                                encounterId,
-                                BillingItemTypes.MEDICATION,
-                                dto.brandMedicationId()
-                        )) {
-            throw new BadRequestAlertException(
-                    "This medication is already on the encounter. Edit the existing line to change quantity.",
-                    "patient_services_and_products",
-                    "medication.duplicate"
-            );
-        }
-
-        if (dto.diagnosticTestId() != null
-                && patientServiceAndProductRepository
-                        .existsByEncounterIdAndBillingItemTypeAndDiagnosticTestId(
-                                encounterId,
-                                dto.billingItemType(),
-                                dto.diagnosticTestId()
-                        )) {
-            throw new BadRequestAlertException(
-                    "This diagnostic test is already on the encounter.",
-                    "patient_services_and_products",
-                    "diagnosticTest.duplicate"
-            );
-        }
-
-        if (dto.billingItemType() == BillingItemTypes.SERVICE
-                && dto.serviceId() != null
-                && patientServiceAndProductRepository
-                        .existsByEncounterIdAndBillingItemTypeAndServiceId(
-                                encounterId,
-                                BillingItemTypes.SERVICE,
-                                dto.serviceId()
-                        )) {
-            throw new BadRequestAlertException(
-                    "This service is already on the encounter.",
-                    "patient_services_and_products",
-                    "service.duplicate"
-            );
-        }
-
-        if (dto.billingItemType() == BillingItemTypes.PROCEDURE
-                && dto.procedureId() != null
-                && patientServiceAndProductRepository
-                        .existsByEncounterIdAndBillingItemTypeAndProcedureId(
-                                encounterId,
-                                BillingItemTypes.PROCEDURE,
-                                dto.procedureId()
-                        )) {
-            throw new BadRequestAlertException(
-                    "This procedure is already on the encounter.",
-                    "patient_services_and_products",
-                    "procedure.duplicate"
-            );
-        }
-    }
-
     /**
      * Same pre-auth flow as procedures for Medication / Laboratory / Radiology / Service / Procedure PSP lines:
      * - PENDING_APPROVAL → sync Waseel submit (rollback on failure), defer billing
@@ -1302,6 +1238,12 @@ public class PatientServiceAndProductService {
      * Blocks Service & Products edits once money movement started
      * (reserved / allocated / paid) so billing math stays consistent.
      */
+    /** The parts of a line that decide what it takes from a package: item and quantity. */
+    private static String packageCountKey(PatientServiceAndProduct line) {
+        return line.getBillingItemType() + ":" + line.getServiceId() + ":" + line.getBrandMedicationId() + ":"
+                + line.getVaccineBrandId() + ":" + line.getQuantity();
+    }
+
     private void assertItemMutableForServiceAndProductScreen(PatientServiceAndProduct item) {
         if (item == null || item.getId() == null) {
             return;
