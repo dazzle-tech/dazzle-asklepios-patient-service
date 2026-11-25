@@ -415,7 +415,7 @@ public class ToothActionService {
                     .cdtCodeId(dto.cdtCodeId())
                     .toothId(tooth.getId())
                     .note(savedToothAction.getNote())
-                    .surface(dto.surface())
+                    .surfaces(List.of(dto.surface()))
                     .insurance(BigDecimal.ZERO)
                     .serviceId(mapping.serviceId())
                     .price(setupService.price())

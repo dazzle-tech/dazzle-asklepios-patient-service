@@ -261,7 +261,7 @@ public class DentalPlannedTreatmentService {
                 resolved.scope(),
                 resolved.coveredToothIds(),
                 dto.note(),
-                resolved.surface(),
+                resolved.surfaces(),
                 dto.insurance(),
                 dto.serviceId(),
                 dto.procedureId(),
@@ -326,7 +326,7 @@ public class DentalPlannedTreatmentService {
                 TreatmentScope.SPECIFIC_TOOTH,
                 null,
                 dto.note(),
-                dto.surface(),
+                dto.surfaces(),
                 dto.insurance(),
                 dto.serviceId(),
                 dto.procedureId(),
@@ -372,7 +372,7 @@ public class DentalPlannedTreatmentService {
                     TreatmentScope.SPECIFIC_TOOTH,
                     List.of(),
                     dto.note(),
-                    dto.surface(),
+                    dto.surfaces(),
                     dto.insurance(),
                     dto.serviceId(),
                     dto.procedureId(),
@@ -433,7 +433,7 @@ public class DentalPlannedTreatmentService {
         entity.setTreatmentScope(resolved.scope());
         entity.setCoveredToothIds(PlannedTreatmentDTO.encodeCoveredToothIds(resolved.coveredToothIds()));
         entity.setNote(dto.note());
-        entity.setSurface(resolved.surface());
+        entity.setSurfaces(normalizeSurfaces(resolved.surfaces()));
         entity.setInsurance(defaultMoney(dto.insurance()));
         entity.setServiceId(dto.serviceId());
         entity.setProcedureId(dto.procedureId());
@@ -734,7 +734,7 @@ public class DentalPlannedTreatmentService {
             DentalPlannedTreatment entity,
             PlannedTreatmentSaveDTO dto
     ) {
-        validateSaveCommon(dto);
+        validateSaveCommon(dto, entity);
         if (!Objects.equals(dto.patientId(), entity.getPatientId())) {
             throw new BadRequestAlertException(
                     "A treatment cannot be moved to another patient",
@@ -765,7 +765,7 @@ public class DentalPlannedTreatmentService {
             Long planningToothId = dto.toothId() == null
                     ? null
                     : mapToPlanningChart(dto.toothId(), planningChart).getId();
-            return new ResolvedScope(scope, planningToothId, List.of(), dto.surface());
+            return new ResolvedScope(scope, planningToothId, List.of(), dto.surfaces());
         }
 
         List<Long> expectedIds = resolveChartScopeToothIds(planningChart, scope);
@@ -787,7 +787,7 @@ public class DentalPlannedTreatmentService {
                     "planningCoverageUnmatched"
             );
         }
-        return new ResolvedScope(scope, null, covered, dto.surface());
+        return new ResolvedScope(scope, null, covered, dto.surfaces());
     }
 
     /**
@@ -862,7 +862,7 @@ public class DentalPlannedTreatmentService {
                         "coveredTeethNotAllowed"
                 );
             }
-            return new ResolvedScope(scope, dto.toothId(), List.of(), dto.surface());
+            return new ResolvedScope(scope, dto.toothId(), List.of(), dto.surfaces());
         }
 
         List<Long> expectedIds = resolveChartScopeToothIds(chart, scope);
@@ -888,12 +888,49 @@ public class DentalPlannedTreatmentService {
         assertTeethOnChart(chart, covered, false);
 
         // Grouped rows: no single-tooth linkage.
-        return new ResolvedScope(scope, null, covered, dto.surface());
+        return new ResolvedScope(scope, null, covered, dto.surfaces());
+    }
+
+    private List<ToothSurface> normalizeSurfaces(List<ToothSurface> surfaces) {
+        if (surfaces == null) {
+            return new ArrayList<>();
+        }
+        return surfaces.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted()
+                .collect(Collectors.toCollection(ArrayList::new));
+    }
+
+    /**
+     * The surfaces configured on the procedure in Procedure Setup (relatedSurfaces) are the only ones
+     * a treatment of that procedure may select. A procedure that has no configuration yet is not restricted.
+     */
+    private void validateSurfacesRelatedToProcedure(List<ToothSurface> surfaces, ProcedureSetupDTO procedure) {
+        List<String> related = procedure.relatedSurfaces();
+        if (related == null || related.isEmpty()) {
+            return;
+        }
+        List<String> notRelated = normalizeSurfaces(surfaces).stream()
+                .map(ToothSurface::name)
+                .filter(surface -> !related.contains(surface))
+                .toList();
+        if (!notRelated.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "Surface not configured for this procedure: " + String.join(", ", notRelated),
+                    ENTITY,
+                    "surfaceNotRelatedToProcedure"
+            );
+        }
     }
 
     private void validateSaveCommon(PlannedTreatmentSaveDTO dto) {
-        if (dto.surface() == null) {
-            throw new BadRequestAlertException("Surface is required", ENTITY, "surfaceRequired");
+        validateSaveCommon(dto, null);
+    }
+
+    private void validateSaveCommon(PlannedTreatmentSaveDTO dto, DentalPlannedTreatment existing) {
+        if (dto.surfaces() == null || dto.surfaces().stream().noneMatch(Objects::nonNull)) {
+            throw new BadRequestAlertException("Select at least one surface", ENTITY, "surfaceRequired");
         }
         if (dto.visitNumber() != null) {
             dentalVisitNumberService.validatePositive(dto.visitNumber());
@@ -902,7 +939,13 @@ public class DentalPlannedTreatmentService {
             cdtCodeHelper.validateCDTCodeExists(dto.cdtCodeId());
         }
         if (dto.procedureId() != null) {
-            procedureHelper.validateProcedureExists(dto.procedureId());
+            ProcedureSetupDTO procedure = procedureHelper.getProcedure(dto.procedureId());
+            // Saved treatments are only re-checked when their procedure or surfaces change, so older records stay editable.
+            if (existing == null
+                    || !Objects.equals(existing.getProcedureId(), dto.procedureId())
+                    || !Objects.equals(normalizeSurfaces(existing.getSurfaces()), normalizeSurfaces(dto.surfaces()))) {
+                validateSurfacesRelatedToProcedure(dto.surfaces(), procedure);
+            }
         }
         if (dto.serviceId() != null) {
             serviceHelper.getService(dto.serviceId());
@@ -1250,7 +1293,7 @@ public class DentalPlannedTreatmentService {
             TreatmentScope scope,
             List<Long> coveredToothIds,
             String note,
-            ToothSurface surface,
+            List<ToothSurface> surfaces,
             BigDecimal insurance,
             Long serviceId,
             Long procedureId,
@@ -1271,7 +1314,7 @@ public class DentalPlannedTreatmentService {
                 .coveredToothIds(PlannedTreatmentDTO.encodeCoveredToothIds(coveredToothIds))
                 .clinicalDetails(clinical != null ? clinical.toJson() : null)
                 .note(note)
-                .surface(surface)
+                .surfaces(normalizeSurfaces(surfaces))
                 .insurance(defaultMoney(insurance))
                 .serviceId(serviceId)
                 .procedureId(procedureId)
@@ -1393,7 +1436,7 @@ public class DentalPlannedTreatmentService {
                     TreatmentScope.SPECIFIC_TOOTH,
                     List.of(),
                     action.getNote(),
-                    action.getSurface(),
+                    action.getSurface() == null ? List.of() : List.of(action.getSurface()),
                     null,
                     serviceId,
                     null,
@@ -1543,7 +1586,7 @@ public class DentalPlannedTreatmentService {
         if (!Objects.equals(entity.getToothId(), resolved.toothId())) {
             return true;
         }
-        if (!Objects.equals(entity.getSurface(), resolved.surface())) {
+        if (!Objects.equals(normalizeSurfaces(entity.getSurfaces()), normalizeSurfaces(resolved.surfaces()))) {
             return true;
         }
         if (!Objects.equals(entity.getCdtCodeId(), dto.cdtCodeId())) {
@@ -1670,6 +1713,6 @@ public class DentalPlannedTreatmentService {
             TreatmentScope scope,
             Long toothId,
             List<Long> coveredToothIds,
-            ToothSurface surface
+            List<ToothSurface> surfaces
     ) {}
 }
