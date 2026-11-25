@@ -260,9 +260,12 @@ public class ClaimRequestBuilderService {
         }
 
         Map<Integer, LabTestSource> labTestSources = new LinkedHashMap<>();
-        var supportingInfo = dentalAttachmentSupportingInfoMapper.withDentalAttachments(
-                approvalSupportingInfoMapper.toClaimSupportingInfo(encounter, labTestSources),
-                encounter
+        var supportingInfo = ApprovalSupportingInfoMapper.withOnsetCode(
+                dentalAttachmentSupportingInfoMapper.withDentalAttachments(
+                        approvalSupportingInfoMapper.toClaimSupportingInfo(encounter, labTestSources),
+                        encounter
+                ),
+                diagnoses
         );
 
         List<PatientServiceAndProduct> products = invoiceItems.stream()

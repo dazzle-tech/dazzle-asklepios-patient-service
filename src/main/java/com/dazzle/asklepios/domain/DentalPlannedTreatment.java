@@ -1,11 +1,14 @@
 package com.dazzle.asklepios.domain;
 
+import com.dazzle.asklepios.domain.converter.ToothSurfaceListConverter;
+import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentDiscountType;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentType;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.ToothSurface;
 import com.dazzle.asklepios.domain.enumeration.TreatmentScope;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -26,6 +29,8 @@ import lombok.Setter;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "dental_planned_treatment")
@@ -98,9 +103,10 @@ public class DentalPlannedTreatment extends AbstractAuditingEntity<Long> impleme
     @Column(name = "note", columnDefinition = "TEXT")
     private String note;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "surface")
-    private ToothSurface surface;
+    @Convert(converter = ToothSurfaceListConverter.class)
+    @Column(name = "surface", length = 255)
+    @Builder.Default
+    private List<ToothSurface> surfaces = new ArrayList<>();
 
     @Column(name = "insurance", nullable = false, precision = 10, scale = 2)
     @Builder.Default
@@ -123,6 +129,12 @@ public class DentalPlannedTreatment extends AbstractAuditingEntity<Long> impleme
     @Column(name = "discount", nullable = false, precision = 10, scale = 2)
     @Builder.Default
     private BigDecimal discount = BigDecimal.ZERO;
+
+    /** Interpretation of {@link #discount}: FIXED amount (default, legacy rows) or PERCENT of the line subtotal. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "discount_type", nullable = false, length = 10)
+    @Builder.Default
+    private PlannedTreatmentDiscountType discountType = PlannedTreatmentDiscountType.FIXED;
 
     @NotNull
     @Enumerated(EnumType.STRING)

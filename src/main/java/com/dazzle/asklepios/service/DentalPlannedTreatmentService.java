@@ -12,6 +12,8 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.ToothAction;
 import com.dazzle.asklepios.domain.ToothCdt;
 import com.dazzle.asklepios.domain.ToothService;
+import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentDiscountType;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentHistoryAction;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentType;
@@ -91,6 +93,7 @@ public class DentalPlannedTreatmentService {
     private final CDTCodeHelper cdtCodeHelper;
     private final ProcedureHelper procedureHelper;
     private final DentalPlannedTreatmentStatusLogRepository dentalPlannedTreatmentStatusLogRepository;
+    private final DentalPlannedTreatmentBillingService dentalPlannedTreatmentBillingService;
 
     public DentalPlannedTreatmentService(
             DentalPlannedTreatmentRepository dentalPlannedTreatmentRepository,
@@ -108,7 +111,8 @@ public class DentalPlannedTreatmentService {
             DentalTreatmentPlanService dentalTreatmentPlanService,
             CDTCodeHelper cdtCodeHelper,
             ProcedureHelper procedureHelper,
-            DentalPlannedTreatmentStatusLogRepository dentalPlannedTreatmentStatusLogRepository
+            DentalPlannedTreatmentStatusLogRepository dentalPlannedTreatmentStatusLogRepository,
+            DentalPlannedTreatmentBillingService dentalPlannedTreatmentBillingService
     ) {
         this.dentalPlannedTreatmentRepository = dentalPlannedTreatmentRepository;
         this.dentalChartToothRepository = dentalChartToothRepository;
@@ -126,6 +130,7 @@ public class DentalPlannedTreatmentService {
         this.cdtCodeHelper = cdtCodeHelper;
         this.procedureHelper = procedureHelper;
         this.dentalPlannedTreatmentStatusLogRepository = dentalPlannedTreatmentStatusLogRepository;
+        this.dentalPlannedTreatmentBillingService = dentalPlannedTreatmentBillingService;
     }
 
     @Transactional(readOnly = true)
@@ -237,7 +242,8 @@ public class DentalPlannedTreatmentService {
                 dto.procedureId(),
                 dto.price(),
                 quantity,
-                dto.discount()
+                dto.discount(),
+                dto.discountType()
         );
         DentalTreatmentSession session = requirePlanSession(
                 dto.patientId(),
@@ -255,13 +261,14 @@ public class DentalPlannedTreatmentService {
                 resolved.scope(),
                 resolved.coveredToothIds(),
                 dto.note(),
-                resolved.surface(),
+                resolved.surfaces(),
                 dto.insurance(),
                 dto.serviceId(),
                 dto.procedureId(),
                 financials.unitPrice(),
                 financials.quantity(),
-                financials.discountAmount(),
+                financials.discountValue(),
+                financials.discountType(),
                 clinicalFrom(dto)
         );
         entity.setTreatmentPlan(session.getTreatmentPlan());
@@ -319,13 +326,14 @@ public class DentalPlannedTreatmentService {
                 TreatmentScope.SPECIFIC_TOOTH,
                 null,
                 dto.note(),
-                dto.surface(),
+                dto.surfaces(),
                 dto.insurance(),
                 dto.serviceId(),
                 dto.procedureId(),
                 dto.price(),
                 dto.quantity(),
                 dto.discount(),
+                dto.discountType(),
                 dto.anesthesiaUsed(),
                 dto.dose(),
                 dto.unit(),
@@ -341,7 +349,8 @@ public class DentalPlannedTreatmentService {
                 dto.procedureId(),
                 dto.price(),
                 dto.quantity(),
-                dto.discount()
+                dto.discount(),
+                dto.discountType()
         );
 
         DentalTreatmentSession session = requirePlanSession(
@@ -363,13 +372,14 @@ public class DentalPlannedTreatmentService {
                     TreatmentScope.SPECIFIC_TOOTH,
                     List.of(),
                     dto.note(),
-                    dto.surface(),
+                    dto.surfaces(),
                     dto.insurance(),
                     dto.serviceId(),
                     dto.procedureId(),
                     financials.unitPrice(),
                     financials.quantity(),
-                    financials.discountAmount(),
+                    financials.discountValue(),
+                    financials.discountType(),
                     clinical
             );
             row.setTreatmentPlan(session.getTreatmentPlan());
@@ -394,7 +404,8 @@ public class DentalPlannedTreatmentService {
                 dto.procedureId(),
                 dto.price(),
                 quantity,
-                dto.discount()
+                dto.discount(),
+                dto.discountType()
         );
 
         boolean scopeOrCommercialChanged = commercialChanged(entity, dto, resolved);
@@ -422,13 +433,14 @@ public class DentalPlannedTreatmentService {
         entity.setTreatmentScope(resolved.scope());
         entity.setCoveredToothIds(PlannedTreatmentDTO.encodeCoveredToothIds(resolved.coveredToothIds()));
         entity.setNote(dto.note());
-        entity.setSurface(resolved.surface());
+        entity.setSurfaces(normalizeSurfaces(resolved.surfaces()));
         entity.setInsurance(defaultMoney(dto.insurance()));
         entity.setServiceId(dto.serviceId());
         entity.setProcedureId(dto.procedureId());
         entity.setPrice(financials.unitPrice());
         entity.setQuantity(financials.quantity());
-        entity.setDiscount(financials.discountAmount());
+        entity.setDiscount(financials.discountValue());
+        entity.setDiscountType(financials.discountType());
         entity.setClinicalDetails(clinicalFrom(dto).toJson());
 
         return toDTO(dentalPlannedTreatmentRepository.save(entity));
@@ -502,7 +514,9 @@ public class DentalPlannedTreatmentService {
     /**
      * Completes a PENDING/IN_PROGRESS planned treatment clinically with the selected dental action.
      * Persists the planned price/quantity/discount snapshot on the treatment row.
-     * Charge creation / billing-engine integration is deferred.
+     * Creates the treatment's single Products & Services line in the execution encounter and bills it through the
+     * Billing Engine (the engine's price and discount rules set the Ledger total). Everything runs in this
+     * transaction, so a billing failure rolls back the completion, history, chart effect and line.
      */
     public PlannedTreatmentDTO completePlannedTreatment(Long id, Long executionEncounterId, Long dentalActionId) {
         DentalPlannedTreatment entity = getPlannedTreatmentForUpdate(id);
@@ -587,30 +601,43 @@ public class DentalPlannedTreatmentService {
                 entity.getProcedureId(),
                 snapshotPrice,
                 billableQty,
-                entity.getDiscount()
+                entity.getDiscount(),
+                entity.getDiscountType()
         );
 
         String currentUser = SecurityUtils.getCurrentUserLogin()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not authenticated."));
 
         entity.setStatus(PlannedTreatmentStatus.COMPLETED);
-        // Billing charge creation is deferred — do not invent a patientServiceAndProductId.
         entity.setPrice(financials.unitPrice());
         entity.setQuantity(financials.quantity());
-        entity.setDiscount(financials.discountAmount());
+        // Keep the entered value + type; the amount is derived, so it is never applied twice.
+        entity.setDiscount(financials.discountValue());
+        entity.setDiscountType(financials.discountType());
         entity.setCompletedBy(currentUser);
         entity.setCompletedAt(Instant.now());
 
         DentalPlannedTreatment saved = dentalPlannedTreatmentRepository.save(entity);
         recordHistory(saved, PlannedTreatmentHistoryAction.COMPLETED);
+        // The row is locked and had no charge (checked above), so one completion creates exactly one line.
+        String billedToothNumber = scope == TreatmentScope.SPECIFIC_TOOTH && !coveredTeeth.isEmpty()
+                ? coveredTeeth.get(0).getToothNumber()
+                : null;
+        PatientServiceAndProduct charge = dentalPlannedTreatmentBillingService.billCompletedTreatment(
+                saved,
+                financials.quantity(),
+                billedToothNumber
+        );
+        saved.setPatientServiceAndProduct(charge);
         String chartEffect = plannedTreatmentChartEffectService.apply(saved, coveredTeeth, dentalActionId, currentUser);
         dentalTreatmentPlanService.markInProgressIfAccepted(planIdOf(saved));
         dentalTreatmentPlanService.evaluateCompletion(planIdOf(saved));
         LOG.info(
-                "[DENTAL_PLANNED_TREATMENT] Completed clinically id={} scope={} qty={} (billing deferred)",
+                "[DENTAL_PLANNED_TREATMENT] Completed id={} scope={} qty={} pspId={}",
                 saved.getId(),
                 scope,
-                financials.quantity()
+                financials.quantity(),
+                charge.getId()
         );
         return toDTO(saved, chartEffect);
     }
@@ -707,7 +734,7 @@ public class DentalPlannedTreatmentService {
             DentalPlannedTreatment entity,
             PlannedTreatmentSaveDTO dto
     ) {
-        validateSaveCommon(dto);
+        validateSaveCommon(dto, entity);
         if (!Objects.equals(dto.patientId(), entity.getPatientId())) {
             throw new BadRequestAlertException(
                     "A treatment cannot be moved to another patient",
@@ -738,7 +765,7 @@ public class DentalPlannedTreatmentService {
             Long planningToothId = dto.toothId() == null
                     ? null
                     : mapToPlanningChart(dto.toothId(), planningChart).getId();
-            return new ResolvedScope(scope, planningToothId, List.of(), dto.surface());
+            return new ResolvedScope(scope, planningToothId, List.of(), dto.surfaces());
         }
 
         List<Long> expectedIds = resolveChartScopeToothIds(planningChart, scope);
@@ -760,7 +787,7 @@ public class DentalPlannedTreatmentService {
                     "planningCoverageUnmatched"
             );
         }
-        return new ResolvedScope(scope, null, covered, dto.surface());
+        return new ResolvedScope(scope, null, covered, dto.surfaces());
     }
 
     /**
@@ -835,7 +862,7 @@ public class DentalPlannedTreatmentService {
                         "coveredTeethNotAllowed"
                 );
             }
-            return new ResolvedScope(scope, dto.toothId(), List.of(), dto.surface());
+            return new ResolvedScope(scope, dto.toothId(), List.of(), dto.surfaces());
         }
 
         List<Long> expectedIds = resolveChartScopeToothIds(chart, scope);
@@ -861,12 +888,49 @@ public class DentalPlannedTreatmentService {
         assertTeethOnChart(chart, covered, false);
 
         // Grouped rows: no single-tooth linkage.
-        return new ResolvedScope(scope, null, covered, dto.surface());
+        return new ResolvedScope(scope, null, covered, dto.surfaces());
+    }
+
+    private List<ToothSurface> normalizeSurfaces(List<ToothSurface> surfaces) {
+        if (surfaces == null) {
+            return new ArrayList<>();
+        }
+        return surfaces.stream()
+                .filter(Objects::nonNull)
+                .distinct()
+                .sorted()
+                .collect(Collectors.toCollection(ArrayList::new));
+    }
+
+    /**
+     * The surfaces configured on the procedure in Procedure Setup (relatedSurfaces) are the only ones
+     * a treatment of that procedure may select. A procedure that has no configuration yet is not restricted.
+     */
+    private void validateSurfacesRelatedToProcedure(List<ToothSurface> surfaces, ProcedureSetupDTO procedure) {
+        List<String> related = procedure.relatedSurfaces();
+        if (related == null || related.isEmpty()) {
+            return;
+        }
+        List<String> notRelated = normalizeSurfaces(surfaces).stream()
+                .map(ToothSurface::name)
+                .filter(surface -> !related.contains(surface))
+                .toList();
+        if (!notRelated.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "Surface not configured for this procedure: " + String.join(", ", notRelated),
+                    ENTITY,
+                    "surfaceNotRelatedToProcedure"
+            );
+        }
     }
 
     private void validateSaveCommon(PlannedTreatmentSaveDTO dto) {
-        if (dto.surface() == null) {
-            throw new BadRequestAlertException("Surface is required", ENTITY, "surfaceRequired");
+        validateSaveCommon(dto, null);
+    }
+
+    private void validateSaveCommon(PlannedTreatmentSaveDTO dto, DentalPlannedTreatment existing) {
+        if (dto.surfaces() == null || dto.surfaces().stream().noneMatch(Objects::nonNull)) {
+            throw new BadRequestAlertException("Select at least one surface", ENTITY, "surfaceRequired");
         }
         if (dto.visitNumber() != null) {
             dentalVisitNumberService.validatePositive(dto.visitNumber());
@@ -875,7 +939,13 @@ public class DentalPlannedTreatmentService {
             cdtCodeHelper.validateCDTCodeExists(dto.cdtCodeId());
         }
         if (dto.procedureId() != null) {
-            procedureHelper.validateProcedureExists(dto.procedureId());
+            ProcedureSetupDTO procedure = procedureHelper.getProcedure(dto.procedureId());
+            // Saved treatments are only re-checked when their procedure or surfaces change, so older records stay editable.
+            if (existing == null
+                    || !Objects.equals(existing.getProcedureId(), dto.procedureId())
+                    || !Objects.equals(normalizeSurfaces(existing.getSurfaces()), normalizeSurfaces(dto.surfaces()))) {
+                validateSurfacesRelatedToProcedure(dto.surfaces(), procedure);
+            }
         }
         if (dto.serviceId() != null) {
             serviceHelper.getService(dto.serviceId());
@@ -927,7 +997,8 @@ public class DentalPlannedTreatmentService {
             Long procedureId,
             BigDecimal requestedPrice,
             Long quantity,
-            BigDecimal discount
+            BigDecimal discount,
+            PlannedTreatmentDiscountType requestedDiscountType
     ) {
         BigDecimal unitPrice = requestedPrice;
         if (unitPrice == null && procedureId != null) {
@@ -946,26 +1017,46 @@ public class DentalPlannedTreatmentService {
             throw new BadRequestAlertException("Unit price cannot be negative", ENTITY, "invalidPrice");
         }
         long qty = quantity != null && quantity > 0 ? quantity : 1L;
-        BigDecimal discountAmount = (discount != null ? discount : BigDecimal.ZERO)
+        PlannedTreatmentDiscountType discountType = requestedDiscountType != null
+                ? requestedDiscountType
+                : PlannedTreatmentDiscountType.FIXED;
+        BigDecimal discountValue = (discount != null ? discount : BigDecimal.ZERO)
                 .setScale(2, RoundingMode.HALF_UP);
-        if (discountAmount.compareTo(BigDecimal.ZERO) < 0) {
+        if (discountValue.compareTo(BigDecimal.ZERO) < 0) {
             throw new BadRequestAlertException("Discount amount cannot be negative", ENTITY, "invalidDiscount");
         }
         BigDecimal lineGross = price.multiply(BigDecimal.valueOf(qty)).setScale(2, RoundingMode.HALF_UP);
-        if (discountAmount.compareTo(lineGross) > 0) {
-            throw new BadRequestAlertException(
-                    "Discount amount cannot exceed unit price × quantity",
-                    ENTITY,
-                    "discountExceedsLine"
-            );
+        BigDecimal discountAmount;
+        if (discountType == PlannedTreatmentDiscountType.PERCENT) {
+            if (discountValue.compareTo(BigDecimal.valueOf(100)) > 0) {
+                throw new BadRequestAlertException(
+                        "Discount percentage cannot exceed 100",
+                        ENTITY,
+                        "discountPercentExceeds100"
+                );
+            }
+            discountAmount = lineGross.multiply(discountValue)
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        } else {
+            if (discountValue.compareTo(lineGross) > 0) {
+                throw new BadRequestAlertException(
+                        "Discount amount cannot exceed unit price × quantity",
+                        ENTITY,
+                        "discountExceedsLine"
+                );
+            }
+            discountAmount = discountValue;
         }
         BigDecimal net = lineGross.subtract(discountAmount).setScale(2, RoundingMode.HALF_UP);
-        return new ValidatedFinancials(price, qty, discountAmount, net);
+        return new ValidatedFinancials(price, qty, discountType, discountValue, discountAmount, net);
     }
 
     private record ValidatedFinancials(
             BigDecimal unitPrice,
             long quantity,
+            PlannedTreatmentDiscountType discountType,
+            /** Entered value (the amount for FIXED, the percentage for PERCENT) — this is what is persisted. */
+            BigDecimal discountValue,
             BigDecimal discountAmount,
             BigDecimal netTotal
     ) {}
@@ -1202,13 +1293,14 @@ public class DentalPlannedTreatmentService {
             TreatmentScope scope,
             List<Long> coveredToothIds,
             String note,
-            ToothSurface surface,
+            List<ToothSurface> surfaces,
             BigDecimal insurance,
             Long serviceId,
             Long procedureId,
             BigDecimal price,
             Long quantity,
             BigDecimal discount,
+            PlannedTreatmentDiscountType discountType,
             PlannedTreatmentClinicalDetails clinical
     ) {
         return DentalPlannedTreatment.builder()
@@ -1222,13 +1314,14 @@ public class DentalPlannedTreatmentService {
                 .coveredToothIds(PlannedTreatmentDTO.encodeCoveredToothIds(coveredToothIds))
                 .clinicalDetails(clinical != null ? clinical.toJson() : null)
                 .note(note)
-                .surface(surface)
+                .surfaces(normalizeSurfaces(surfaces))
                 .insurance(defaultMoney(insurance))
                 .serviceId(serviceId)
                 .procedureId(procedureId)
                 .price(defaultMoney(price))
                 .quantity(quantity != null && quantity > 0 ? quantity : 1L)
                 .discount(defaultMoney(discount))
+                .discountType(discountType != null ? discountType : PlannedTreatmentDiscountType.FIXED)
                 .status(PlannedTreatmentStatus.PENDING)
                 .patientServiceAndProduct(null)
                 .cancelled(false)
@@ -1343,9 +1436,10 @@ public class DentalPlannedTreatmentService {
                     TreatmentScope.SPECIFIC_TOOTH,
                     List.of(),
                     action.getNote(),
-                    action.getSurface(),
+                    action.getSurface() == null ? List.of() : List.of(action.getSurface()),
                     null,
                     serviceId,
+                    null,
                     null,
                     null,
                     null,
@@ -1492,7 +1586,7 @@ public class DentalPlannedTreatmentService {
         if (!Objects.equals(entity.getToothId(), resolved.toothId())) {
             return true;
         }
-        if (!Objects.equals(entity.getSurface(), resolved.surface())) {
+        if (!Objects.equals(normalizeSurfaces(entity.getSurfaces()), normalizeSurfaces(resolved.surfaces()))) {
             return true;
         }
         if (!Objects.equals(entity.getCdtCodeId(), dto.cdtCodeId())) {
@@ -1519,6 +1613,17 @@ public class DentalPlannedTreatmentService {
         if (dto.discount() != null
                 && defaultMoney(entity.getDiscount()).compareTo(defaultMoney(dto.discount())) != 0) {
             return true;
+        }
+        if (dto.discount() != null || dto.discountType() != null) {
+            PlannedTreatmentDiscountType currentType = entity.getDiscountType() != null
+                    ? entity.getDiscountType()
+                    : PlannedTreatmentDiscountType.FIXED;
+            PlannedTreatmentDiscountType nextType = dto.discountType() != null
+                    ? dto.discountType()
+                    : PlannedTreatmentDiscountType.FIXED;
+            if (currentType != nextType) {
+                return true;
+            }
         }
         PlannedTreatmentClinicalDetails current =
                 PlannedTreatmentClinicalDetails.fromJson(entity.getClinicalDetails());
@@ -1608,6 +1713,6 @@ public class DentalPlannedTreatmentService {
             TreatmentScope scope,
             Long toothId,
             List<Long> coveredToothIds,
-            ToothSurface surface
+            List<ToothSurface> surfaces
     ) {}
 }

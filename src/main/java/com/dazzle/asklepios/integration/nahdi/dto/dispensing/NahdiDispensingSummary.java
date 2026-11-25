@@ -13,7 +13,10 @@ import java.util.List;
  */
 public record NahdiDispensingSummary(
         boolean refreshed,
+        // For the doctor when the status could not be checked.
         String message,
+        // Technical reason (for IT), e.g. the pharmacy's error.
+        String detail,
         Instant checkedAt,
         List<Long> dispensedMedicationIds
 ) {}

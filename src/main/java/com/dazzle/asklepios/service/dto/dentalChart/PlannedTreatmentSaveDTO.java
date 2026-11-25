@@ -1,8 +1,11 @@
 package com.dazzle.asklepios.service.dto.dentalChart;
 
+import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentDiscountType;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentType;
 import com.dazzle.asklepios.domain.enumeration.ToothSurface;
 import com.dazzle.asklepios.domain.enumeration.TreatmentScope;
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.validation.constraints.NotNull;
 
 import java.io.Serializable;
@@ -19,13 +22,16 @@ public record PlannedTreatmentSaveDTO(
         TreatmentScope treatmentScope,
         List<Long> coveredToothIds,
         String note,
-        ToothSurface surface,
+        @JsonAlias("surface")
+        @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
+        List<ToothSurface> surfaces,
         BigDecimal insurance,
         Long serviceId,
         Long procedureId,
         BigDecimal price,
         Long quantity,
         BigDecimal discount,
+        PlannedTreatmentDiscountType discountType,
         String anesthesiaUsed,
         BigDecimal dose,
         String unit,

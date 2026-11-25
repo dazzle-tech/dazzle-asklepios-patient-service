@@ -1,11 +1,13 @@
 package com.dazzle.asklepios.service.dto.dentalChart;
 
 import com.dazzle.asklepios.domain.DentalPlannedTreatment;
+import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentDiscountType;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentType;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.ToothSurface;
 import com.dazzle.asklepios.domain.enumeration.TreatmentScope;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.io.Serializable;
 import java.math.BigDecimal;
@@ -32,13 +34,15 @@ public record PlannedTreatmentDTO(
         TreatmentScope treatmentScope,
         List<Long> coveredToothIds,
         String note,
-        ToothSurface surface,
+        List<ToothSurface> surfaces,
         BigDecimal insurance,
         Long serviceId,
         Long procedureId,
         BigDecimal price,
         Long quantity,
         BigDecimal discount,
+        /** FIXED (default/legacy) or PERCENT; {@code discount} is the entered value, not the amount. */
+        PlannedTreatmentDiscountType discountType,
         PlannedTreatmentStatus status,
         Long patientServiceAndProductId,
         ServiceSource source,
@@ -61,6 +65,12 @@ public record PlannedTreatmentDTO(
         /** Outcome of the chart visual effect on completion; null outside the completion response. */
         String chartEffect
 ) implements Serializable {
+
+    /** First selected surface, kept for clients that still read the single {@code surface} field. */
+    @JsonProperty("surface")
+    public ToothSurface primarySurface() {
+        return surfaces == null || surfaces.isEmpty() ? null : surfaces.get(0);
+    }
 
     public static PlannedTreatmentDTO fromEntity(DentalPlannedTreatment entity, DentalChartToothSummaryDTO tooth) {
         return fromEntity(entity, tooth, null);
@@ -85,13 +95,14 @@ public record PlannedTreatmentDTO(
                 scope,
                 parseCoveredToothIds(entity.getCoveredToothIds()),
                 entity.getNote(),
-                entity.getSurface(),
+                entity.getSurfaces() == null ? List.of() : List.copyOf(entity.getSurfaces()),
                 entity.getInsurance(),
                 entity.getServiceId(),
                 entity.getProcedureId(),
                 entity.getPrice(),
                 entity.getQuantity(),
                 entity.getDiscount(),
+                entity.getDiscountType() != null ? entity.getDiscountType() : PlannedTreatmentDiscountType.FIXED,
                 entity.getStatus() != null ? entity.getStatus() : PlannedTreatmentStatus.PENDING,
                 entity.getPatientServiceAndProduct() != null ? entity.getPatientServiceAndProduct().getId() : null,
                 entity.getSource(),

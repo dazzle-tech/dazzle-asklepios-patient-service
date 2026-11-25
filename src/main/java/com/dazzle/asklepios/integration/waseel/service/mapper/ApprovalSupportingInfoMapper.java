@@ -34,6 +34,8 @@ import com.dazzle.asklepios.domain.ProgressNote;
 import com.dazzle.asklepios.domain.SocialHistory;
 import com.dazzle.asklepios.domain.VitalSigns;
 import com.dazzle.asklepios.client.setup.dto.NormalRangeMatchDTO;
+import com.dazzle.asklepios.domain.enumeration.EncounterReason;
+import com.dazzle.asklepios.domain.enumeration.EncounterType;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.NormalRangeType;
@@ -43,7 +45,9 @@ import com.dazzle.asklepios.domain.enumeration.TestResultType;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import com.dazzle.asklepios.service.NormalRangeMatcherService;
+import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalDiagnosis;
 import com.dazzle.asklepios.integration.waseel.dto.approval.WaseelApprovalSupportingInfo;
+import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelEmergencyEncounterMapper;
 import com.dazzle.asklepios.integration.waseel.service.LaboratoryItemSupportingInfoLinker.LabTestSource;
 import com.dazzle.asklepios.integration.waseel.service.pdf.InvestigationResultsPdfRenderer;
 import com.dazzle.asklepios.integration.waseel.service.pdf.InvestigationResultsReport;
@@ -125,9 +129,17 @@ public class ApprovalSupportingInfoMapper {
     private static final String INVESTIGATION_RESULT = "investigation-result";
     private static final String LAB_TEST = "lab-test";
     private static final String INVESTIGATION_NOT_PERFORMED = "INP";
+    /** Waseel passes the investigation-result value on only for code "other". */
+    private static final String INVESTIGATION_OTHER = "other";
+    private static final String INVESTIGATION_NOT_PERFORMED_PREFIX = "Investigation(s) not performed: ";
     private static final String SERVICE_PRODUCT_ORDER_LABEL = "Service and Products";
     private static final String INVESTIGATION_RESULTS_PENDING = "IRP";
     private static final String INVESTIGATION_RESULTS_ATTACHED = "IRA";
+    private static final String REASON_FOR_VISIT = "reason-for-visit";
+    private static final String VISIT_REASON_NEW = "new-visit";
+    private static final String VISIT_REASON_FOLLOW_UP = "follow-up";
+    private static final String VISIT_REASON_WALK_IN = "walk-in";
+    private static final String ONSET = "onset";
     private final int maxReportTextLength = 8000;
     private final Pattern htmlMarkup = Pattern.compile("(?i)</?(p|br|div|span|li|ul|ol|b|i|u|strong|em|h[1-6]|table|tr|td)\\b[^>]*>");
 
@@ -249,7 +261,105 @@ public class ApprovalSupportingInfoMapper {
             log.warn("Unable to add lab-test supporting info. encounterId={}", encounterId, ex);
         }
 
+        // Pre-authorization and claim send the same visit reason and emergency onset.
+        // Clinical notes carry no date: Waseel rejects a date on those categories ("Date is Not Required").
+        result.add(reasonForVisitInfo(sequence, encounter));
+        if (encounter.getEncounterType() == EncounterType.EMERGENCY) {
+            addOnset(result, sequence, encounter);
+        }
+
         return result;
+    }
+
+    /**
+     * Emergency claims send when the emergency treatment started as the onset start date
+     * (fromDate, YYYY-MM-DD). The onset code, the condition's ICD-10 code, is added by
+     * {@link #withOnsetCode} once the claim diagnoses are known.
+     */
+    private void addOnset(
+            List<WaseelApprovalSupportingInfo> result,
+            AtomicInteger sequence,
+            PatientEncounter encounter
+    ) {
+        String treatmentStart = WaseelEmergencyEncounterMapper.emergencyServiceStart(encounter, resolveDate(encounter));
+        result.add(new WaseelApprovalSupportingInfo(
+                sequence.getAndIncrement(),
+                ONSET,
+                null,
+                treatmentStart.substring(0, 10),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        ));
+    }
+
+    /**
+     * Waseel requires the onset code and start date: as in the NPHIES claim example, the code is the
+     * ICD-10 code of the condition, here the principal diagnosis of the claim.
+     */
+    public static List<WaseelApprovalSupportingInfo> withOnsetCode(
+            List<WaseelApprovalSupportingInfo> supportingInfo,
+            List<WaseelApprovalDiagnosis> diagnoses
+    ) {
+        if (supportingInfo == null || diagnoses == null || diagnoses.isEmpty()) {
+            return supportingInfo;
+        }
+        String conditionCode = diagnoses.stream()
+                .filter(diagnosis -> "principal".equalsIgnoreCase(diagnosis.type()))
+                .findFirst()
+                .orElse(diagnoses.get(0))
+                .diagnosisCode();
+
+        return supportingInfo.stream()
+                .map(info -> !ONSET.equals(info.category()) || info.code() != null
+                        ? info
+                        : new WaseelApprovalSupportingInfo(
+                                info.sequence(),
+                                info.category(),
+                                conditionCode,
+                                info.fromDate(),
+                                info.toDate(),
+                                info.value(),
+                                info.reason(),
+                                info.attachment(),
+                                info.attachmentName(),
+                                info.attachmentType(),
+                                info.unit(),
+                                info.attachmentDate()
+                        ))
+                .collect(Collectors.toCollection(ArrayList::new));
+    }
+
+    /**
+     * Reason-for-visit row: the code only. Waseel rejects a value on this category
+     * ("value is Not Required of reason-for-visit category").
+     */
+    private WaseelApprovalSupportingInfo reasonForVisitInfo(AtomicInteger sequence, PatientEncounter encounter) {
+        return codeInfo(sequence, REASON_FOR_VISIT, visitReason(encounter));
+    }
+
+    /**
+     * NPHIES visit-reason code of the visit (new-visit, follow-up, refill, walk-in, referral).
+     * A follow-up visit is follow-up. NPHIES has no emergency code, so an emergency or urgent visit
+     * is a walk-in. Any other visit, a referral included, is new-visit: Waseel ties the referral code
+     * to the referral pre-authorization number, which the claim does not carry.
+     */
+    private String visitReason(PatientEncounter encounter) {
+        if (encounter.getFollowUpEncounter() != null
+                || encounter.getEncounterReason() == EncounterReason.FOLLOW_UP) {
+            return VISIT_REASON_FOLLOW_UP;
+        }
+        // "Emergency" is not an NPHIES visit-reason code: Waseel rejects it ("not matching with NPHIES Enum")
+        if (encounter.getEncounterType() == EncounterType.EMERGENCY
+                || encounter.getEncounterReason() == EncounterReason.URGENT_VISIT) {
+            return VISIT_REASON_WALK_IN;
+        }
+        return VISIT_REASON_NEW;
     }
 
     private void addClinicalTextIfExists(
@@ -481,11 +591,47 @@ public class ApprovalSupportingInfoMapper {
         }
 
         if (tests.isEmpty() && serviceProductTests.isEmpty()) {
-            result.add(codeInfo(sequence, INVESTIGATION_RESULT, INVESTIGATION_NOT_PERFORMED));
+            result.add(investigationNotPerformed(sequence, investigationNotPerformedNote(encounter, claimCopyId)));
             return;
         }
 
         result.add(codeInfo(sequence, INVESTIGATION_RESULT, INVESTIGATION_RESULTS_PENDING));
+    }
+
+    /**
+     * Why no investigation was performed: the claim copy reason for a claim,
+     * the visit reason for a pre-authorization.
+     */
+    private String investigationNotPerformedNote(PatientEncounter encounter, Long claimCopyId) {
+        String reason = claimCopyId != null
+                ? claimEncounterCopyRepository.findById(claimCopyId)
+                        .map(ClaimEncounterCopy::getInvestigationNotPerformedReason)
+                        .orElse(null)
+                : encounter == null ? null : encounter.getInvestigationNotPerformedReason();
+        return isNotBlank(reason) ? reason.trim() : null;
+    }
+
+    /**
+     * No investigation was performed. Waseel shows and forwards the value only with code "other",
+     * so a visit with a reason sends "other" with the reason as the result text. Without a reason
+     * it sends "INP", which claim validation stops until the reason is entered.
+     */
+    private WaseelApprovalSupportingInfo investigationNotPerformed(AtomicInteger sequence, String note) {
+        boolean withReason = isNotBlank(note);
+        return new WaseelApprovalSupportingInfo(
+                sequence.getAndIncrement(),
+                INVESTIGATION_RESULT,
+                withReason ? INVESTIGATION_OTHER : INVESTIGATION_NOT_PERFORMED,
+                null,
+                null,
+                withReason ? INVESTIGATION_NOT_PERFORMED_PREFIX + note : null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
     }
 
     private WaseelApprovalSupportingInfo investigationResultPending(

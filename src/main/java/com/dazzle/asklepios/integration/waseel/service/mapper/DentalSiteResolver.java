@@ -41,6 +41,7 @@ public class DentalSiteResolver {
     public static boolean isDentalTreatment(PatientServiceAndProduct item) {
         return item != null
                 && (item.getServiceSource() == ServiceSource.DENTAL_PROCEDURE
+                || item.getServiceSource() == ServiceSource.DENTAL_PLANNED_TREATMENT
                 || DENTAL_CHART_SOURCES.contains(item.getServiceSource()));
     }
 
@@ -48,9 +49,23 @@ public class DentalSiteResolver {
         if (!isDentalTreatment(item) || item.getSourceId() == null) {
             return DentalSite.NONE;
         }
+        if (item.getServiceSource() == ServiceSource.DENTAL_PLANNED_TREATMENT) {
+            return fromPlannedTreatment(item);
+        }
         return item.getServiceSource() == ServiceSource.DENTAL_PROCEDURE
                 ? fromDentalProcedure(item)
                 : fromDentalChart(item.getSourceId());
+    }
+
+    /**
+     * A completed Treatment Plan item is one line. A specific-tooth line keeps its executed tooth on the line;
+     * a grouped (arch / full-mouth) line has none and is sent without a tooth.
+     */
+    private DentalSite fromPlannedTreatment(PatientServiceAndProduct item) {
+        return DentalSite.of(
+                item.getToothNumber() == null ? List.of() : List.of(item.getToothNumber()),
+                null
+        );
     }
 
     /**

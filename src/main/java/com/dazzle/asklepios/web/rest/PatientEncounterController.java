@@ -22,6 +22,7 @@ import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCancelD
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCompletionValidationDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.ReassignPractitionerDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterCreateDTO;
+import com.dazzle.asklepios.service.dto.patientEncounter.EncounterInvestigationReasonDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterDischargeDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterSearchFilterDTO;
 import com.dazzle.asklepios.service.dto.patientEncounter.PatientEncounterUpdateDTO;
@@ -734,6 +735,21 @@ public class PatientEncounterController {
 
         PatientEncounter existing = patientEncounterService.completeEncounter(encounterId);
         return ResponseEntity.ok(existing);
+    }
+
+    @PutMapping("/encounter/{id}/investigation-not-performed-reason")
+    public ResponseEntity<PatientEncounter> saveInvestigationNotPerformedReason(
+            @PathVariable("id") @NotNull Long encounterId,
+            @Valid @RequestBody @NotNull EncounterInvestigationReasonDTO request
+    ) {
+        LOG.debug("REST save investigation not performed reason encounterId={}", encounterId);
+
+        return ResponseEntity.ok(
+                patientEncounterService.saveInvestigationNotPerformedReason(
+                        encounterId,
+                        request.investigationNotPerformedReason()
+                )
+        );
     }
 
     @PostMapping("/encounter/{id}/close-billing")

@@ -86,32 +86,34 @@ public class NahdiIntegrationService {
         } catch (Exception e) {
             LOG.error("[NAHDI][SEND_PRESCRIPTION] failed to build request. prescriptionId={}", prescriptionId, e);
             record(prescriptionId, null, "Request build failed: " + e.getMessage(), NahdiIntegrationStatus.FAILED, null);
-            return NahdiSendResult.failed("Request build failed: " + e.getMessage());
+            return NahdiSendResult.failed(NahdiDoctorMessage.technical().text(), "Request build failed: " + e.getMessage());
         }
 
         String requestPayload = toMaskedJson(request);
         try {
             String response = nahdiClient.sendPrescription(request);
             NahdiSendPrescriptionResponse parsed = parseResponse(response);
-            // Nahdi answers HTTP 200 even on business errors; "success" in the body decides.
-            if (parsed != null && Boolean.TRUE.equals(parsed.success())) {
+            // Nahdi answers HTTP 200 even on business errors; "success" in the body decides, except for an order in
+            // status 1 or 9: Nahdi then skips the update but can still answer success=true.
+            Optional<NahdiDoctorMessage.Message> lockedOrder = lockedOrder(parsed);
+            if (parsed != null && Boolean.TRUE.equals(parsed.success()) && lockedOrder.isEmpty()) {
                 LOG.info("[NAHDI][SEND_PRESCRIPTION] success prescriptionId={}, orderNumber={}", prescriptionId, parsed.orderNumber());
                 record(prescriptionId, requestPayload, response, NahdiIntegrationStatus.SUCCESS, parsed.orderNumber());
                 return NahdiSendResult.success(parsed.orderNumber());
             }
             LOG.error("[NAHDI][SEND_PRESCRIPTION] rejected by Nahdi. prescriptionId={}, response={}", prescriptionId, response);
             record(prescriptionId, requestPayload, response, NahdiIntegrationStatus.FAILED, null);
-            return NahdiSendResult.failed(rejectionMessage(parsed));
+            return NahdiSendResult.failed(doctorMessage(parsed).text(), rejectionMessage(parsed));
         } catch (RestClientResponseException e) {
             LOG.error("[NAHDI][SEND_PRESCRIPTION] Nahdi responded with status={} prescriptionId={}",
                     e.getStatusCode().value(), prescriptionId);
             String message = "HTTP " + e.getStatusCode().value() + ": " + e.getResponseBodyAsString();
             record(prescriptionId, requestPayload, message, NahdiIntegrationStatus.FAILED, null);
-            return NahdiSendResult.failed(message);
+            return NahdiSendResult.failed(NahdiDoctorMessage.technical().text(), message);
         } catch (Exception e) {
             LOG.error("[NAHDI][SEND_PRESCRIPTION] call failed. prescriptionId={}, error={}", prescriptionId, e.getMessage());
             record(prescriptionId, requestPayload, "Call failed: " + e.getMessage(), NahdiIntegrationStatus.FAILED, null);
-            return NahdiSendResult.failed("Call failed: " + e.getMessage());
+            return NahdiSendResult.failed(NahdiDoctorMessage.technical().text(), "Call failed: " + e.getMessage());
         }
     }
 
@@ -125,8 +127,15 @@ public class NahdiIntegrationService {
         if (!PrescriptionStatus.SUBMITTED.equals(prescription.getStatus())) {
             throw new BadRequestAlertException("Only a submitted prescription can be resent", "prescription", "notSubmitted");
         }
-        submittedPrescriptionEditPolicy.assertCanEdit(prescription);
-        LOG.info("[NAHDI][RESEND_PRESCRIPTION] prescriptionId={}", prescriptionId);
+        // Resending a prescription that never reached Nahdi delivers it as it was submitted, so anyone may do it.
+        // Once it was delivered, a resend sends a changed prescription and needs the edit-after-submit permission.
+        boolean everDelivered = nahdiIntegrationLogRepository
+                .findFirstByPrescriptionIdAndStatusOrderByCreatedDateDesc(prescriptionId, NahdiIntegrationStatus.SUCCESS)
+                .isPresent();
+        if (everDelivered) {
+            submittedPrescriptionEditPolicy.assertCanEdit(prescription);
+        }
+        LOG.info("[NAHDI][RESEND_PRESCRIPTION] prescriptionId={}, everDelivered={}", prescriptionId, everDelivered);
         return sendPrescription(prescriptionId);
     }
 
@@ -144,13 +153,16 @@ public class NahdiIntegrationService {
                 .findFirstByPrescriptionIdAndStatusOrderByCreatedDateDesc(prescriptionId, NahdiIntegrationStatus.SUCCESS);
         Instant lastSentAt = lastSuccess.map(NahdiIntegrationLog::getCreatedDate).orElse(null);
         boolean lastFailed = lastAttempt.map(log -> NahdiIntegrationStatus.FAILED.equals(log.getStatus())).orElse(false);
+        NahdiDoctorMessage.Message doctorMessage = lastFailed ? doctorMessage(lastAttempt.get()) : null;
         NahdiSyncStatus.Builder status = NahdiSyncStatus.builder()
                 .integrationEnabled(nahdiProperties.enabled())
                 .lastSentAt(lastSentAt)
                 .orderNumber(lastSuccess.map(NahdiIntegrationLog::getOrderNumber).orElse(null))
                 .lastAttemptStatus(lastAttempt.map(log -> log.getStatus().name()).orElse(null))
                 .lastAttemptAt(lastAttempt.map(NahdiIntegrationLog::getCreatedDate).orElse(null))
-                .failureReason(lastFailed ? failureReason(lastAttempt.get()) : null);
+                .failureReason(lastFailed ? failureReason(lastAttempt.get()) : null)
+                .failureMessage(doctorMessage == null ? null : doctorMessage.text())
+                .failureDataError(doctorMessage != null && doctorMessage.dataError());
 
         // Nothing is waiting to be sent when the prescription is not submitted, or when the integration is off.
         if (!PrescriptionStatus.SUBMITTED.equals(prescription.getStatus()) || !nahdiProperties.enabled()) {
@@ -194,6 +206,28 @@ public class NahdiIntegrationService {
             return rejectionMessage(parsed);
         }
         return text.length() > MAX_REASON_LENGTH ? text.substring(0, MAX_REASON_LENGTH) + "..." : text;
+    }
+
+    /** What the doctor is told about a failed attempt: a data error they can fix, otherwise the general message. */
+    private NahdiDoctorMessage.Message doctorMessage(NahdiIntegrationLog log) {
+        String stored = log.getResponsePayload();
+        String text = stored == null ? "" : stored.trim();
+        return doctorMessage(text.startsWith("{") ? parseResponse(text) : null);
+    }
+
+    /** What the doctor is told about a Nahdi answer that was not accepted. */
+    private static NahdiDoctorMessage.Message doctorMessage(NahdiSendPrescriptionResponse parsed) {
+        if (parsed == null) {
+            return NahdiDoctorMessage.technical();
+        }
+        return lockedOrder(parsed).orElseGet(() -> NahdiDoctorMessage.ofNahdiError(parsed.error()));
+    }
+
+    /** The doctor's message when Nahdi skipped the update because the order is in status 1 or 9. */
+    private static Optional<NahdiDoctorMessage.Message> lockedOrder(NahdiSendPrescriptionResponse parsed) {
+        return parsed == null
+                ? Optional.empty()
+                : NahdiDoctorMessage.ofLockedOrder(NahdiErrorReason.of(parsed.message(), parsed.error()));
     }
 
     private static String rejectionMessage(NahdiSendPrescriptionResponse parsed) {

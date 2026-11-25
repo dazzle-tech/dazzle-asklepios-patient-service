@@ -116,6 +116,7 @@ public class   ClaimEncounterCopyService {
         copy.setChiefComplaint(encounter.getChiefComplaint());
         copy.setHistoryOfPresentIllness(encounter.getHistoryOfPresentIllness());
         copy.setPhysicalExamination(encounter.getPhysicalExaminationSummery());
+        copy.setInvestigationNotPerformedReason(encounter.getInvestigationNotPerformedReason());
         encounterAssessmentRepository
                 .findTopByEncounterIdOrderByCreatedDateDesc(encounter.getId())
                 .map(EncounterAssessment::getAssessment)
@@ -220,7 +221,8 @@ public class   ClaimEncounterCopyService {
                 copy.getBloodPressureSystolic(),
                 copy.getBloodPressureDiastolic(),
                 copy.getHeight(),
-                copy.getWeight()
+                copy.getWeight(),
+                copy.getInvestigationNotPerformedReason()
         );
     }
     @Transactional
@@ -250,6 +252,7 @@ public class   ClaimEncounterCopyService {
         copy.setBloodPressureDiastolic(request.bloodPressureDiastolic());
         copy.setHeight(request.height());
         copy.setWeight(request.weight());
+        copy.setInvestigationNotPerformedReason(request.investigationNotPerformedReason());
 
         return mapToResponse(claimEncounterCopyRepository.save(copy));
     }

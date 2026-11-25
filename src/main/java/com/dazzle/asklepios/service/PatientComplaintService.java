@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.attachments.AttachmentProperties;
+import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
 import com.dazzle.asklepios.client.setup.FacilityClient;
 import com.dazzle.asklepios.client.setup.UserClient;
 import com.dazzle.asklepios.client.setup.UserRoleClient;
@@ -18,6 +19,7 @@ import com.dazzle.asklepios.domain.enumeration.PatientComplaintActionStatus;
 import com.dazzle.asklepios.domain.enumeration.PatientComplaintFeedbackType;
 import com.dazzle.asklepios.domain.enumeration.PatientComplaintPreferredContactMethod;
 import com.dazzle.asklepios.domain.enumeration.PatientComplaintStatus;
+import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.PatientComplaintRepository;
 import com.dazzle.asklepios.repository.PatientComplaintSpecs;
 import com.dazzle.asklepios.repository.PatientDocumentRepository;
@@ -33,6 +35,7 @@ import com.dazzle.asklepios.service.dto.patientComplaint.PatientComplaintReopenD
 import com.dazzle.asklepios.service.dto.patientComplaint.PatientComplaintResolveDTO;
 import com.dazzle.asklepios.service.dto.patientComplaint.PatientComplaintSubmitDTO;
 import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.vm.PatientComplaintActionVM;
@@ -47,7 +50,10 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
@@ -69,6 +75,7 @@ public class PatientComplaintService {
 
     private static final String ENTITY_NAME = "patientComplaint";
     private static final String ATTACHMENT_ENTITY = "patientComplaintAttachment";
+    private static final String COMPLAINT_ENTITY_TYPE = "PATIENT_COMPLAINT";
     /**
      * Business calendar zone used across appointment/job scheduling in this service
      * ({@code Asia/Hebron} / {@code Asia/Gaza}). Visit-date "not in the future" checks
@@ -88,6 +95,7 @@ public class PatientComplaintService {
     private final UserRoleClient userRoleClient;
     private final AttachmentProperties attachmentProperties;
     private final AttachmentStorageService attachmentStorageService;
+    private final NotificationHelper notificationHelper;
 
     public PatientComplaintSubmitResponseVM submit(PatientComplaintSubmitDTO dto, List<MultipartFile> files) {
         log.debug("Public submit patient complaint for facilityId={}", dto.getFacilityId());
@@ -191,11 +199,88 @@ public class PatientComplaintService {
         PatientComplaint saved = patientComplaintRepository.save(complaint);
         storeAttachments(saved, files == null ? List.of() : files, now);
         PatientComplaint persisted = patientComplaintRepository.save(saved);
+        notifyComplaintLogged(persisted);
 
         PatientComplaintSubmitResponseVM response = new PatientComplaintSubmitResponseVM();
         response.setReference(persisted.getComplaintReference());
         response.setReceivedDate(persisted.getReceivedDate());
         return response;
+    }
+
+    /**
+     * Notifies the standard recipient set that a complaint was logged.
+     */
+    private void notifyComplaintLogged(PatientComplaint complaint) {
+        try {
+            if (complaint == null || complaint.getId() == null) {
+                return;
+            }
+
+            boolean staffCaller = isStaffCaller();
+            String login = staffCaller ? SecurityUtils.getCurrentUserLogin().orElse(null) : null;
+            Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(
+                complaint.getDepartmentId(),
+                login,
+                staffCaller ? complaint.getCreatedBy() : null,
+                complaint.getPatient(),
+                null,
+                !staffCaller
+
+            );
+
+            notificationHelper.sendNotification(
+                complaint.getFacilityId(),
+                NotificationCode.PATIENT_COMPLAINT_LOGGED,
+                recipientsByRule,
+                complaintNotificationData(complaint),
+                COMPLAINT_ENTITY_TYPE,
+                complaint.getId()
+            );
+        } catch (Exception e) {
+            log.warn(
+                "[NOTIFICATION] Failed to send patient complaint logged notification. complaintId={}, error={}",
+                complaint != null ? complaint.getId() : null,
+                e.getMessage()
+            );
+        }
+    }
+
+    /** Public and mobile complaint submit do not carry a staff token. */
+    private boolean isStaffCaller() {
+        if (SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.PATIENT)) {
+            return false;
+        }
+        return SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.USER)
+            || SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.ADMIN);
+    }
+
+
+    private Map<String, Object> complaintNotificationData(PatientComplaint complaint) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        boolean anonymous = complaint.isAnonymous();
+        data.put("complaint_id", complaint.getId());
+        data.put("complaint_reference", Objects.toString(complaint.getComplaintReference(), ""));
+        data.put("facility_id", complaint.getFacilityId());
+        data.put("facility_name", Objects.toString(complaint.getFacilityName(), ""));
+        data.put("department_id", complaint.getDepartmentId() != null ? complaint.getDepartmentId() : "");
+        data.put("department_name", Objects.toString(complaint.getDepartmentName(), ""));
+        data.put("feedback_type", complaint.getFeedbackType() != null ? complaint.getFeedbackType().name() : "");
+        data.put("complaint_type", complaint.getComplaintType() != null ? complaint.getComplaintType().name() : "");
+        data.put("subject", Objects.toString(complaint.getSubject(), ""));
+        data.put("description", Objects.toString(complaint.getDescription(), ""));
+        data.put("received_date", complaint.getReceivedDate() != null ? complaint.getReceivedDate().toString() : "");
+        data.put("status", complaint.getStatus() != null ? complaint.getStatus().name() : "");
+        data.put("anonymous", anonymous);
+        data.put("patient_name", anonymous ? "Anonymous" : Objects.toString(complaint.getPatientName(), ""));
+        data.put("contact_phone", anonymous ? "" : Objects.toString(complaint.getContactPhone(), ""));
+        data.put("contact_email", anonymous ? "" : Objects.toString(complaint.getContactEmail(), ""));
+        data.put(
+            "preferred_contact_method",
+            !anonymous && complaint.getPreferredContactMethod() != null
+                ? complaint.getPreferredContactMethod().name()
+                : ""
+        );
+        return data;
     }
 
     private Patient requireAuthenticatedPatient() {
