@@ -70,7 +70,7 @@ public class NotificationHelper {
                 return;
             }
 
-            if (hasUserJwt()) {
+            if (hasUserJwt() && !SecurityUtils.isPatientPortalUser()) {
                 applyAuthenticatedLogo(data);
 
                 Long loggedInFacilityId = getLoggedInFacility();
