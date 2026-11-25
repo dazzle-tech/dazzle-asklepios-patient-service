@@ -209,10 +209,6 @@ public class PatientComplaintService {
 
     /**
      * Notifies the standard recipient set that a complaint was logged.
-     * Web and mobile submit both reach this after the complaint is saved.
-     * Those callers are public or a patient, so recipient lookup uses the internal
-     * organization and department endpoints. A staff token is not available, and the
-     * authenticated organization call returns 401. A failure here does not reject the complaint.
      */
     private void notifyComplaintLogged(PatientComplaint complaint) {
         try {
@@ -229,6 +225,7 @@ public class PatientComplaintService {
                 complaint.getPatient(),
                 null,
                 !staffCaller
+
             );
 
             notificationHelper.sendNotification(
@@ -256,6 +253,7 @@ public class PatientComplaintService {
         return SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.USER)
             || SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.ADMIN);
     }
+
 
     private Map<String, Object> complaintNotificationData(PatientComplaint complaint) {
         Map<String, Object> data = new LinkedHashMap<>();
