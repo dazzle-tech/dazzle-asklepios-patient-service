@@ -7,6 +7,8 @@ import feign.FeignException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class BedHelper {
@@ -35,6 +37,7 @@ public class BedHelper {
         try {
             bedClient.markAsOccupied(bedId);
             LOG.info("[MARK_OCCUPIED] success bedId={}", bedId);
+            releaseIfTransactionRollsBack(bedId);
         } catch (FeignException.NotFound ex) {
             LOG.warn("[MARK_OCCUPIED] bed not found bedId={}", bedId);
             throw new NotFoundAlertException(
@@ -49,6 +52,32 @@ public class BedHelper {
                     "bed",
                     "bed.notAvailable"
             );
+        }
+    }
+
+    // If the assignment rolls back, return the bed to READY so it is not left OCCUPIED with no patient
+    private void releaseIfTransactionRollsBack(Long bedId) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status == STATUS_ROLLED_BACK) {
+                    releaseOccupiedQuietly(bedId);
+                }
+            }
+        });
+    }
+
+    // Best effort: never throws over the original error
+    private void releaseOccupiedQuietly(Long bedId) {
+        try {
+            bedClient.releaseOccupied(bedId);
+            LOG.warn("[RELEASE_OCCUPIED] assignment rolled back, bed returned to READY bedId={}", bedId);
+        } catch (RuntimeException ex) {
+            LOG.error("[RELEASE_OCCUPIED] could not return bed to READY after rollback bedId={}", bedId, ex);
         }
     }
 
