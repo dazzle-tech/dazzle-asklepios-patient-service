@@ -66,8 +66,6 @@ class PayorHelperTest {
                 nphiesId,
                 null,
                 false,
-                null,
-                null,
                 true
         );
     }
