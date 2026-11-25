@@ -113,7 +113,7 @@ public class PatientOtpAuthenticationService {
         invalidatePreviousOtp(patient.getId());
 
         String otp = generateOtp();
-LOG.info(
+        LOG.info(
                 "Generated OTP for patientId={}: {}",
                 patient.getId(),
                 otp
