@@ -1533,6 +1533,8 @@ public class BillingResponsibilityService {
                     && lockedItem.getPatientInsuranceId() != null
                     && !Boolean.TRUE.equals(lockedItem.getIsExempted())
                     && !lockedItem.isUncoveredCashItem()
+                    // A rejected line is paid as cash; it never uses the visit max limit.
+                    && !PreAuthorizationResolutionService.isDeclinedByPayer(lockedItem)
                     && (chargeLine.getStatus() != BillingChargeLineStatus.OPEN
                     || money(chargeLine.getAllocatedAmount()).signum() > 0
                     || money(chargeLine.getReservedAmount()).signum() > 0)) {

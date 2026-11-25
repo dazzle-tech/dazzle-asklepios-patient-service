@@ -10,6 +10,7 @@ import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.InsuranceCoverageType;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.PatientInsuranceCoverageRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
 import com.dazzle.asklepios.service.helper.PayorHelper;
@@ -28,6 +29,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -223,6 +225,59 @@ public class InsurancePatientShareCalculator {
         }
 
         return capped;
+    }
+
+    /**
+     * Whether the patient share of the line, before the visit max limit cuts it,
+     * is more than what is left of the limit.
+     *
+     * @param visitMaxLimitTracker the running pool, or {@code null} to read what
+     *        the visit already used
+     * @param patientPayableRatio same as in {@link #calculateSplit}
+     */
+    public boolean crossesVisitMaxLimit(
+            PatientInsurance insurance,
+            PatientServiceAndProduct item,
+            BigDecimal netAmount,
+            VisitMaxLimitTracker visitMaxLimitTracker,
+            BigDecimal patientPayableRatio
+    ) {
+        BigDecimal normalizedNet = money(netAmount);
+        if (item == null || normalizedNet.signum() <= 0 || !hasVisitMaxLimit(insurance)) {
+            return false;
+        }
+
+        VisitMaxLimitTracker tracker =
+                visitMaxLimitTracker != null
+                        ? visitMaxLimitTracker
+                        : trackerForEncounter(insurance, item);
+
+        return tracker.isCrossedBy(
+                resolveCoverageSplit(
+                        insurance,
+                        item,
+                        resolveServiceCategory(item),
+                        item.getServiceSource(),
+                        normalizedNet
+                ),
+                patientPayableRatio
+        );
+    }
+
+    public boolean hasVisitMaxLimit(PatientInsurance insurance) {
+        return resolveVisitMaxLimit(insurance) != null;
+    }
+
+    /** The visit pool with what the billed lines of the encounter already used, the excluded ones aside. */
+    public VisitMaxLimitTracker encounterVisitMaxLimitTracker(
+            PatientInsurance insurance,
+            Long encounterId,
+            Set<Long> excludedItemIds
+    ) {
+        return createVisitMaxLimitTracker(
+                insurance,
+                consumedVisitPatientShare(insurance, encounterId, excludedItemIds)
+        );
     }
 
     public VisitMaxLimitTracker createVisitMaxLimitTracker(
@@ -555,12 +610,13 @@ public class InsurancePatientShareCalculator {
         }
 
         Long encounterId = item == null ? null : item.getEncounterId();
-        Long excludeItemId = item == null ? null : item.getId();
         BigDecimal consumed =
                 consumedVisitPatientShare(
                         insurance,
                         encounterId,
-                        excludeItemId
+                        item == null || item.getId() == null
+                                ? Set.of()
+                                : Set.of(item.getId())
                 );
 
         return VisitMaxLimitTracker.withConsumed(visitMax, consumed);
@@ -616,7 +672,7 @@ public class InsurancePatientShareCalculator {
     private BigDecimal consumedVisitPatientShare(
             PatientInsurance insurance,
             Long encounterId,
-            Long excludeItemId
+            Set<Long> excludedItemIds
     ) {
         if (insurance == null
                 || insurance.getId() == null
@@ -629,7 +685,7 @@ public class InsurancePatientShareCalculator {
                 patientServiceAndProductRepository.findByEncounterId(encounterId)) {
             if (existing == null
                     || existing.getId() == null
-                    || existing.getId().equals(excludeItemId)) {
+                    || excludedItemIds.contains(existing.getId())) {
                 continue;
             }
 
@@ -640,6 +696,11 @@ public class InsurancePatientShareCalculator {
             if (Boolean.TRUE.equals(existing.getIsExempted())
                     || existing.isUncoveredCashItem()
                     || existing.getPaymentStatus() == PaymentStatus.CANCELLED) {
+                continue;
+            }
+
+            // A rejected line is paid as cash; it never uses the insurance limit.
+            if (PreAuthorizationResolutionService.isDeclinedByPayer(existing)) {
                 continue;
             }
 

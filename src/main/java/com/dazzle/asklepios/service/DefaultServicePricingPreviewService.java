@@ -385,6 +385,13 @@ public class DefaultServicePricingPreviewService {
         BigDecimal contractDiscount = BigDecimal.ZERO;
         String contractCashReason = null;
 
+        BigDecimal patientPayableRatio =
+                billingPricingService.patientPayableRatio(
+                        pricing.taxAmount(),
+                        pricing.netAmount(),
+                        pricingInput.taxApplyOnPatientCopayment()
+                );
+
         boolean preAuthorizationRequired =
                 coveredByInsurance
                         && !Boolean.TRUE.equals(previewItem.getIsExempted())
@@ -395,7 +402,9 @@ public class DefaultServicePricingPreviewService {
                         ) || eligibilityContractApprovalService.requiresPreAuthorization(
                                 insurance,
                                 previewItem,
-                                pricing.netAmount()
+                                pricing.netAmount(),
+                                visitMaxLimitTracker,
+                                patientPayableRatio
                         ));
 
         if (preAuthorizationRequired) {
@@ -414,11 +423,7 @@ public class DefaultServicePricingPreviewService {
                             previewItem,
                             pricing.netAmount(),
                             visitMaxLimitTracker,
-                            billingPricingService.patientPayableRatio(
-                                    pricing.taxAmount(),
-                                    pricing.netAmount(),
-                                    pricingInput.taxApplyOnPatientCopayment()
-                            )
+                            patientPayableRatio
                     );
             patientShareAmount = split.patientShare();
             insuranceShareAmount = split.insuranceShare();

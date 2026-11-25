@@ -13,6 +13,9 @@ public final class VisitMaxLimitTracker {
 
     private static final int MONEY_SCALE = 4;
 
+    /** Limits are compared in halalas, so rounding never counts as crossing one. */
+    private static final int COMPARE_SCALE = 2;
+
     private final BigDecimal visitMaxLimit;
     private BigDecimal remaining;
 
@@ -56,6 +59,22 @@ public final class VisitMaxLimitTracker {
         return remaining == null
                 ? null
                 : remaining.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Whether the patient pays more on this line than the pool still has. A line
+     * that uses up the pool exactly does not cross it. Nothing is drawn.
+     */
+    public boolean isCrossedBy(InsuranceSplit split, BigDecimal payableRatio) {
+        if (split == null || !hasLimit()) {
+            return false;
+        }
+
+        BigDecimal payable =
+                money(split.patientShare()).multiply(normalizeRatio(payableRatio));
+
+        return payable.setScale(COMPARE_SCALE, RoundingMode.HALF_UP)
+                .compareTo(remaining.setScale(COMPARE_SCALE, RoundingMode.HALF_UP)) > 0;
     }
 
     public InsuranceSplit consume(InsuranceSplit split, BigDecimal netAmount) {

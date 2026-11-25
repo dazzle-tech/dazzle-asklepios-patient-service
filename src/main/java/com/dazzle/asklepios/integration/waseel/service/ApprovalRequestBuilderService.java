@@ -2,6 +2,7 @@ package com.dazzle.asklepios.integration.waseel.service;
 
 import com.dazzle.asklepios.domain.PatientDiagnosis;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientPrescription;
 import com.dazzle.asklepios.domain.PatientPrescriptionMedication;
 import com.dazzle.asklepios.domain.PatientRelation;
@@ -34,7 +35,10 @@ import com.dazzle.asklepios.repository.PatientPrescriptionMedicationRepository;
 import com.dazzle.asklepios.repository.PatientPrescriptionRepository;
 import com.dazzle.asklepios.repository.PatientRelationRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.service.InsurancePatientShareCalculator;
 import com.dazzle.asklepios.service.PatientItemPricingApplicationService;
+import com.dazzle.asklepios.service.VisitMaxLimitTracker;
+import com.dazzle.asklepios.service.dto.InsuranceSplit;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -51,6 +55,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -78,6 +83,7 @@ public class ApprovalRequestBuilderService {
 
     private final WaseelApiProperties waseelApiProperties;
     private final PatientItemPricingApplicationService patientItemPricingApplicationService;
+    private final InsurancePatientShareCalculator insurancePatientShareCalculator;
 
     @Transactional(readOnly = true)
     public WaseelApprovalRequest buildRequest(Long eligibilityRequestId, Long encounterId) {
@@ -97,7 +103,8 @@ public class ApprovalRequestBuilderService {
             Long encounterId,
             List<PatientServiceAndProduct> items
     ) {
-        encounterInsuranceEligibilityService.getValidatedInsuranceForPreAuthorization(encounterId);
+        PatientInsurance insurance =
+                encounterInsuranceEligibilityService.getValidatedInsuranceForPreAuthorization(encounterId);
 
         WaseelApprovalEligibilitySnapshot snapshot =
                 snapshotService.buildSnapshot(eligibilityRequestId);
@@ -176,7 +183,7 @@ public class ApprovalRequestBuilderService {
                 requestDiagnoses
         );
 
-        var waseelItems = linkItemSupportingInfo(
+        var linkedItems = linkItemSupportingInfo(
                 pendingItems,
                 approvalItemMapper.toWaseelItems(
                         pendingItems,
@@ -190,6 +197,15 @@ public class ApprovalRequestBuilderService {
                 labTestSources,
                 diagnosisSequenceChanges(visitDiagnoses, requestDiagnoses),
                 taxPercentByItem
+        );
+
+        List<WaseelApprovalItem> waseelItems = capPatientShares(
+                linkedItems,
+                insurancePatientShareCalculator.encounterVisitMaxLimitTracker(
+                        insurance,
+                        encounterId,
+                        pendingItems.stream().map(PatientServiceAndProduct::getId).collect(Collectors.toSet())
+                )
         );
 
         BigDecimal totalNet = calculateTotalNet(waseelItems);
@@ -312,11 +328,62 @@ public class ApprovalRequestBuilderService {
         return changes;
     }
 
-    private WaseelApprovalItem copyWithLinks(
+    /**
+     * The patient share of the request never goes above what is left of the visit max limit, as the line is
+     * billed once approved; the payer share carries the rest. Without a max limit nothing changes.
+     */
+    static List<WaseelApprovalItem> capPatientShares(
+            List<WaseelApprovalItem> items,
+            VisitMaxLimitTracker visitMaxLimitTracker
+    ) {
+        if (!visitMaxLimitTracker.hasLimit()) {
+            return items;
+        }
+
+        List<WaseelApprovalItem> capped = new ArrayList<>();
+        for (WaseelApprovalItem item : items) {
+            InsuranceSplit split = visitMaxLimitTracker.consume(
+                    new InsuranceSplit(item.patientShare(), item.payerShare()),
+                    item.net()
+            );
+            BigDecimal patientShare = split.patientShare().setScale(2, RoundingMode.HALF_UP);
+            capped.add(patientShare.compareTo(item.patientShare()) == 0
+                    ? item
+                    : copy(
+                            item,
+                            item.supportingInfoSequence(),
+                            item.diagnosisSequence(),
+                            item.taxPercent(),
+                            patientShare,
+                            item.net().subtract(patientShare)
+                    ));
+        }
+        return capped;
+    }
+
+    private static WaseelApprovalItem copyWithLinks(
             WaseelApprovalItem item,
             List<Integer> supportingInfoSequences,
             List<Integer> diagnosisSequences,
             BigDecimal taxPercent
+    ) {
+        return copy(
+                item,
+                supportingInfoSequences,
+                diagnosisSequences,
+                taxPercent,
+                item.patientShare(),
+                item.payerShare()
+        );
+    }
+
+    private static WaseelApprovalItem copy(
+            WaseelApprovalItem item,
+            List<Integer> supportingInfoSequences,
+            List<Integer> diagnosisSequences,
+            BigDecimal taxPercent,
+            BigDecimal patientShare,
+            BigDecimal payerShare
     ) {
         return new WaseelApprovalItem(
                 item.sequence(),
@@ -338,8 +405,8 @@ public class ApprovalRequestBuilderService {
                 item.patientSharePercent(),
                 item.net(),
                 item.tax(),
-                item.patientShare(),
-                item.payerShare(),
+                patientShare,
+                payerShare,
                 item.startDate(),
                 item.endDate(),
                 supportingInfoSequences,
