@@ -209,7 +209,6 @@ public class PatientComplaintService {
 
     /**
      * Notifies the standard recipient set that a complaint was logged.
-     * A failure here does not reject the complaint.
      */
     private void notifyComplaintLogged(PatientComplaint complaint) {
         try {
@@ -217,14 +216,16 @@ public class PatientComplaintService {
                 return;
             }
 
-            String login = SecurityUtils.getCurrentUserLogin().orElse(null);
+            boolean staffCaller = isStaffCaller();
+            String login = staffCaller ? SecurityUtils.getCurrentUserLogin().orElse(null) : null;
             Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = notificationHelper.resolveRecipients(
                 complaint.getDepartmentId(),
                 login,
-                complaint.getCreatedBy(),
+                staffCaller ? complaint.getCreatedBy() : null,
                 complaint.getPatient(),
                 null,
-                false
+                !staffCaller
+
             );
 
             notificationHelper.sendNotification(
@@ -243,6 +244,16 @@ public class PatientComplaintService {
             );
         }
     }
+
+    /** Public and mobile complaint submit do not carry a staff token. */
+    private boolean isStaffCaller() {
+        if (SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.PATIENT)) {
+            return false;
+        }
+        return SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.USER)
+            || SecurityUtils.hasCurrentUserThisAuthority(AuthoritiesConstants.ADMIN);
+    }
+
 
     private Map<String, Object> complaintNotificationData(PatientComplaint complaint) {
         Map<String, Object> data = new LinkedHashMap<>();
