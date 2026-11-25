@@ -1281,8 +1281,8 @@ public class NotificationHelper {
 
     private void applyPublicLogo(Map<String, Object> data) {
         try {
-            Map<SystemConfigKey, String> configs = systemConfigurationClient.getPublicConfigurations();
-            putLogo(data, configs == null ? null : configs.get(SystemConfigKey.SYSTEM_LOGO));
+            Map<String, String> configs = systemConfigurationClient.getPublicConfigurations();
+            putLogo(data, configs == null ? null : configs.get(SystemConfigKey.SYSTEM_LOGO.name()));
         } catch (Exception e) {
             log.warn(
                     "[NOTIFICATION] Could not resolve SYSTEM_LOGO. Continuing without logo. error={}",
