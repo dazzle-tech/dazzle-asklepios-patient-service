@@ -190,8 +190,6 @@ class InsuranceBenefitRuleServiceTest {
                 null,
                 null,
                 waseelEnabled,
-                null,
-                null,
                 true
         );
     }
