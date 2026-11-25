@@ -54,6 +54,13 @@ public class DefaultServicePricingPreviewService {
     private static final String ENTITY_NAME =
             "defaultServiceBilling";
 
+    private com.dazzle.asklepios.repository.PatientPackageRepository patientPackageRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setPatientPackageRepository(com.dazzle.asklepios.repository.PatientPackageRepository patientPackageRepository) {
+        this.patientPackageRepository = patientPackageRepository;
+    }
+
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientInsuranceRepository patientInsuranceRepository;
@@ -127,7 +134,10 @@ public class DefaultServicePricingPreviewService {
                         insurance
                 );
 
-        if (followUpReviewDefaultServicePolicy.shouldSkipDefaultServices(encounter)) {
+        boolean packageOverridesDefaultService = patientPackageRepository != null
+                && patientPackageRepository.existsByEncounterIdAndStatusNotAndOverrideDefaultServiceTrue(
+                        encounterId, com.dazzle.asklepios.domain.enumeration.PatientPackageStatus.CANCELLED);
+        if (packageOverridesDefaultService || followUpReviewDefaultServicePolicy.shouldSkipDefaultServices(encounter)) {
             LOG.info(
                     "[PREVIEW_PRICING] Skipping default-service preview for "
                             + "follow-up review within {} days. encounterId={} previousEncounterId={}",

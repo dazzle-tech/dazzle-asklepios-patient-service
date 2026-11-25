@@ -17,6 +17,10 @@ public interface PatientPackageRepository extends JpaRepository<PatientPackage, 
 
     List<PatientPackage> findByEncounterIdOrderByIdAsc(Long encounterId);
 
+    /** The visit has a package that replaces its default service. */
+    boolean existsByEncounterIdAndStatusNotAndOverrideDefaultServiceTrue(
+            Long encounterId, com.dazzle.asklepios.domain.enumeration.PatientPackageStatus status);
+
     boolean existsByEncounterIdAndPackageSetupIdAndStatusNot(
             Long encounterId, Long packageSetupId, PatientPackageStatus status);
 }

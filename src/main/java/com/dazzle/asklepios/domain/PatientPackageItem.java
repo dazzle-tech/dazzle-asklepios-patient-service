@@ -78,8 +78,9 @@ public class PatientPackageItem extends AbstractAuditingEntity<Long> implements 
     @Column(name = "max_repeat")
     private Integer maxRepeat;
 
-    @Column(name = "discount_percent", precision = 5, scale = 2)
-    private java.math.BigDecimal discountPercent;
+    /** Copied from the setup line: the discount setup record it is linked to (applied when billing is linked). */
+    @Column(name = "discount_id")
+    private Long discountId;
 
     public int getQuantityRemaining() {
         int total = quantityTotal == null ? 0 : quantityTotal;

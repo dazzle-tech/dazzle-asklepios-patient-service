@@ -6,6 +6,9 @@ import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientPackage;
 import com.dazzle.asklepios.domain.PatientPackageItem;
+import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import org.springframework.data.domain.PageImpl;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.repository.PackageSetupItemViewRepository;
 import com.dazzle.asklepios.repository.PackageSetupViewRepository;
@@ -37,6 +40,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /** Giving a package to a patient in a visit: active, validity, departments and inactive items. */
@@ -57,6 +62,9 @@ class PatientPackageAssignScenarioTest {
     @Mock private PatientEncounterRepository patientEncounterRepository;
     @Mock private EntityManager entityManager;
     @Mock private Query departmentsQuery;
+    @Mock private PatientPackageAutoApplyService autoApplyService;
+    @Mock private PatientServiceAndProductRepository patientServiceAndProductRepository;
+    @Mock private PatientServiceAndProductService patientServiceAndProductService;
 
     private PatientPackageService service;
     private PackageSetupView setup;
@@ -109,7 +117,7 @@ class PatientPackageAssignScenarioTest {
         assertThat(result.items()).hasSize(2);
         assertThat(result.items().get(0).isCategory()).isTrue();
         assertThat(result.items().get(0).maxRepeat()).isEqualTo(1);
-        assertThat(result.items().get(0).discountPercent()).isEqualByComparingTo("50");
+        assertThat(result.items().get(0).discountId()).isEqualTo(70L);
     }
 
     @Test
@@ -189,6 +197,60 @@ class PatientPackageAssignScenarioTest {
                 .isInstanceOf(BadRequestAlertException.class).hasMessageContaining("does not belong");
     }
 
+    // ---------- default service ----------
+
+    private PatientServiceAndProduct defaultServiceLine(long id, com.dazzle.asklepios.domain.enumeration.ServiceSource source,
+                                                        com.dazzle.asklepios.domain.enumeration.PaymentStatus status) {
+        PatientServiceAndProduct l = new PatientServiceAndProduct();
+        l.setId(id);
+        l.setEncounterId(ENCOUNTER);
+        l.setServiceSource(source);
+        l.setPaymentStatus(status);
+        return l;
+    }
+
+    private void visitLines(PatientServiceAndProduct... lines) {
+        service.setPackageDefaultServiceLink(autoApplyService, patientServiceAndProductRepository);
+        service.setPatientServiceAndProductService(patientServiceAndProductService);
+        when(patientServiceAndProductRepository.findAllByEncounterId(eq(ENCOUNTER), any()))
+                .thenReturn(new PageImpl<>(List.of(lines)));
+    }
+
+    @Test
+    void packageThatOverridesTheDefaultServiceCancelsIt() {
+        ReflectionTestUtils.setField(setup, "overrideDefaultService", true);
+        visitLines(
+                defaultServiceLine(300L, com.dazzle.asklepios.domain.enumeration.ServiceSource.ENCOUNTER_DEFAULT_SERVICE, null),
+                defaultServiceLine(301L, com.dazzle.asklepios.domain.enumeration.ServiceSource.ENCOUNTER_DEFAULT_SERVICE,
+                        com.dazzle.asklepios.domain.enumeration.PaymentStatus.CANCELLED),
+                defaultServiceLine(302L, com.dazzle.asklepios.domain.enumeration.ServiceSource.SERVICE_AND_PRODUCT, null));
+
+        assign();
+
+        verify(patientServiceAndProductService).cancel(eq(300L), anyString());
+        verify(patientServiceAndProductService, never()).cancel(eq(301L), anyString());
+        verify(patientServiceAndProductService, never()).cancel(eq(302L), anyString());
+        verify(autoApplyService, never()).onPackageGiven(any(), any());
+    }
+
+    @Test
+    void theOverrideIsCopiedToThePatientPackage() {
+        // the payment step reads it from the patient's package to leave the default service out
+        ReflectionTestUtils.setField(setup, "overrideDefaultService", true);
+
+        assertThat(assign().overrideDefaultService()).isTrue();
+    }
+
+    @Test
+    void packageWithoutTheOverrideTakesTheDefaultServiceFromItsLines() {
+        visitLines(defaultServiceLine(300L, com.dazzle.asklepios.domain.enumeration.ServiceSource.ENCOUNTER_DEFAULT_SERVICE, null));
+
+        assign();
+
+        verify(patientServiceAndProductService, never()).cancel(anyLong(), anyString());
+        verify(autoApplyService).onPackageGiven(eq(ENCOUNTER), any());
+    }
+
     @Test
     void packageWithoutAPriceIsGiven() {
         // a package without a fixed price (its items carry discounts) is given like any other
@@ -221,7 +283,7 @@ class PatientPackageAssignScenarioTest {
         ReflectionTestUtils.setField(v, "isActive", active);
         ReflectionTestUtils.setField(v, "isCategory", category);
         ReflectionTestUtils.setField(v, "maxRepeat", repeat);
-        ReflectionTestUtils.setField(v, "discountPercent", category ? new BigDecimal("50") : null);
+        ReflectionTestUtils.setField(v, "discountId", category ? 70L : null);
         return v;
     }
 }

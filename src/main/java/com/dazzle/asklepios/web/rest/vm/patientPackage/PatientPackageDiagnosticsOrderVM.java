@@ -13,6 +13,7 @@ import java.util.List;
  * Order several package tests (laboratory / radiology / pathology) in one diagnostic order.
  * Urgency, clinical notes and diagnosis are shared; the reason is per test.
  * testId is needed for category lines (the test picked); for an item line it is the item's own test.
+ * receivedDepartmentId is the lab / radiology department that receives the test (required, as on the order screen).
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record PatientPackageDiagnosticsOrderVM(
@@ -28,6 +29,7 @@ public record PatientPackageDiagnosticsOrderVM(
     public record Line(
             @NotNull Long itemId,
             Long testId,
-            @Size(max = 1000) String reason
+            @Size(max = 1000) String reason,
+            Long receivedDepartmentId
     ) implements Serializable {}
 }

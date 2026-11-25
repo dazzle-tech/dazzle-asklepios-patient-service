@@ -134,12 +134,14 @@ public class PatientPackageOrderService {
             case LABORATORY, RADIOLOGY, PATHOLOGY -> {
                 orderSource = type.name();
                 orderId = PatientPackageAutoApplyService.withoutAutoApply(() -> orderDiagnosticTest(pkg, item, encounter, vm));
-                autoApplyService.consumeLine(item.getId(), encounter.getId(), item.getSourceId(), orderSource, orderId);
+                autoApplyService.consumeLine(item.getId(), encounter.getId(), item.getSourceId(), orderSource, orderId)
+                        .ifPresent(this::markFromPanel);
             }
             case PROCEDURE -> {
                 orderSource = PatientPackageUsageReversalService.SOURCE_PROCEDURE;
                 orderId = PatientPackageAutoApplyService.withoutAutoApply(() -> orderProcedure(pkg, item, encounter, vm));
-                autoApplyService.consumeLine(item.getId(), encounter.getId(), item.getSourceId(), orderSource, orderId);
+                autoApplyService.consumeLine(item.getId(), encounter.getId(), item.getSourceId(), orderSource, orderId)
+                        .ifPresent(this::markFromPanel);
             }
             case SERVICE -> {
                 // The usage row is written first: the service line points back to it through source_id.
@@ -150,6 +152,7 @@ public class PatientPackageOrderService {
                         .sourceId(item.getSourceId())
                         .quantity(quantity)
                         .status(PatientPackageUsageStatus.USED)
+                        .fromPanel(true)
                         .build());
                 orderSource = PatientPackageUsageReversalService.SOURCE_SERVICE;
                 orderId = orderService(pkg, item, encounter, usage, quantity, vm);
@@ -230,7 +233,10 @@ public class PatientPackageOrderService {
             PatientPackageItem item = itemsById.get(vm.items().get(i).itemId());
             Long testOrderId = createdTestIds.get(i);
             autoApplyService.consumeLine(item.getId(), encounter.getId(), lineTestIds.get(i), item.getItemType().name(), testOrderId)
-                    .ifPresent(u -> countedTestIds.add(testOrderId));
+                    .ifPresent(u -> {
+                        markFromPanel(u);
+                        countedTestIds.add(testOrderId);
+                    });
         }
 
         List<ResponseVM> packages = new ArrayList<>();
@@ -263,13 +269,14 @@ public class PatientPackageOrderService {
             DiagnosticOrderTest test = diagnosticOrderTestService.create(new DiagnosticOrderTestCreateDTO(
                     order.getId(),
                     lineTestIds.get(i),
-                    null,
+                    line.receivedDepartmentId(),
                     line.reason(),
                     vm.notes(),
                     TestType.valueOf(item.getItemType().name()),
                     vm.icdDiagnosisId(),
                     vm.acceptUncoveredAsCash()
             ));
+            requireReceivingDepartment(test);
             createdTestIds.add(test.getId());
         }
 
@@ -300,6 +307,25 @@ public class PatientPackageOrderService {
         }
     }
 
+    /** The usage was made by an order from the package panel (shown in the history). */
+    private void markFromPanel(PatientPackageUsage usage) {
+        if (usage != null && usage.getId() != null) {
+            usage.setFromPanel(true);
+            usageRepository.save(usage);
+        }
+    }
+
+    /**
+     * A test needs the lab / radiology department that receives it, or it reaches no worklist. When none is
+     * chosen the facility's default department is used (on creating the test); with no default it is refused.
+     */
+    private static void requireReceivingDepartment(DiagnosticOrderTest test) {
+        if (test.getReceivedDepartmentId() == null) {
+            throw new BadRequestAlertException(
+                    "Choose the department that receives each test", ENTITY, "test.department.required");
+        }
+    }
+
     /** New diagnostic order with the one test, submitted right away (the same as Submit on the order screen). */
     private Long orderDiagnosticTest(PatientPackage pkg, PatientPackageItem item, PatientEncounter encounter, PatientPackageOrderVM vm) {
         DiagnosticOrder order = diagnosticOrderService.create(new DiagnosticOrderCreateDTO(
@@ -314,13 +340,14 @@ public class PatientPackageOrderService {
         DiagnosticOrderTest test = diagnosticOrderTestService.create(new DiagnosticOrderTestCreateDTO(
                 order.getId(),
                 item.getSourceId(),
-                null,
+                vm.toDepartmentId(),
                 vm.reason(),
                 vm.notes(),
                 TestType.valueOf(item.getItemType().name()),
                 vm.icdDiagnosisId(),
                 vm.acceptUncoveredAsCash()
         ));
+        requireReceivingDepartment(test);
         String username = SecurityUtils.getCurrentUserLogin().orElse("system");
         diagnosticOrderService.submit(order.getId(), username);
         return test.getId();

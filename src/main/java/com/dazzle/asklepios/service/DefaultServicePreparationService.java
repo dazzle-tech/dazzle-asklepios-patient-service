@@ -59,6 +59,12 @@ import java.util.Set;
 public class DefaultServicePreparationService {
 
     private PatientPackageAutoApplyService patientPackageAutoApplyService;
+    private com.dazzle.asklepios.repository.PatientPackageRepository patientPackageRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setPatientPackageRepository(com.dazzle.asklepios.repository.PatientPackageRepository patientPackageRepository) {
+        this.patientPackageRepository = patientPackageRepository;
+    }
 
     /** Setter injection keeps the generated constructor (and tests that build this service) unchanged. */
     @org.springframework.beans.factory.annotation.Autowired
@@ -176,8 +182,14 @@ public class DefaultServicePreparationService {
                 insurance == null ? null : insurance.getId()
         );
 
-        boolean skipDefaultServices =
-                followUpReviewDefaultServicePolicy.shouldSkipDefaultServices(
+        boolean packageOverridesDefaultService = patientPackageRepository != null
+                && patientPackageRepository.existsByEncounterIdAndStatusNotAndOverrideDefaultServiceTrue(
+                        encounterId, com.dazzle.asklepios.domain.enumeration.PatientPackageStatus.CANCELLED);
+        if (packageOverridesDefaultService) {
+            LOG.info("[PREPARE_DEFAULT_SERVICES] The visit's package replaces the default service. encounterId={}", encounterId);
+        }
+        boolean skipDefaultServices = packageOverridesDefaultService
+                || followUpReviewDefaultServicePolicy.shouldSkipDefaultServices(
                         encounter
                 );
 

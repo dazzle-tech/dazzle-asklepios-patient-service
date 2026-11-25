@@ -61,6 +61,13 @@ public class PatientPackageService {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
     }
 
+    private PatientServiceAndProductService patientServiceAndProductService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setPatientServiceAndProductService(PatientServiceAndProductService patientServiceAndProductService) {
+        this.patientServiceAndProductService = patientServiceAndProductService;
+    }
+
     public PatientPackageService(
             PatientPackageRepository patientPackageRepository,
             PatientPackageItemRepository patientPackageItemRepository,
@@ -141,6 +148,7 @@ public class PatientPackageService {
                 .packageCode(setup.getCode())
                 .packageName(setup.getName())
                 .packagePrice(setup.getPrice())
+                .overrideDefaultService(Boolean.TRUE.equals(setup.getOverrideDefaultService()))
                 .status(PatientPackageStatus.ACTIVE)
                 .build());
 
@@ -156,23 +164,43 @@ public class PatientPackageService {
                         .quantityUsed(0)
                         .isCategory(Boolean.TRUE.equals(s.getIsCategory()))
                         .maxRepeat(s.getMaxRepeat())
-                        .discountPercent(s.getDiscountPercent())
+                        .discountId(s.getDiscountId())
                         .build())
                 .toList());
 
-        if (patientPackageAutoApplyService != null && patientServiceAndProductRepository != null) {
-            // the visit's default service, made when the visit opened, is taken from the package if it covers it
-            patientPackageAutoApplyService.onPackageGiven(
-                    vm.encounterId(),
-                    patientServiceAndProductRepository
-                            .findAllByEncounterId(vm.encounterId(), org.springframework.data.domain.Pageable.unpaged())
-                            .getContent());
-            items = patientPackageItemRepository.findByPatientPackageIdOrderByIdAsc(saved.getId());
+        if (patientServiceAndProductRepository != null) {
+            List<com.dazzle.asklepios.domain.PatientServiceAndProduct> encounterLines = patientServiceAndProductRepository
+                    .findAllByEncounterId(vm.encounterId(), org.springframework.data.domain.Pageable.unpaged())
+                    .getContent();
+            if (Boolean.TRUE.equals(setup.getOverrideDefaultService())) {
+                cancelDefaultServices(encounterLines, setup.getCode());
+            } else if (patientPackageAutoApplyService != null) {
+                // the visit's default service, made when the visit opened, is taken from the package if it covers it
+                patientPackageAutoApplyService.onPackageGiven(vm.encounterId(), encounterLines);
+                items = patientPackageItemRepository.findByPatientPackageIdOrderByIdAsc(saved.getId());
+            }
         }
 
         LOG.info("Assigned package id={} ({}) to patient={} with {} items",
                 saved.getId(), saved.getPackageCode(), saved.getPatientId(), items.size());
         return ResponseVM.ofEntity(saved, items);
+    }
+
+    /**
+     * The package overrides the default service: lines already made for the visit are cancelled.
+     * Lines not made yet are never made (the payment step leaves them out, see overridesDefaultService).
+     */
+    private void cancelDefaultServices(List<com.dazzle.asklepios.domain.PatientServiceAndProduct> encounterLines, String packageCode) {
+        if (patientServiceAndProductService == null) {
+            return;
+        }
+        encounterLines.stream()
+                .filter(l -> l.getServiceSource() == com.dazzle.asklepios.domain.enumeration.ServiceSource.ENCOUNTER_DEFAULT_SERVICE)
+                .filter(l -> l.getPaymentStatus() != com.dazzle.asklepios.domain.enumeration.PaymentStatus.CANCELLED)
+                .forEach(l -> {
+                    LOG.info("Package {} overrides the default service: cancelling line id={}", packageCode, l.getId());
+                    patientServiceAndProductService.cancel(l.getId(), "Default service replaced by package " + packageCode);
+                });
     }
 
     /** The patient's packages, newest first. With activeOnly only those that still have items to order. */

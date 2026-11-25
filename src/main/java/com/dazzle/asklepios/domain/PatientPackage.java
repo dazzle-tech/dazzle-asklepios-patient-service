@@ -61,6 +61,11 @@ public class PatientPackage extends AbstractAuditingEntity<Long> implements Seri
     @Column(name = "package_price", precision = 19, scale = 4)
     private BigDecimal packagePrice;
 
+    /** Copied from the setup: the visit's default service is left out (and cancelled if already made). */
+    @Column(name = "override_default_service", nullable = false)
+    @Builder.Default
+    private Boolean overrideDefaultService = false;
+
     @NotNull
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)

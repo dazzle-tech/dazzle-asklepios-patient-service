@@ -44,4 +44,8 @@ public class PackageSetupView {
 
     @Column(name = "all_departments")
     private Boolean allDepartments;
+
+    /** true: the visit's default service is cancelled when the package is given. */
+    @Column(name = "override_default_service")
+    private Boolean overrideDefaultService;
 }

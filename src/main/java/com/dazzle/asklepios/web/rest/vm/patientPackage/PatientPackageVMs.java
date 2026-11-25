@@ -41,7 +41,7 @@ public final class PatientPackageVMs {
             Integer quantityRemaining,
             Boolean isCategory,
             Integer maxRepeat,
-            BigDecimal discountPercent
+            Long discountId
     ) implements Serializable {
 
         public static ItemVM ofEntity(PatientPackageItem e) {
@@ -57,7 +57,7 @@ public final class PatientPackageVMs {
                     e.getQuantityRemaining(),
                     e.getIsCategory(),
                     e.getMaxRepeat(),
-                    e.getDiscountPercent()
+                    e.getDiscountId()
             );
         }
     }
@@ -70,6 +70,7 @@ public final class PatientPackageVMs {
             String packageCode,
             String packageName,
             BigDecimal packagePrice,
+            Boolean overrideDefaultService,
             PatientPackageStatus status,
             String cancelReason,
             String createdBy,
@@ -91,6 +92,7 @@ public final class PatientPackageVMs {
                     p.getPackageCode(),
                     p.getPackageName(),
                     p.getPackagePrice(),
+                    p.getOverrideDefaultService(),
                     p.getStatus(),
                     p.getCancelReason(),
                     p.getCreatedBy(),

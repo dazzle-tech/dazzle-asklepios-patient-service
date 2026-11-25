@@ -50,6 +50,7 @@ public class PackageSetupItemView {
     @Column(name = "max_repeat")
     private Integer maxRepeat;
 
-    @Column(name = "discount_percent")
-    private java.math.BigDecimal discountPercent;
+    /** The discount setup record the line is linked to, if any. */
+    @Column(name = "discount_id")
+    private Long discountId;
 }

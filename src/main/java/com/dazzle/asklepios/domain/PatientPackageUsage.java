@@ -70,4 +70,9 @@ public class PatientPackageUsage extends AbstractAuditingEntity<Long> implements
     @Column(name = "status", nullable = false, length = 30)
     @Builder.Default
     private PatientPackageUsageStatus status = PatientPackageUsageStatus.USED;
+
+    /** Ordered from the package panel rather than from the item's own screen. */
+    @Column(name = "from_panel", nullable = false)
+    @Builder.Default
+    private Boolean fromPanel = false;
 }

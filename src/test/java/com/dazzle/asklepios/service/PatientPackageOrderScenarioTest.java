@@ -59,6 +59,7 @@ class PatientPackageOrderScenarioTest {
     private static final long ENCOUNTER = 100L;
     private static final long CBC = 4L;
     private static final long GLUCOSE = 22L;
+    private static final long LAB_DEPARTMENT = 5002L;
 
     @Mock private PatientPackageRepository packageRepository;
     @Mock private PatientPackageItemRepository itemRepository;
@@ -113,6 +114,8 @@ class PatientPackageOrderScenarioTest {
             DiagnosticOrderTest t = new DiagnosticOrderTest();
             t.setId(nextTestId.getAndIncrement());
             t.setTestId(((DiagnosticOrderTestCreateDTO) i.getArgument(0)).testId());
+            // the chosen department (the facility default would be used when none is chosen; none here)
+            t.setReceivedDepartmentId(((DiagnosticOrderTestCreateDTO) i.getArgument(0)).receivedDepartmentId());
             return t;
         });
         when(autoApplyService.consumeLine(anyLong(), anyLong(), anyLong(), anyString(), anyLong()))
@@ -131,7 +134,7 @@ class PatientPackageOrderScenarioTest {
     }
 
     private static PatientPackageDiagnosticsOrderVM.Line line(long itemId, Long testId) {
-        return new PatientPackageDiagnosticsOrderVM.Line(itemId, testId, null);
+        return new PatientPackageDiagnosticsOrderVM.Line(itemId, testId, null, LAB_DEPARTMENT);
     }
 
     // ---------- tests in one order ----------
@@ -144,12 +147,21 @@ class PatientPackageOrderScenarioTest {
         ArgumentCaptor<DiagnosticOrderTestCreateDTO> created = ArgumentCaptor.forClass(DiagnosticOrderTestCreateDTO.class);
         verify(diagnosticOrderTestService, times(2)).create(created.capture());
         assertThat(created.getAllValues()).extracting(DiagnosticOrderTestCreateDTO::testId).containsExactly(CBC, GLUCOSE);
+        assertThat(created.getAllValues()).extracting(DiagnosticOrderTestCreateDTO::receivedDepartmentId)
+                .containsOnly(LAB_DEPARTMENT);
         verify(diagnosticOrderService, times(1)).submit(eq(900L), anyString());
 
         InOrder counting = inOrder(autoApplyService);
         counting.verify(autoApplyService).consumeLine(eq(11L), eq(ENCOUNTER), eq(CBC), eq("LABORATORY"), eq(500L));
         counting.verify(autoApplyService).consumeLine(eq(12L), eq(ENCOUNTER), eq(GLUCOSE), eq("LABORATORY"), eq(501L));
         assertThat(result.countedTestIds()).containsExactly(500L, 501L);
+    }
+
+    @Test
+    void testsCountedFromThePanelAreMarkedForTheHistory() {
+        service.orderDiagnostics(tests(line(11L, null)));
+
+        verify(usageRepository).save(org.mockito.ArgumentMatchers.argThat(u -> Boolean.TRUE.equals(u.getFromPanel())));
     }
 
     @Test
@@ -167,6 +179,16 @@ class PatientPackageOrderScenarioTest {
         assertThatThrownBy(() -> service.orderDiagnostics(tests(line(12L, null))))
                 .isInstanceOf(BadRequestAlertException.class).hasMessageContaining("Choose the test");
         verify(diagnosticOrderService, never()).create(any());
+    }
+
+    @Test
+    void testWithoutTheReceivingDepartmentIsRefused() {
+        // no department chosen and the facility has no default: the test would reach no worklist
+        var noDepartment = new PatientPackageDiagnosticsOrderVM.Line(11L, null, null, null);
+
+        assertThatThrownBy(() -> service.orderDiagnostics(tests(noDepartment)))
+                .isInstanceOf(BadRequestAlertException.class).hasMessageContaining("department that receives");
+        verify(diagnosticOrderService, never()).submit(anyLong(), anyString());
     }
 
     @Test
