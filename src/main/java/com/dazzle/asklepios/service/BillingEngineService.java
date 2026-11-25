@@ -733,6 +733,15 @@ public class BillingEngineService {
 
                 return;
             }
+
+            if (result.processed()
+                    && isHeldForPreAuthorization(patientServiceProductId)) {
+                throw new BadRequestAlertException(
+                        "This service needs pre-authorization before it can be paid.",
+                        ENTITY_NAME,
+                        "preAuthorization.required"
+                );
+            }
         }
 
         throw new BadRequestAlertException(

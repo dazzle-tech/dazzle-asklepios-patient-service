@@ -3,17 +3,23 @@ package com.dazzle.asklepios.service.eligibility;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.domain.enumeration.eligibility.EligibilityBenefitScope;
 import com.dazzle.asklepios.domain.enumeration.eligibility.EligibilityLimitType;
 import com.dazzle.asklepios.domain.enumeration.eligibility.EligibilityNetworkType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.event.EncounterPreAuthorizationSyncEvent;
+import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.service.BillingPricingService;
 import com.dazzle.asklepios.service.CoverageContractShareService;
 import com.dazzle.asklepios.service.InsurancePatientShareCalculator;
+import com.dazzle.asklepios.service.VisitMaxLimitTracker;
 import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
 import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
 import com.dazzle.asklepios.service.dto.InsuranceBenefitRule;
@@ -29,6 +35,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +50,11 @@ import java.util.Optional;
  * <p>Only for a Waseel payer without an NPHIES coverage contract, with an eligibility contract in force:
  * the benefit rules stored from the latest eligibility check ({@link EligibilityContractReader}).
  * Default services of a dental visit travel with the dental pre-authorization, but never use the dental limit.
+ *
+ * <p>The visit max limit of the insurance (what the patient pays at most per visit) is a limit too: a line
+ * whose patient share is more than what is left of it waits for a Waseel pre-authorization, so the part
+ * above the limit never reaches the payer without an approval. Once approved, the patient pays what is
+ * left of the limit and the payer the rest.
  */
 @Service
 @RequiredArgsConstructor
@@ -52,12 +64,17 @@ public class EligibilityContractApprovalService {
     private static final ZoneId PAYER_ZONE = ZoneId.of("Asia/Riyadh");
     private static final int MONEY_SCALE = 4;
 
+    private static final EnumSet<BillingChargeLineStatus> INACTIVE_CHARGE_LINE_STATUSES =
+            EnumSet.of(BillingChargeLineStatus.CANCELLED, BillingChargeLineStatus.REVERSED);
+
     private final EligibilityContractReader contractReader;
     private final InsurancePatientShareCalculator insurancePatientShareCalculator;
     private final CoverageContractShareService coverageContractShareService;
     private final PatientEncounterRepository patientEncounterRepository;
     private final PatientInsuranceRepository patientInsuranceRepository;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
+    private final BillingChargeLineRepository billingChargeLineRepository;
+    private final BillingPricingService billingPricingService;
     private final ApplicationEventPublisher applicationEventPublisher;
 
     /**
@@ -74,7 +91,9 @@ public class EligibilityContractApprovalService {
         List<PatientServiceAndProduct> visitLines = visitLines(line);
         BigDecimal lineAmount = money(context.getNetAmount());
         Optional<LimitBreach> breach = evaluate(insurance, line, lineAmount, visitLines);
-        if (breach.isEmpty()) {
+        boolean visitMaxLimitCrossed = breach.isEmpty()
+                && crossesVisitMaxLimit(insurance, line, lineAmount, null, patientPayableRatio(context));
+        if (breach.isEmpty() && !visitMaxLimitCrossed) {
             return false;
         }
 
@@ -83,6 +102,18 @@ public class EligibilityContractApprovalService {
             joinVisitDefaultServices(line, insurance, visitLines);
         }
         applicationEventPublisher.publishEvent(new EncounterPreAuthorizationSyncEvent(line.getEncounterId()));
+
+        if (visitMaxLimitCrossed) {
+            LOG.info(
+                    "[ELIGIBILITY_CONTRACT] Line held for Waseel pre-authorization, visit max limit crossed. "
+                            + "encounterId={} pspId={} amount={} visitMaxLimit={}",
+                    line.getEncounterId(),
+                    line.getId(),
+                    lineAmount,
+                    insurance.getMaxLimit()
+            );
+            return true;
+        }
 
         LOG.info(
                 "[ELIGIBILITY_CONTRACT] Line held for Waseel pre-authorization. encounterId={} pspId={} amount={} used={} limit={} {} reason=\"{}\"",
@@ -107,12 +138,93 @@ public class EligibilityContractApprovalService {
         }
         PatientInsurance insurance = patientInsuranceRepository.findById(line.getPatientInsuranceId()).orElse(null);
         return evaluate(insurance, line, money(line.getNetAmount()), visitLines).isPresent()
-                || joinsDentalPreAuthorization(line, insurance, visitLines);
+                || joinsDentalPreAuthorization(line, insurance, visitLines)
+                || staysHeldForVisitMaxLimit(line, insurance);
     }
 
-    /** Pricing preview: true when billing this line would hold it for a Waseel pre-authorization. */
-    public boolean requiresPreAuthorization(PatientInsurance insurance, PatientServiceAndProduct line, BigDecimal lineAmount) {
-        return line != null && evaluate(insurance, line, money(lineAmount), visitLines(line)).isPresent();
+    /**
+     * Pricing preview: true when billing this line would hold it for a Waseel pre-authorization.
+     *
+     * @param visitMaxLimitTracker what is left of the visit max limit after the previous preview lines
+     */
+    public boolean requiresPreAuthorization(
+            PatientInsurance insurance,
+            PatientServiceAndProduct line,
+            BigDecimal lineAmount,
+            VisitMaxLimitTracker visitMaxLimitTracker,
+            BigDecimal patientPayableRatio
+    ) {
+        return line != null
+                && (evaluate(insurance, line, money(lineAmount), visitLines(line)).isPresent()
+                        || crossesVisitMaxLimit(insurance, line, money(lineAmount), visitMaxLimitTracker, patientPayableRatio));
+    }
+
+    /**
+     * Repricing of a line already on the patient account: true when the new amount takes the patient share
+     * above what is left of the visit max limit, and no approval covers the line.
+     */
+    public boolean repricingCrossesVisitMaxLimit(PatientServiceAndProduct line) {
+        return line != null
+                && isOpenForEvaluation(line)
+                && crossesVisitMaxLimit(resolveInsurance(line), line, money(line.getNetAmount()), null, taxFreeRatio(line));
+    }
+
+    /** True when the patient share of the line is more than what is left of the visit max limit. */
+    private boolean crossesVisitMaxLimit(
+            PatientInsurance insurance,
+            PatientServiceAndProduct line,
+            BigDecimal lineAmount,
+            VisitMaxLimitTracker visitMaxLimitTracker,
+            BigDecimal patientPayableRatio
+    ) {
+        return usesVisitMaxLimit(insurance, line)
+                && insurancePatientShareCalculator.crossesVisitMaxLimit(
+                        insurance, line, lineAmount, visitMaxLimitTracker, patientPayableRatio);
+    }
+
+    /** A Waseel payer in force, without an NPHIES contract, with a max limit; vaccines have no pre-authorization yet. */
+    private boolean usesVisitMaxLimit(PatientInsurance insurance, PatientServiceAndProduct line) {
+        if (insurance == null
+                || insurance.getId() == null
+                || line.getBillingItemType() == BillingItemTypes.VACCINE
+                || !insurancePatientShareCalculator.hasVisitMaxLimit(insurance)) {
+            return false;
+        }
+        return isWaseelWithoutNphiesContract(insurance, line)
+                && insurancePatientShareCalculator.isLatestCoverageInForce(insurance);
+    }
+
+    /**
+     * A line held before it was charged keeps its hold until it is sent, whatever happens to the other lines
+     * of the visit meanwhile: nothing bills a line that the sync releases. A charged line is never held here.
+     */
+    private boolean staysHeldForVisitMaxLimit(PatientServiceAndProduct line, PatientInsurance insurance) {
+        return line.getId() != null
+                && line.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL
+                && line.getPaymentStatus() == PaymentStatus.SKIPPED_PENDING_PRE_AUTH
+                && line.getPreAuthorizationRequestId() == null
+                && usesVisitMaxLimit(insurance, line)
+                && billingChargeLineRepository
+                        .findAllByPatientServiceProduct_IdInAndStatusNotInOrderByIdAsc(
+                                List.of(line.getId()), INACTIVE_CHARGE_LINE_STATUSES)
+                        .isEmpty();
+    }
+
+    /** The part of the patient share the patient pays, as the billing split reads it. */
+    private BigDecimal patientPayableRatio(BillingProcessingContext context) {
+        if (context.getPricingResult() == null) {
+            return BigDecimal.ONE;
+        }
+        return billingPricingService.patientPayableRatio(
+                context.getPricingResult().taxAmount(),
+                context.getNetAmount(),
+                context.getPricingInput() == null ? null : context.getPricingInput().taxApplyOnPatientCopayment()
+        );
+    }
+
+    /** Without the tax toggles at hand, the share is compared without its tax, so a line is never stopped by tax alone. */
+    private BigDecimal taxFreeRatio(PatientServiceAndProduct line) {
+        return billingPricingService.patientPayableRatio(line.getTaxAmount(), line.getNetAmount(), false);
     }
 
     /** The contract limit the line crosses, if the insurance bills from its eligibility contract. */
@@ -149,16 +261,17 @@ public class EligibilityContractApprovalService {
         if (insurance == null || insurance.getId() == null) {
             return List.of();
         }
+        return isWaseelWithoutNphiesContract(insurance, line) ? contractReader.activeRules(insurance) : List.of();
+    }
+
+    private boolean isWaseelWithoutNphiesContract(PatientInsurance insurance, PatientServiceAndProduct line) {
         try {
-            if (!insurancePatientShareCalculator.isWaseelCoverage(insurance)
-                    || coverageContractShareService.usesNphiesApprovalCoverage(insurance, line)) {
-                return List.of();
-            }
+            return insurancePatientShareCalculator.isWaseelCoverage(insurance)
+                    && !coverageContractShareService.usesNphiesApprovalCoverage(insurance, line);
         } catch (RuntimeException exception) {
             LOG.warn("[ELIGIBILITY_CONTRACT] Contract routing could not be read patientInsuranceId={}", insurance.getId(), exception);
-            return List.of();
+            return false;
         }
-        return contractReader.activeRules(insurance);
     }
 
     /**
@@ -282,6 +395,8 @@ public class EligibilityContractApprovalService {
         if (line.getPatientInsuranceId() == null) {
             line.setPatientInsuranceId(insurance.getId());
         }
+        // The sync links the line the same way; linked here, it has nothing left to write while the request is sent.
+        line.setCoverageStatus(CoverageStatus.COVERED);
         if (pricing != null) {
             line.setGrossAmount(pricing.grossAmount());
             line.setNetAmount(pricing.netAmount());

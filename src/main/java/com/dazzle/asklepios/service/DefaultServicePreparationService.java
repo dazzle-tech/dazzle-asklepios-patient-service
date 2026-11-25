@@ -81,6 +81,7 @@ public class DefaultServicePreparationService {
     private final BillingResponsibilityService billingResponsibilityService;
     private final PreAuthorizationResolutionService preAuthorizationResolutionService;
     private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
+    private final CoverageApprovalRoutingService coverageApprovalRoutingService;
     private final EncounterCoverageService encounterCoverageService;
     private final EncounterTreatmentAdvanceService encounterTreatmentAdvanceService;
     private final PatientItemPricingApplicationService patientItemPricingApplicationService;
@@ -239,6 +240,7 @@ public class DefaultServicePreparationService {
         List<PrepareDefaultServicesResult.PreparedDefaultServiceResult> results =
                 new ArrayList<>();
         boolean hasPendingPreAuth = false;
+        boolean submitPreAuthNow = false;
 
         for (PrepareDefaultServiceItem requestedItem : orderedItems) {
             ServiceSetupDTO service = loadAndValidateSetupService(
@@ -264,6 +266,7 @@ public class DefaultServicePreparationService {
                     request.requestId().trim() + ":REPRICE:" + itemKey
             );
             hasPendingPreAuth |= billing.pendingPreAuthorization();
+            submitPreAuthNow |= billing.submitNow();
 
             results.add(
                     new PrepareDefaultServicesResult.PreparedDefaultServiceResult(
@@ -298,6 +301,7 @@ public class DefaultServicePreparationService {
             );
             if (billing.pendingPreAuthorization()) {
                 hasPendingPreAuth = true;
+                submitPreAuthNow |= billing.submitNow();
                 ordersPendingPreAuth.add(order.procedure());
             }
 
@@ -312,7 +316,7 @@ public class DefaultServicePreparationService {
             );
         }
 
-        if (hasPendingPreAuth) {
+        if (submitPreAuthNow) {
             LOG.info(
                     "[PREPARE_DEFAULT_SERVICES] Submitting pending pre-authorization. encounterId={}",
                     encounterId
@@ -330,6 +334,9 @@ public class DefaultServicePreparationService {
                         : "preAuthorization.failed";
                 throw new BadRequestAlertException(title, ENTITY_NAME, errorKey);
             }
+        }
+
+        if (hasPendingPreAuth) {
             ordersPendingPreAuth.forEach(
                     encounterDefaultProcedureService::markWaitingPreAuthorization
             );
@@ -418,9 +425,15 @@ public class DefaultServicePreparationService {
         );
     }
 
+    /**
+     * @param submitNow the pre-authorization is sent within this request and a failure stops it. False for a
+     *                  Waseel line held while billing (a contract limit): the sync after commit sends it, so
+     *                  registration is not blocked by a diagnosis or vital signs that do not exist yet.
+     */
     private record PreparedBilling(
             BillingOperationResult result,
-            boolean pendingPreAuthorization
+            boolean pendingPreAuthorization,
+            boolean submitNow
     ) {
     }
 
@@ -458,6 +471,7 @@ public class DefaultServicePreparationService {
                                 request.facilityId(),
                                 repriceRequestId
                         ),
+                        false,
                         false
                 );
             }
@@ -475,6 +489,7 @@ public class DefaultServicePreparationService {
                             item,
                             chargeLine
                     ),
+                    false,
                     false
             );
         }
@@ -505,6 +520,7 @@ public class DefaultServicePreparationService {
                             true,
                             "Billing deferred — waiting for pre-authorization."
                     ),
+                    true,
                     true
             );
         }
@@ -520,12 +536,24 @@ public class DefaultServicePreparationService {
                 && billingResult.message() != null
                 && billingResult.message().toLowerCase().contains("pre-authorization");
 
+        boolean pending = heldByMessage
+                || item.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL
+                || item.getPaymentStatus() == PaymentStatus.SKIPPED_PENDING_PRE_AUTH;
+
         return new PreparedBilling(
                 billingResult,
-                heldByMessage
-                        || item.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL
-                        || item.getPaymentStatus() == PaymentStatus.SKIPPED_PENDING_PRE_AUTH
+                pending,
+                pending && !isWaseelHold(item, encounterId)
         );
+    }
+
+    /** Held while billing with no request yet: the post-commit sync sends it to Waseel. */
+    private boolean isWaseelHold(
+            PatientServiceAndProduct item,
+            Long encounterId
+    ) {
+        return item.getPreAuthorizationRequestId() == null
+                && !coverageApprovalRoutingService.encounterUsesLocalApproval(encounterId);
     }
 
     private boolean isProcessed(BillingOperationResult billingResult) {

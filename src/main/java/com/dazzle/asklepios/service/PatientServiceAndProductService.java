@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientPrescription;
@@ -37,6 +38,7 @@ import com.dazzle.asklepios.service.helper.ProcedureHelper;
 import com.dazzle.asklepios.service.helper.ServiceHelper;
 import com.dazzle.asklepios.service.helper.UomPriceFactorHelper;
 import com.dazzle.asklepios.service.helper.VaccineBrandHelper;
+import com.dazzle.asklepios.service.eligibility.EligibilityContractApprovalService;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.slf4j.Logger;
@@ -90,6 +92,7 @@ public class PatientServiceAndProductService {
     private final UomPriceFactorHelper uomPriceFactorHelper;
     private final VaccineBrandHelper vaccineBrandHelper;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final EligibilityContractApprovalService eligibilityContractApprovalService;
 
     public PatientServiceAndProductService(
             PatientServiceAndProductRepository patientServiceAndProductRepository,
@@ -112,7 +115,8 @@ public class PatientServiceAndProductService {
             EncounterReopenGuard encounterReopenGuard,
             UomPriceFactorHelper uomPriceFactorHelper,
             VaccineBrandHelper vaccineBrandHelper,
-            ApplicationEventPublisher applicationEventPublisher
+            ApplicationEventPublisher applicationEventPublisher,
+            EligibilityContractApprovalService eligibilityContractApprovalService
     ) {
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.patientRepository = patientRepository;
@@ -135,6 +139,7 @@ public class PatientServiceAndProductService {
         this.uomPriceFactorHelper = uomPriceFactorHelper;
         this.vaccineBrandHelper = vaccineBrandHelper;
         this.applicationEventPublisher = applicationEventPublisher;
+        this.eligibilityContractApprovalService = eligibilityContractApprovalService;
     }
 
     public PatientServiceAndProduct create(PatientServiceProductCreateDTO dto) {
@@ -1153,6 +1158,8 @@ public class PatientServiceAndProductService {
             return;
         }
 
+        requireWithinVisitMaxLimit(item, encounter);
+
         String requestId =
                 "PSP-UPDATE:"
                         + item.getId()
@@ -1185,6 +1192,34 @@ public class PatientServiceAndProductService {
                     "billing.reprice.failed"
             );
         }
+    }
+
+    /**
+     * A charged line cannot be raised above what is left of the visit max limit: the part above it would go
+     * to the payer without a pre-authorization. Cancelled and added again, the line is held and sent.
+     */
+    private void requireWithinVisitMaxLimit(PatientServiceAndProduct item, PatientEncounter encounter) {
+        BigDecimal chargedGross = billingChargeService
+                .findActiveChargeLine(item.getId(), item.getEncounterId())
+                .map(BillingChargeLine::getGrossAmount)
+                .orElse(null);
+        if (chargedGross == null
+                || defaultZero(item.getGrossAmount()).compareTo(chargedGross) <= 0
+                || !eligibilityContractApprovalService.repricingCrossesVisitMaxLimit(item)) {
+            return;
+        }
+
+        LOG.info(
+                "[PSP_UPDATE] Stopped, visit max limit crossed. encounterId={} pspId={}",
+                encounter.getId(),
+                item.getId()
+        );
+        throw new BadRequestAlertException(
+                "This change takes the patient share above the visit max limit, so it needs pre-authorization. "
+                        + "Cancel this item and add it again to send it for pre-authorization.",
+                "patientServicesAndProducts",
+                "visitMaxLimit.preAuthorizationRequired"
+        );
     }
 
     private void submitPreAuthorizationOrThrow(Long encounterId) {
