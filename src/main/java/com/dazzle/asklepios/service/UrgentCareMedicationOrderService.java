@@ -55,7 +55,6 @@ import java.util.stream.Collectors;
 public class UrgentCareMedicationOrderService {
 
     private static final Logger LOG = LoggerFactory.getLogger(UrgentCareMedicationOrderService.class);
-
     private final UrgentCareMedicationOrderRepository urgentCareMedicationOrderRepository;
     private final PatientRepository patientRepository;
     private final PatientEncounterRepository patientEncounterRepository;
@@ -455,7 +454,7 @@ public class UrgentCareMedicationOrderService {
         LOG.debug("[FIND_BY_GROUP] request -> orderGroupId={}", orderGroupId);
 
         List<UrgentCareMedicationOrder> orders =
-                urgentCareMedicationOrderRepository.findByOrderGroupId(orderGroupId);
+                urgentCareMedicationOrderRepository.findByOrderGroupIdOrderByDoseTimeAscIdAsc(orderGroupId);
 
         LOG.debug(
                 "[FIND_BY_GROUP] response -> orderGroupId={} size={}",
@@ -593,6 +592,9 @@ public class UrgentCareMedicationOrderService {
                                 Boolean.TRUE.equals(order.getIsHighAlert())
                         );
 
+        UrgentCareMedicationOrder cancelled = orders.stream()
+                .filter(order -> order.getCancelledBy() != null).findFirst().orElse(null);
+
         return new PatientUccMedicationOrderGroupVM(
                 first.getOrderGroupId(),
                 first.getPatient().getId(),
@@ -608,9 +610,13 @@ public class UrgentCareMedicationOrderService {
                 first.getDuration(),
                 first.getStartTime(),
                 orders.size(),
-                first.getStatus(),
+                groupStatus(orders),
                 isHighAlert,
-                first.getFrequency()
+                first.getFrequency(),
+                cancelled == null ? null : cancelled.getCancelledBy(),
+                cancelled == null ? null : cancelled.getCancelledDate(),
+                cancelled == null ? null : cancelled.getCancellationReason(),
+                orders.stream().anyMatch(UrgentCareMedicationOrderService::isOpenDose)
         );
     }
 
@@ -910,6 +916,81 @@ public class UrgentCareMedicationOrderService {
                 saved.getId(), saved.getStatus(), saved.getCancelledBy());
 
         return saved;
+    }
+
+    /** Status of the whole medication: the doses' status when they all match, PARTIALLY when mixed */
+    private static MedicationOrderStatus groupStatus(List<UrgentCareMedicationOrder> doses) {
+        List<MedicationOrderStatus> statuses = doses.stream()
+                .map(dose -> dose.getStatus() == null ? MedicationOrderStatus.NEW : dose.getStatus())
+                .distinct()
+                .toList();
+        return statuses.size() == 1 ? statuses.get(0) : MedicationOrderStatus.PARTIALLY;
+    }
+
+    /** A dose that was not given, discarded or cancelled yet */
+    private static boolean isOpenDose(UrgentCareMedicationOrder order) {
+        return order.getStatus() == null
+                || order.getStatus() == MedicationOrderStatus.NEW
+                || order.getStatus() == MedicationOrderStatus.SUBMITTED;
+    }
+
+    /** Doctor cancel of a whole medication: given doses stay, the rest are discarded (or cancelled if none was given) */
+    public List<UrgentCareMedicationOrder> cancelGroup(Long orderGroupId, String username, String cancellationReason) {
+        LOG.debug("[STATUS][CANCEL_GROUP] request -> orderGroupId={} username={} reason={}",
+                orderGroupId, username, cancellationReason);
+
+        List<UrgentCareMedicationOrder> orders =
+                urgentCareMedicationOrderRepository.findByOrderGroupId(orderGroupId);
+
+        if (orders.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "notfound",
+                    "patient_ucc_medication_order",
+                    "No medication orders found for orderGroupId " + orderGroupId
+            );
+        }
+        orders.forEach(this::rejectIfAmendmentOpen);
+
+        List<UrgentCareMedicationOrder> open = orders.stream()
+                .filter(UrgentCareMedicationOrderService::isOpenDose)
+                .toList();
+
+        if (open.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "No open doses left to cancel for this medication",
+                    "patient_ucc_medication_order",
+                    "nothing_to_cancel"
+            );
+        }
+
+        // WAITING_DOUBLE_CHECK was already given to the patient, so it counts as administered
+        boolean anyGiven = orders.stream()
+                .anyMatch(order -> order.getStatus() == MedicationOrderStatus.ADMINISTERED
+                        || order.getStatus() == MedicationOrderStatus.WAITING_DOUBLE_CHECK);
+
+        Instant now = Instant.now();
+        for (UrgentCareMedicationOrder order : open) {
+            cancelAdministrationCharge(order, "UCC medication order cancelled");
+            if (anyGiven) {
+                order.setStatus(MedicationOrderStatus.DISCARDED);
+                order.setDiscardedBy(username);
+                order.setDiscardedDate(now);
+                order.setDiscardReason(cancellationReason);
+            } else {
+                order.setStatus(MedicationOrderStatus.CANCELLED);
+            }
+            // Records who cancelled the medication, shown in the doctor's cancel columns
+            order.setCancelledBy(username);
+            order.setCancelledDate(now);
+            order.setCancellationReason(cancellationReason);
+        }
+
+        urgentCareMedicationOrderRepository.saveAll(open);
+
+        LOG.debug("[STATUS][CANCEL_GROUP] saved -> orderGroupId={} changed={} discarded={}",
+                orderGroupId, open.size(), anyGiven);
+
+        return urgentCareMedicationOrderRepository.findByOrderGroupId(orderGroupId);
     }
 
     private UrgentCareMedicationOrder getOrder(Long orderId) {
