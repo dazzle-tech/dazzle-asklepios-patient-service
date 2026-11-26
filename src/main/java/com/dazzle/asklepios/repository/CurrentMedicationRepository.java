@@ -29,4 +29,6 @@ public interface CurrentMedicationRepository extends JpaRepository<CurrentMedica
             Long patientId,
             PatientHistoryStatus status
     );
+
+    boolean existsByPatientIdAndStatus(Long patientId, PatientHistoryStatus status);
 }

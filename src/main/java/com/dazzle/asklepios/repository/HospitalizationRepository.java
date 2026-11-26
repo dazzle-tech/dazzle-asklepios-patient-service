@@ -21,4 +21,6 @@ public interface HospitalizationRepository extends JpaRepository<Hospitalization
             Long patientId,
             PatientHistoryStatus status
     );
+
+    boolean existsByPatientIdAndStatus(Long patientId, PatientHistoryStatus status);
 }

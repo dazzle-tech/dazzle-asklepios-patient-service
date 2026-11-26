@@ -20,4 +20,6 @@ public interface PatientProblemRepository extends JpaRepository<PatientProblem, 
             Long patientId,
             PatientHistoryStatus status
     );
+
+    boolean existsByPatientIdAndStatus(Long patientId, PatientHistoryStatus status);
 }

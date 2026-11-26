@@ -84,6 +84,8 @@ public class BillingCheckoutService {
     private final EncounterChargeLineEnsuringService
             encounterChargeLineEnsuringService;
 
+    private final PatientEncounterService patientEncounterService;
+
     private final BillingCheckoutService self;
 
     public BillingCheckoutService(
@@ -96,6 +98,7 @@ public class BillingCheckoutService {
             BillingChargeService billingChargeService,
             PatientEncounterRepository patientEncounterRepository,
             EncounterChargeLineEnsuringService encounterChargeLineEnsuringService,
+            @Lazy PatientEncounterService patientEncounterService,
             @Lazy BillingCheckoutService self
     ) {
         this.billingChargeRepository = billingChargeRepository;
@@ -109,6 +112,7 @@ public class BillingCheckoutService {
         this.patientEncounterRepository = patientEncounterRepository;
         this.encounterChargeLineEnsuringService =
                 encounterChargeLineEnsuringService;
+        this.patientEncounterService = patientEncounterService;
         this.self = self;
     }
 
@@ -167,6 +171,9 @@ public class BillingCheckoutService {
                         );
 
         validateChargeForCheckout(charge);
+
+        // Finalizing checkout financially closes the visit: Insurance visits must meet every clinical requirement.
+        patientEncounterService.requireInsuranceCompletionRequirements(charge.getEncounter());
 
         billingChargeService.recalculateChargeTotals(
                 BillingProcessingContext.builder()
