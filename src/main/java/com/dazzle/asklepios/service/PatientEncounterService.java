@@ -397,7 +397,12 @@ public class PatientEncounterService {
         existingPatientEncounter.setPromotionCode(updateDTO.promotionCode());
         existingPatientEncounter.setNotes(updateDTO.notes());
         existingPatientEncounter.setChiefComplaint(updateDTO.chiefComplaint());
-        existingPatientEncounter.setPhysicalExaminationSummery(updateDTO.physicalExaminationSummery());
+        // Many screens send this update without the physical examination (nurse station,
+        // triage, priority change). A missing value keeps what the doctor wrote; to clear it
+        // the screen sends an empty text.
+        if (updateDTO.physicalExaminationSummery() != null) {
+            existingPatientEncounter.setPhysicalExaminationSummery(updateDTO.physicalExaminationSummery());
+        }
 
         if (updateDTO.followUpEncounterId() != null) {
             PatientEncounter followUpEncounter = patientEncounterRepository.findById(updateDTO.followUpEncounterId())
