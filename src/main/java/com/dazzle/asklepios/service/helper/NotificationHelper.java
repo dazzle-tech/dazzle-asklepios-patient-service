@@ -46,7 +46,7 @@ public class NotificationHelper {
     private final SystemConfigurationClient systemConfigurationClient;
     private final FacilityHelper facilityHelper;
 
-    public void sendNotification(
+    public boolean sendNotification(
             Long facilityId,
             NotificationCode code,
             Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule,
@@ -57,7 +57,7 @@ public class NotificationHelper {
         try {
             if (code == null) {
                 log.warn("[NOTIFICATION] Skip notification because code is missing");
-                return;
+                return false;
             }
 
             if (recipientsByRule == null || recipientsByRule.isEmpty()) {
@@ -67,7 +67,7 @@ public class NotificationHelper {
                         relatedEntityType,
                         relatedEntityId
                 );
-                return;
+                return false;
             }
 
             if (hasUserJwt() && !SecurityUtils.isPatientPortalUser()) {
@@ -89,6 +89,7 @@ public class NotificationHelper {
             Map<String, Map<String, List<NotificationResolvedRecipientDTO>>> groupedRecipients =
                     groupRecipientsByLanguage(recipientsByRule);
 
+            boolean sent = false;
             for (Map.Entry<String, Map<String, List<NotificationResolvedRecipientDTO>>> languageEntry
                     : groupedRecipients.entrySet()) {
 
@@ -117,6 +118,9 @@ public class NotificationHelper {
                     ResponseEntity<List<NotificationCreatedResponse>> response =
                             notificationClient.createNotification(dto);
                     created = response == null ? null : response.getBody();
+                    if (response != null && response.getStatusCode().is2xxSuccessful()) {
+                        sent = true;
+                    }
                 } catch (Exception e) {
                     log.warn(
                             "[NOTIFICATION] Failed notification. language={}, code={}, error={}",
@@ -139,6 +143,7 @@ public class NotificationHelper {
                 }
             }
 
+            return sent;
         } catch (Exception e) {
             log.warn(
                     "[NOTIFICATION] Failed notification. code={}, error={}, recipientsByRule={}, data={}, relatedEntityType={}, relatedEntityId={}",
@@ -149,6 +154,7 @@ public class NotificationHelper {
                     relatedEntityType,
                     relatedEntityId
             );
+            return false;
         }
     }
 
@@ -378,9 +384,21 @@ public class NotificationHelper {
     }
 
     public Map<String, List<NotificationResolvedRecipientDTO>> recipientsForPatient(Patient patient) {
+        return recipientsForPatient(patient, organizationClient.getOrganization());
+    }
+
+    public Map<String, List<NotificationResolvedRecipientDTO>> recipientsForScheduledPatient(Patient patient) {
+        return recipientsForPatient(patient, organizationClient.getOrganizationInternal());
+    }
+
+    private Map<String, List<NotificationResolvedRecipientDTO>> recipientsForPatient(
+            Patient patient,
+            List<OrganizationDefinitionDTO> organizationDefinitionList
+    ) {
         Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule = new LinkedHashMap<>();
-        List<OrganizationDefinitionDTO> organizationDefinitionList = organizationClient.getOrganization();
-        OrganizationDefinitionDTO organizationDefinitionDTO = organizationDefinitionList.stream().findFirst().orElse(null);
+        OrganizationDefinitionDTO organizationDefinitionDTO = organizationDefinitionList == null
+                ? null
+                : organizationDefinitionList.stream().findFirst().orElse(null);
 
         if (patient != null) {
             NotificationResolvedRecipientDTO patientEmailRecipient =

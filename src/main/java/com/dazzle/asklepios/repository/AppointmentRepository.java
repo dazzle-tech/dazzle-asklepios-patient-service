@@ -151,5 +151,13 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long>,
     );
 
     Page<Appointment> findByPatient_IdOrderByStartDatetimeDesc(Long patientId, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"patient"})
+    List<Appointment> findByPatientIsNotNullAndStatusInAndStartDatetimeGreaterThanEqualAndStartDatetimeLessThanAndReminderNotificationSentFalseOrderByStartDatetimeAsc(
+            List<AppointmentStatus> statuses,
+            Instant startDatetime,
+            Instant endDatetime,
+            Pageable pageable
+    );
 }
 

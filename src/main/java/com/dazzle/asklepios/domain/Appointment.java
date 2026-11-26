@@ -142,4 +142,10 @@ public class Appointment extends AbstractAuditingEntity<Long> implements Seriali
     @Column(name="hl7_appointment_number", length = 50)
     private String hl7AppointmentNumber;
 
+    @Column(name = "reminder_notification_sent", nullable = false)
+    private Boolean reminderNotificationSent = false;
+
+    @Column(name = "reminder_notification_sent_at")
+    private Instant reminderNotificationSentAt;
+
 }
