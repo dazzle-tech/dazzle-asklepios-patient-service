@@ -12,4 +12,6 @@ public interface DentalProcedureRepository extends JpaRepository<DentalProcedure
     Page<DentalProcedure> findByPatientId(Long patientId, Pageable pageable);
 
     Page<DentalProcedure> findByPatientIdAndCancelledFalse(Long patientId, Pageable pageable);
+
+    boolean existsByEncounter_IdAndCancelledFalse(Long encounterId);
 }
