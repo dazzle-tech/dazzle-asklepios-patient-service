@@ -20,4 +20,6 @@ public interface UrgentCareMedicationOrderRepository extends JpaRepository<Urgen
     );
 
     List<UrgentCareMedicationOrder> findByOrderGroupId(Long orderGroupId);
+
+    List<UrgentCareMedicationOrder> findByOrderGroupIdOrderByDoseTimeAscIdAsc(Long orderGroupId);
 }

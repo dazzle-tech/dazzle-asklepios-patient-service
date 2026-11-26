@@ -6,6 +6,7 @@ import com.dazzle.asklepios.domain.enumeration.MedicationInstructionType;
 import com.dazzle.asklepios.domain.enumeration.MedicationOrderStatus;
 import com.dazzle.asklepios.domain.enumeration.Unit;
 
+import java.time.Instant;
 import java.time.LocalTime;
 
 public record PatientUccMedicationOrderGroupVM(
@@ -25,6 +26,12 @@ public record PatientUccMedicationOrderGroupVM(
         Integer doseCount,
         MedicationOrderStatus status,
         Boolean isHighAlert,
-        MedFrequency frequency
+        MedFrequency frequency,
+        // Who cancelled this medication, if the doctor cancelled it
+        String cancelledBy,
+        Instant cancelledDate,
+        String cancellationReason,
+        // True while some dose is still NEW or SUBMITTED, so the doctor can cancel
+        Boolean hasOpenDoses
 ) {
 }
