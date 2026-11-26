@@ -24,4 +24,6 @@ public interface FamilyHistoryRepository extends JpaRepository<FamilyHistory, Lo
             Long patientId,
             PatientHistoryStatus status
     );
+
+    boolean existsByPatientIdAndStatus(Long patientId, PatientHistoryStatus status);
 }

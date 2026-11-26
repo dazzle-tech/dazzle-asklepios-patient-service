@@ -10,6 +10,7 @@ import com.dazzle.asklepios.domain.Appointment;
 import com.dazzle.asklepios.domain.BodyMeasurements;
 import com.dazzle.asklepios.domain.EncounterDischargeLog;
 import com.dazzle.asklepios.domain.EncounterPlan;
+import com.dazzle.asklepios.domain.enumeration.DiagnosisType;
 import com.dazzle.asklepios.domain.PainAssessment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDocument;
@@ -113,6 +114,13 @@ import com.dazzle.asklepios.repository.SocialHistoryRepository;
 public class PatientEncounterService {
 
     private static final Logger LOG = LoggerFactory.getLogger(PatientEncounterService.class);
+
+    /** Statuses that finish a visit; an Insurance visit may only enter them when every requirement is met. */
+    private static final Set<TreatmentStatus> FINISHED_TREATMENT_STATUSES = Set.of(
+            TreatmentStatus.COMPLETED,
+            TreatmentStatus.DISCHARGED,
+            TreatmentStatus.CLOSED
+    );
 
     /** Statuses that come before a bed assignment; the generic update must not move a bedded encounter back to them. */
     private static final Set<TreatmentStatus> PRE_BED_TREATMENT_STATUSES = Set.of(
@@ -1143,6 +1151,8 @@ public class PatientEncounterService {
             );
         }
 
+        requireInsuranceCompletionRequirements(encounter);
+
         encounter.setStatus(TreatmentStatus.DISCHARGED);
 
         PatientEncounter saved = patientEncounterRepository.saveAndFlush(encounter);
@@ -1188,6 +1198,8 @@ public class PatientEncounterService {
                     "complete.notAllowed"
             );
         }
+
+        requireInsuranceCompletionRequirements(encounter);
 
         /*
          * Update encounter completion details
@@ -1271,6 +1283,41 @@ public class PatientEncounterService {
         }
     }
 
+    /**
+     * Backend gate for every transition into COMPLETED / DISCHARGED / CLOSED.
+     * Re-evaluates the persisted data; non-Insurance visits are never blocked here.
+     */
+    public void requireInsuranceCompletionRequirements(PatientEncounter encounter) {
+        if (!BillingCoverageType.INSURANCE.equals(encounter.getCoverageType())) {
+            return;
+        }
+
+        // Row lock: concurrent finish attempts on the same visit are validated one after the other.
+        patientEncounterRepository.findByIdForUpdate(encounter.getId());
+
+        PatientEncounterCompletionValidationDTO validation = validateCompletion(encounter.getId(), false);
+        if (!validation.canComplete()) {
+            String missing = validation.requirements().stream()
+                    .filter(requirement -> !requirement.completed())
+                    .map(requirement -> requirement.code() + " (" + requirement.label() + ")")
+                    .collect(Collectors.joining(", "));
+            LOG.warn("[COMPLETION_BLOCKED] encounterId={} missing={}", encounter.getId(), missing);
+            throw new BadRequestAlertException(
+                    "Insurance visit cannot be completed. Missing: " + missing,
+                    "patientEncounter",
+                    "encounter.insuranceRequirements.missing"
+            );
+        }
+    }
+
+    private static PatientEncounterCompletionValidationDTO.Requirement requirement(
+            String code,
+            String label,
+            boolean completed
+    ) {
+        return new PatientEncounterCompletionValidationDTO.Requirement(code, label, completed);
+    }
+
     @Transactional(readOnly = true)
     public PatientEncounterCompletionValidationDTO validateCompletion(
             Long encounterId,
@@ -1305,8 +1352,13 @@ public class PatientEncounterService {
                     true, // socialHistory
                     true, // vitalSigns
                     true, // bodyMeasurements
+                    true, // patientProblems
+                    true, // familyHistory
+                    true, // hospitalizations
+                    true, // currentMedication
                     true, // investigationNotPerformedReason
                     true, // canComplete
+                    Collections.emptyList(),
                     Collections.emptyList(),
                     Collections.emptyList()
             );
@@ -1323,11 +1375,13 @@ public class PatientEncounterService {
                 !isBlank(encounter.getPhysicalExaminationSummery());
 
         boolean primaryDiagnosis =
-                patientDiagnosisRepository.existsByEncounterId(encounterId);
+                patientDiagnosisRepository.existsByEncounterIdAndType(encounterId, DiagnosisType.PRIMARY);
 
         boolean assessment =
                 encounterAssessmentRepository
                         .findTopByEncounterIdOrderByCreatedDateDesc(encounterId)
+                        .map(a -> a.getAssessment())
+                        .filter(text -> !isBlank(text))
                         .isPresent();
 
         boolean treatmentPlan =
@@ -1337,114 +1391,65 @@ public class PatientEncounterService {
                         .filter(plan -> !isBlank(plan))
                         .isPresent();
 
-        boolean medicalHistory =
-                patientProblemRepository
-                        .findAllByPatientIdAndStatus(
-                                patientId,
-                                PatientHistoryStatus.ACTIVE,
-                                Pageable.unpaged()
-                        )
-                        .hasContent()
-                        ||
-                        familyHistoryRepository
-                                .findAllByPatientIdAndStatus(
-                                        patientId,
-                                        PatientHistoryStatus.ACTIVE,
-                                        Pageable.unpaged()
-                                )
-                                .hasContent()
-                        ||
-                        hospitalizationRepository
-                                .findAllByPatientIdAndStatusNot(
-                                        patientId,
-                                        PatientHistoryStatus.CANCELLED,
-                                        Pageable.unpaged()
-                                )
-                                .hasContent()
-                        ||
-                        currentMedicationRepository
-                                .findAllByPatientIdAndStatusNot(
-                                        patientId,
-                                        PatientHistoryStatus.CANCELLED,
-                                        Pageable.unpaged()
-                                )
-                                .hasContent();
+        // Patient History is patient-level. Each subsection of the Patient History screens needs
+        // at least one ACTIVE record of its own (cancelled records never count).
+        boolean patientProblems =
+                patientProblemRepository.existsByPatientIdAndStatus(patientId, PatientHistoryStatus.ACTIVE);
+        boolean familyHistory =
+                familyHistoryRepository.existsByPatientIdAndStatus(patientId, PatientHistoryStatus.ACTIVE);
+        boolean hospitalizations =
+                hospitalizationRepository.existsByPatientIdAndStatus(patientId, PatientHistoryStatus.ACTIVE);
+        boolean currentMedication =
+                currentMedicationRepository.existsByPatientIdAndStatus(patientId, PatientHistoryStatus.ACTIVE);
+        boolean medicalHistory = patientProblems && familyHistory && hospitalizations && currentMedication;
 
         boolean surgicalHistory =
-                !surgicalHistoryRepository
-                        .findAllByPatientIdAndStatusNot(
-                                patientId,
-                                PatientHistoryStatus.CANCELLED,
-                                Pageable.unpaged()
-                        )
-                        .isEmpty();
+                surgicalHistoryRepository.existsByPatientIdAndStatus(patientId, PatientHistoryStatus.ACTIVE);
 
         boolean socialHistory =
-                socialHistoryRepository
-                        .findTopByPatientIdOrderByCreatedDateDesc(patientId)
-                        .isPresent();
+                socialHistoryRepository.existsByPatientIdAndStatus(patientId, PatientHistoryStatus.ACTIVE);
 
+        // Dedicated queries only: Vital Signs and Body Measurements never satisfy each other
+        // and unrelated observations (pain, additional measurements, complaints) never count.
         boolean vitalSigns =
-                !findEncounterIdsWithObservation(List.of(encounterId)).isEmpty();
+                vitalSignsRepository.existsByEncounterIdAndIsActiveTrue(encounterId);
 
         boolean bodyMeasurements =
-                bodyMeasurementsRepository
-                        .findFirstByEncounterIdAndIsActiveTrueOrderByCreatedDateDesc(encounterId)
-                        .isPresent();
+                bodyMeasurementsRepository.existsByEncounterIdAndIsActiveTrue(encounterId);
 
-        List<String> missing = new ArrayList<>();
-
-        if (!chiefComplaint) {
-            missing.add("Chief Complaint");
-        }
-
-        if (!historyOfPresentIllness) {
-            missing.add("History Of Present Illness");
-        }
-
-        if (!physicalExaminationSummary) {
-            missing.add("Physical Examination Summary");
-        }
-
-        if (!primaryDiagnosis) {
-            missing.add("Primary Diagnosis");
-        }
-
-        if (!assessment) {
-            missing.add("Assessment");
-        }
-
-        if (!treatmentPlan) {
-            missing.add("Treatment Plan / Management");
-        }
-
-        if (!medicalHistory) {
-            missing.add("Medical History");
-        }
-
-        if (!surgicalHistory) {
-            missing.add("Surgical History");
-        }
-
-        if (!socialHistory) {
-            missing.add("Social History");
-        }
-
-        if (!vitalSigns) {
-            missing.add("Vital Signs & Measurements");
-        }
-
-        if (!bodyMeasurements) {
-            missing.add("Body Measurements");
-        }
+        List<PatientEncounterCompletionValidationDTO.Requirement> requirements = new ArrayList<>(List.of(
+                requirement("CHIEF_COMPLAINT", "Chief Complaint", chiefComplaint),
+                requirement("HISTORY_OF_PRESENT_ILLNESS", "History Of Present Illness", historyOfPresentIllness),
+                requirement("PHYSICAL_EXAMINATION_SUMMARY", "Physical Examination Summary", physicalExaminationSummary),
+                requirement("PRIMARY_DIAGNOSIS", "Primary Diagnosis", primaryDiagnosis),
+                requirement("ASSESSMENT", "Assessment", assessment),
+                requirement("TREATMENT_PLAN", "Treatment Plan / Management", treatmentPlan),
+                requirement("PATIENT_PROBLEMS", "Medical History - Patient Problems", patientProblems),
+                requirement("FAMILY_HISTORY", "Medical History - Family History", familyHistory),
+                requirement("HOSPITALIZATIONS", "Medical History - Hospitalizations", hospitalizations),
+                requirement("CURRENT_MEDICATION", "Medical History - Current Medication", currentMedication),
+                requirement("SURGICAL_HISTORY", "Surgical History", surgicalHistory),
+                requirement("SOCIAL_HISTORY", "Social History", socialHistory),
+                requirement("VITAL_SIGNS", "Vital Signs", vitalSigns),
+                requirement("BODY_MEASUREMENTS", "Body Measurements", bodyMeasurements)
+        ));
 
         boolean investigationNotPerformedReason =
                 !encounterInvestigationReasonGuard.isReasonMissing(encounter);
 
         // The visit screens ask for the reason on Complete / Disposition; billing checkout lists it.
-        if (includeDiagnostics && !investigationNotPerformedReason) {
-            missing.add("Reason Investigations Not Performed (enter it on visit Complete or Disposition)");
+        if (includeDiagnostics) {
+            requirements.add(requirement(
+                    "INVESTIGATION_NOT_PERFORMED_REASON",
+                    "Reason Investigations Not Performed (enter it on visit Complete or Disposition)",
+                    investigationNotPerformedReason
+            ));
         }
+
+        List<String> missing = requirements.stream()
+                .filter(requirement -> !requirement.completed())
+                .map(PatientEncounterCompletionValidationDTO.Requirement::label)
+                .toList();
 
         boolean canComplete = missing.isEmpty();
 
@@ -1468,9 +1473,14 @@ public class PatientEncounterService {
                 socialHistory,
                 vitalSigns,
                 bodyMeasurements,
+                patientProblems,
+                familyHistory,
+                hospitalizations,
+                currentMedication,
                 investigationNotPerformedReason,
                 canComplete,
                 missing,
+                requirements,
                 diagnosticApprovals
         );
     }
@@ -2452,6 +2462,8 @@ public class PatientEncounterService {
             );
         }
 
+        requireInsuranceCompletionRequirements(encounter);
+
         encounterInvestigationReasonGuard.requireReasonWhenNoInvestigation(
                 encounter,
                 dischargeDTO.investigationNotPerformedReason()
@@ -2715,6 +2727,10 @@ public class PatientEncounterService {
                     requestedStatus
             );
             return;
+        }
+
+        if (FINISHED_TREATMENT_STATUSES.contains(requestedStatus)) {
+            requireInsuranceCompletionRequirements(encounter);
         }
 
         encounter.setStatus(requestedStatus);

@@ -32,6 +32,8 @@ public interface PatientDiagnosisRepository extends JpaRepository<PatientDiagnos
 
     boolean existsByEncounterId(Long encounterId);
 
+    boolean existsByEncounterIdAndType(Long encounterId, com.dazzle.asklepios.domain.enumeration.DiagnosisType type);
+
     List<PatientDiagnosis> findByEncounterId(Long encounterId);
 
     Optional<PatientDiagnosis> findByEncounterIdAndType(Long encounterId, DiagnosisType type);

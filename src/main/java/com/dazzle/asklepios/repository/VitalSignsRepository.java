@@ -52,6 +52,8 @@ public interface VitalSignsRepository extends JpaRepository<VitalSigns, Long> {
 
     Set<VitalSigns> findDistinctByEncounterIdIn(List<Long> encounterIds);
 
+    boolean existsByEncounterIdAndIsActiveTrue(Long encounterId);
+
     Optional<VitalSigns> findTopByEncounterIdAndIsActiveTrueOrderByIdDesc(Long encounterId);
 
     Page<VitalSigns> findByPatientIdAndCreatedDateBetween(

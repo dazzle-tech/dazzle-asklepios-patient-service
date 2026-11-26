@@ -27,4 +27,6 @@ public interface SocialHistoryRepository extends JpaRepository<SocialHistory, Lo
             Long patientId,
             PatientHistoryStatus status
     );
+
+    boolean existsByPatientIdAndStatus(Long patientId, PatientHistoryStatus status);
 }
