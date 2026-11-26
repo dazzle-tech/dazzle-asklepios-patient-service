@@ -4,6 +4,7 @@ import com.dazzle.asklepios.domain.ClaimEncounterCopy;
 import com.dazzle.asklepios.domain.ClaimEncounterCopyDiagnosticOrderTestReport;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
+import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.TestType;
 import com.dazzle.asklepios.repository.ClaimEncounterCopyDiagnosticOrderTestReportRepository;
 import com.dazzle.asklepios.repository.ClaimEncounterCopyRepository;
@@ -34,6 +35,8 @@ public class ClaimEncounterCopyDiagnosticOrderTestReportService {
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
 
     private final DiagnosticOrderRepository diagnosticOrderRepository;
+
+    private final ClaimEncounterCopyServiceProductTestResolver serviceProductTestResolver;
 
     private String currentUsername() {
         return SecurityUtils.getCurrentUserLogin()
@@ -82,16 +85,28 @@ public class ClaimEncounterCopyDiagnosticOrderTestReportService {
                         "copy.notfound"
                 ));
 
-        DiagnosticOrderTest orderTest = requireRadiologyTest(
+        serviceProductTestResolver.requireSingleSource(
                 dto.orderTestId(),
-                copy
+                dto.patientServiceProductId(),
+                "claimEncounterCopyDiagnosticOrderTestReport"
         );
 
         ClaimEncounterCopyDiagnosticOrderTestReport entity =
                 new ClaimEncounterCopyDiagnosticOrderTestReport();
 
         entity.setClaimEncounterCopyId(claimEncounterCopyId);
-        entity.setOrderTestId(orderTest.getId());
+
+        if (dto.patientServiceProductId() != null) {
+            entity.setPatientServiceProductId(serviceProductTestResolver.requireServiceProductTest(
+                    dto.patientServiceProductId(),
+                    copy,
+                    BillingItemTypes.RADIOLOGY,
+                    "claimEncounterCopyDiagnosticOrderTestReport"
+            ).getId());
+        } else {
+            entity.setOrderTestId(requireRadiologyTest(dto.orderTestId(), copy).getId());
+        }
+
         entity.setReport(dto.report());
         entity.setRadiologistInformation(dto.radiologistInformation());
         entity.setCriticalFindings(dto.criticalFindings());

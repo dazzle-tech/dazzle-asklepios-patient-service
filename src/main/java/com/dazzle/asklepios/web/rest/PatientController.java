@@ -23,6 +23,7 @@ import com.dazzle.asklepios.web.rest.errors.InvalidPasswordException;
 import com.dazzle.asklepios.web.rest.vm.patient.CreatePasswordKeyValidationVM;
 import com.dazzle.asklepios.web.rest.vm.patient.ManagedPatientVM;
 import com.dazzle.asklepios.web.rest.vm.patient.PatientBasicInformationResponseVM;
+import com.dazzle.asklepios.web.rest.vm.patient.PortalAppUpdateNotificationVM;
 import com.dazzle.asklepios.web.rest.vm.patientPortal.PatientPortalLoginVM;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.Valid;
@@ -250,6 +251,16 @@ public class PatientController {
 
             @RequestParam(required = false) String patientName,
 
+            @RequestParam(required = false) String mrn,
+
+            @RequestParam(required = false) String primaryMobileNumber,
+
+            @RequestParam(required = false) String documentNumber,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate dateOfBirth,
+
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate registrationDateFrom,
@@ -265,6 +276,10 @@ public class PatientController {
 
         FacilityPatientFilterDTO filter = new FacilityPatientFilterDTO(
                 patientName,
+                mrn,
+                primaryMobileNumber,
+                documentNumber,
+                dateOfBirth,
                 registrationDateFrom,
                 registrationDateTo,
                 insuranceId
@@ -576,8 +591,14 @@ public class PatientController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @PostMapping("/patient-portal/notify-app-update")
+    public ResponseEntity<PortalAppUpdateNotificationVM> notifyPortalPatientsToUpdateApp() {
+        LOG.debug("REST notify portal patients to update app version");
+        return ResponseEntity.ok(patientService.notifyPortalPatientsToUpdateAppVersion());
+    }
+
     @PostMapping("/patient-portal/request-otp")
-    public ResponseEntity<String> requestPatientOtp(
+    public ResponseEntity<Void> requestPatientOtp(
             @Valid @RequestBody PatientOtpRequestDTO request
     ) {
         LOG.debug(
@@ -585,9 +606,9 @@ public class PatientController {
                 request.primaryDocumentNumber()
         );
 
-        String otp = patientOtpAuthenticationService.requestOtp(request);
+        patientOtpAuthenticationService.requestOtp(request);
 
-        return ResponseEntity.ok(otp);
+        return ResponseEntity.ok().build();
     }
 
     @PostMapping("/patient-portal/verify-login-otp")

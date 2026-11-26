@@ -4,8 +4,12 @@ import com.dazzle.asklepios.domain.BillingPayment;
 import com.dazzle.asklepios.domain.BillingPaymentTransaction;
 import com.dazzle.asklepios.domain.BillingRefund;
 import com.dazzle.asklepios.domain.BillingWallet;
+import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientEncounter;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentStatus;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentSubtype;
+import com.dazzle.asklepios.domain.enumeration.FinancialDocumentType;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerEntryCategory;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerEntryDirection;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingLedgerScope;
@@ -19,6 +23,7 @@ import com.dazzle.asklepios.domain.enumeration.billing.BillingRefundStatus;
 import com.dazzle.asklepios.repository.BillingPaymentRepository;
 import com.dazzle.asklepios.repository.BillingPaymentTransactionRepository;
 import com.dazzle.asklepios.repository.BillingRefundRepository;
+import com.dazzle.asklepios.repository.FinancialDocumentRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.service.dto.billing.BillingLedgerEntryRequest;
@@ -38,6 +43,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
@@ -63,6 +69,9 @@ public class BillingRefundService {
                     BillingRefundStatus.PARTIALLY_COMPLETED
             );
 
+    private static final String REFUND_DOCUMENT_REFERENCE_TYPE =
+            "FINANCIAL_DOCUMENT";
+
     private final BillingRefundRepository
             billingRefundRepository;
 
@@ -78,11 +87,17 @@ public class BillingRefundService {
     private final PatientEncounterRepository
             patientEncounterRepository;
 
+    private final FinancialDocumentRepository
+            financialDocumentRepository;
+
     private final BillingWalletService
             billingWalletService;
 
     private final BillingLedgerService
             billingLedgerService;
+
+    private final FinancialDocumentNumberAssignmentService
+            documentNumberAssignmentService;
 
     @Transactional(rollbackFor = Exception.class)
     public BillingRefundResult refundAvailableBalance(
@@ -120,6 +135,12 @@ public class BillingRefundService {
         PatientEncounter encounter =
                 loadEncounter(
                         request.encounterId(),
+                        patient
+                );
+
+        PatientEncounter documentEncounter =
+                resolveDocumentEncounter(
+                        encounter,
                         patient
                 );
 
@@ -164,6 +185,20 @@ public class BillingRefundService {
                         originalPayment
                 );
 
+        Long facilityId =
+                resolveFacilityId(
+                        request,
+                        documentEncounter
+                );
+
+        String documentNumber =
+                documentNumberAssignmentService
+                        .requireNextDocumentNumber(
+                                facilityId,
+                                FinancialDocumentType.REFUND,
+                                LocalDate.now()
+                        );
+
         BillingRefund refund =
                 createRequestedRefund(
                         request,
@@ -178,6 +213,14 @@ public class BillingRefundService {
 
         refund.setStatus(
                 BillingRefundStatus.PROCESSING
+        );
+
+        refund.setReferenceDocumentType(
+                REFUND_DOCUMENT_REFERENCE_TYPE
+        );
+
+        refund.setReferenceDocumentNumber(
+                documentNumber
         );
 
         billingRefundRepository.save(refund);
@@ -219,13 +262,27 @@ public class BillingRefundService {
                 request
         );
 
+        FinancialDocument refundDocument =
+                issueRefundFinancialDocument(
+                        refund,
+                        documentEncounter,
+                        documentNumber
+                );
+
+        refund.setReferenceDocumentId(
+                refundDocument.getId()
+        );
+
+        billingRefundRepository.save(refund);
+
         LOG.info(
                 "[COMPLETE_REFUND] Refund completed "
                         + "refundId={} refundNumber={} "
-                        + "patientId={} amount={} "
+                        + "documentNumber={} patientId={} amount={} "
                         + "availableBefore={} availableAfter={}",
                 refund.getId(),
                 refund.getRefundNumber(),
+                documentNumber,
                 patient.getId(),
                 refundableAmount,
                 availableBefore,
@@ -1068,6 +1125,126 @@ public class BillingRefundService {
         return encounter;
     }
 
+    private PatientEncounter resolveDocumentEncounter(
+            PatientEncounter requestedEncounter,
+            Patient patient
+    ) {
+        if (requestedEncounter != null) {
+            return requestedEncounter;
+        }
+
+        return patientEncounterRepository
+                .findFirstByPatientIdOrderByCreatedDateDescIdDesc(
+                        patient.getId()
+                )
+                .orElseThrow(() ->
+                        new BadRequestAlertException(
+                                "A visit is required to issue a numbered refund document.",
+                                ENTITY_NAME,
+                                "encounter.required"
+                        )
+                );
+    }
+
+    private Long resolveFacilityId(
+            BillingRefundRequest request,
+            PatientEncounter encounter
+    ) {
+        if (encounter != null
+                && encounter.getFacilityId() != null) {
+            return encounter.getFacilityId();
+        }
+
+        if (request.facilityId() != null
+                && request.facilityId() > 0) {
+            return request.facilityId();
+        }
+
+        throw new BadRequestAlertException(
+                "Facility is required to assign a refund document number from setup.",
+                ENTITY_NAME,
+                "numbering.facility.required"
+        );
+    }
+
+    private FinancialDocument issueRefundFinancialDocument(
+            BillingRefund refund,
+            PatientEncounter encounter,
+            String documentNumber
+    ) {
+        FinancialDocument existing =
+                financialDocumentRepository
+                        .findByDocumentNumber(
+                                documentNumber
+                        )
+                        .orElse(null);
+
+        if (existing != null) {
+            return existing;
+        }
+
+        FinancialDocument document =
+                FinancialDocument.builder()
+                        .documentNumber(
+                                documentNumber
+                        )
+                        .documentType(
+                                FinancialDocumentType.REFUND
+                        )
+                        .documentSubtype(
+                                FinancialDocumentSubtype.PATIENT
+                        )
+                        .status(
+                                FinancialDocumentStatus.ISSUED
+                        )
+                        .patientId(
+                                refund.getPatient().getId()
+                        )
+                        .encounterId(
+                                encounter.getId()
+                        )
+                        .totalAmount(
+                                money(
+                                        refund.getRefundedAmount()
+                                )
+                        )
+                        .currency(
+                                refund.getCurrency()
+                        )
+                        .adjustmentReason(
+                                refund.getReason()
+                        )
+                        .createdDate(
+                                Instant.now()
+                        )
+                        .build();
+
+        try {
+            return financialDocumentRepository
+                    .saveAndFlush(document);
+
+        } catch (DataIntegrityViolationException
+                 | JpaSystemException exception) {
+
+            FinancialDocument concurrent =
+                    financialDocumentRepository
+                            .findByDocumentNumber(
+                                    documentNumber
+                            )
+                            .orElse(null);
+
+            if (concurrent != null) {
+                return concurrent;
+            }
+
+            throw new BadRequestAlertException(
+                    "Unable to issue the refund financial document.",
+                    ENTITY_NAME,
+                    "refund.document.create.failed"
+            );
+        }
+    }
+
     private BillingRefund saveRefund(
             BillingRefund refund,
             String idempotencyKey
@@ -1387,7 +1564,11 @@ public class BillingRefundService {
 
                 refund.getRefundSourceType(),
 
-                refund.getStatus()
+                refund.getStatus(),
+
+                refund.getReferenceDocumentId(),
+
+                refund.getReferenceDocumentNumber()
         );
     }
 

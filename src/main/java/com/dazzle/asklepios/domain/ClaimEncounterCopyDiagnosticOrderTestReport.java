@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.Severity;
+import java.time.Instant;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -44,8 +45,12 @@ public class ClaimEncounterCopyDiagnosticOrderTestReport
     @Column(name = "diagnostic_order_test_report_id")
     private Long diagnosticOrderTestReportId;
 
-    @Column(name = "order_test_id", nullable = false)
+    @Column(name = "order_test_id")
     private Long orderTestId;
+
+    /** Source when the test was ordered from Service and Products instead of a diagnostic order. */
+    @Column(name = "patient_service_product_id")
+    private Long patientServiceProductId;
 
     @Column(name = "report", columnDefinition = "text")
     private String report;
@@ -63,4 +68,10 @@ public class ClaimEncounterCopyDiagnosticOrderTestReport
     @Column(name = "severity", length = 50)
     private Severity severity;
 
+    // Who wrote the original record and when; createdBy/createdDate are the copy's own
+    @Column(name = "original_created_by", length = 50, updatable = false)
+    private String originalCreatedBy;
+
+    @Column(name = "original_created_date", updatable = false)
+    private Instant originalCreatedDate;
 }

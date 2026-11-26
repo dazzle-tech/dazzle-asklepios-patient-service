@@ -18,6 +18,7 @@ public record ClaimEncounterCopyResponse(
         Integer bloodPressureSystolic,
         Integer bloodPressureDiastolic,
         BigDecimal height,
-        BigDecimal weight
+        BigDecimal weight,
+        String investigationNotPerformedReason
 ) {
 }

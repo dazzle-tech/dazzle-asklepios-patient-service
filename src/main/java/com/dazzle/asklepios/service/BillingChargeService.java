@@ -282,6 +282,7 @@ public class BillingChargeService {
                         )
                         .serviceId(item.getServiceId())
                         .procedureId(item.getProcedureId())
+                        .vaccineBrandId(item.getVaccineBrandId())
 
                         .itemCode(resolveItemCode(context))
                         .itemDescription(
@@ -839,6 +840,7 @@ public class BillingChargeService {
                         .diagnosticTestId(item.getDiagnosticTestId())
                         .serviceId(item.getServiceId())
                         .procedureId(item.getProcedureId())
+                        .vaccineBrandId(item.getVaccineBrandId())
                         .itemCode(resolveDebitNoteItemCode(item))
                         .itemDescription(resolveDebitNoteItemDescription(item))
                         .serviceSource(item.getServiceSource())
@@ -2090,6 +2092,9 @@ public class BillingChargeService {
         if (item.getBrandMedicationId() != null) {
             return "MED-" + item.getBrandMedicationId();
         }
+        if (item.getVaccineBrandId() != null) {
+            return "VACCINE-" + item.getVaccineBrandId();
+        }
         return item.getBillingItemType() == null
                 ? "ITEM-" + item.getId()
                 : item.getBillingItemType().name();
@@ -2702,6 +2707,10 @@ public class BillingChargeService {
 
         if (item.getBrandMedicationId() != null) {
             return item.getBrandMedicationId();
+        }
+
+        if (item.getVaccineBrandId() != null) {
+            return item.getVaccineBrandId();
         }
 
         if (item.getSourceId() != null) {

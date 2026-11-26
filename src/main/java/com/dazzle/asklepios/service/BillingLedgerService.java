@@ -1,13 +1,20 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.BillingLedger;
+import com.dazzle.asklepios.domain.BillingPayment;
+import com.dazzle.asklepios.domain.BillingPaymentTransaction;
+import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.repository.BillingLedgerRepository;
 import com.dazzle.asklepios.service.dto.billing.BillingLedgerEntryRequest;
+import com.dazzle.asklepios.service.dto.billing.PatientWalletMovementDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.orm.jpa.JpaSystemException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -284,6 +291,85 @@ public class BillingLedgerService {
                     "ledger.create.failed"
             );
         }
+    }
+
+    @Transactional(readOnly = true)
+    public Page<PatientWalletMovementDTO> findWalletMovements(
+            Long patientId,
+            Pageable pageable
+    ) {
+        if (patientId == null) {
+            throw new BadRequestAlertException(
+                    "Patient ID is required.",
+                    ENTITY_NAME,
+                    "patientId.required"
+            );
+        }
+
+        return billingLedgerRepository
+                .findByPatient_IdAndAvailableChangeNotOrderByTransactionDateDescIdDesc(
+                        patientId,
+                        BigDecimal.ZERO,
+                        pageable
+                )
+                .map(this::toWalletMovement);
+    }
+
+    private PatientWalletMovementDTO toWalletMovement(
+            BillingLedger ledger
+    ) {
+        BigDecimal availableChange = ledger.getAvailableChange() == null
+                ? BigDecimal.ZERO
+                : ledger.getAvailableChange();
+        BillingPayment payment = ledger.getPayment();
+        BillingPaymentTransaction paymentTransaction =
+                ledger.getPaymentTransaction();
+        BillingChargeLine chargeLine = ledger.getChargeLine();
+        PatientEncounter encounter = ledger.getEncounter();
+
+        return new PatientWalletMovementDTO(
+                ledger.getId(),
+                ledger.getTransactionDate(),
+                availableChange.signum() > 0
+                        ? "ADDITION"
+                        : "DEDUCTION",
+                ledger.getTransactionType() == null
+                        ? null
+                        : ledger.getTransactionType().name(),
+                money(availableChange).abs(),
+                ledger.getCurrency(),
+                nullableMoney(ledger.getWalletAvailableAfter()),
+                trimToNull(ledger.getDescription()),
+                trimToNull(ledger.getReason()),
+                payment == null
+                        ? null
+                        : trimToNull(payment.getReceiptNumber()),
+                payment == null
+                        ? null
+                        : trimToNull(payment.getPaymentNumber()),
+                payment == null || payment.getPaymentCategory() == null
+                        ? null
+                        : payment.getPaymentCategory().name(),
+                paymentTransaction == null
+                        ? null
+                        : trimToNull(paymentTransaction.getPaymentMethodCode()),
+                encounter == null
+                        ? null
+                        : trimToNull(encounter.getEncounterNumber()),
+                encounter == null
+                        ? null
+                        : encounter.getId(),
+                chargeLine == null
+                        ? null
+                        : trimToNull(chargeLine.getItemDescription()),
+                chargeLine == null
+                        ? null
+                        : trimToNull(chargeLine.getItemCode()),
+                trimToNull(ledger.getReferenceNumber()),
+                payment == null
+                        ? null
+                        : trimToNull(payment.getNotes())
+        );
     }
 
     private void validateRequest(

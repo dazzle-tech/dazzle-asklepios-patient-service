@@ -30,6 +30,7 @@ import com.dazzle.asklepios.service.dto.billing.PreviewCatalogItemPricingRequest
 import com.dazzle.asklepios.service.dto.billing.PreviewCatalogItemPricingResult;
 import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
 import com.dazzle.asklepios.service.dto.billing.ResolvedBillingPrice;
+import com.dazzle.asklepios.service.helper.UomPriceFactorHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import lombok.RequiredArgsConstructor;
@@ -70,6 +71,8 @@ public class CatalogItemPricingPreviewService {
     private final FinancialDocumentRepository financialDocumentRepository;
     private final FinancialDocumentItemRepository financialDocumentItemRepository;
     private final InvoiceItemPricingSnapshotService invoiceItemPricingSnapshotService;
+    private final CoverageContractShareService coverageContractShareService;
+    private final UomPriceFactorHelper uomPriceFactorHelper;
 
     private static final int MONEY_SCALE = 4;
 
@@ -84,7 +87,11 @@ public class CatalogItemPricingPreviewService {
                 request,
                 patient
         );
-        PatientInsurance insurance = resolveInsurance(request, encounter);
+        // Phase 1: vaccines are billed as cash, they are not checked against insurance
+        PatientInsurance insurance =
+                request.billingItemType() == BillingItemTypes.VACCINE
+                        ? null
+                        : resolveInsurance(request, encounter);
 
         boolean insuranceVisit = insurance != null;
         boolean eligibilityInForce =
@@ -115,17 +122,30 @@ public class CatalogItemPricingPreviewService {
                         patientCitizen
                 );
 
+        boolean contractRulesCoverVisit =
+                insuranceVisit
+                        && eligibilityInForce
+                        && insurancePatientShareCalculator.usesNphiesContractRules(insurance);
+        boolean excludedByContract =
+                insuranceVisit
+                        && eligibilityInForce
+                        && coverageContractShareService.isExcludedByContract(insurance, previewItem);
         boolean coveredByInsurance =
                 insuranceVisit
                         && eligibilityInForce
-                        && resolvedPrice.resolvedFromPriceList();
+                        && !excludedByContract
+                        && (contractRulesCoverVisit || resolvedPrice.resolvedFromPriceList());
         boolean requiresCashConfirmation = insuranceVisit && !coveredByInsurance;
         String notCoveredReason = null;
 
         if (requiresCashConfirmation) {
-            notCoveredReason = eligibilityInForce
-                    ? InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST
-                    : InsurancePriceListCoverageService.ELIGIBILITY_NOT_IN_FORCE;
+            if (!eligibilityInForce) {
+                notCoveredReason = InsurancePriceListCoverageService.ELIGIBILITY_NOT_IN_FORCE;
+            } else if (excludedByContract) {
+                notCoveredReason = InsurancePriceListCoverageService.CONTRACT_EXCLUSION;
+            } else {
+                notCoveredReason = InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST;
+            }
 
             if (coverageType != BillingCoverageType.SELF_PAY) {
                 resolvedPrice = billingEngineService.resolvePricing(
@@ -200,6 +220,7 @@ public class CatalogItemPricingPreviewService {
 
         BigDecimal patientShareAmount = finalNet;
         BigDecimal insuranceShareAmount = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        BigDecimal contractDiscount = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
         if (insurance != null
                 && !requiresCashConfirmation
                 && !Boolean.TRUE.equals(previewItem.getIsExempted())) {
@@ -211,6 +232,10 @@ public class CatalogItemPricingPreviewService {
                     );
             patientShareAmount = money(split.patientShare());
             insuranceShareAmount = money(split.insuranceShare());
+            contractDiscount = finalNet
+                    .subtract(patientShareAmount)
+                    .subtract(insuranceShareAmount)
+                    .max(BigDecimal.ZERO);
         }
 
         LOG.info(
@@ -238,9 +263,9 @@ public class CatalogItemPricingPreviewService {
                         ? request.currency()
                         : resolvedPrice.currency(),
                 itemGross,
-                totalDiscount,
+                totalDiscount.add(contractDiscount),
                 totalTax,
-                finalNet,
+                finalNet.subtract(contractDiscount),
                 itemGross,
                 itemDiscount,
                 itemTax,
@@ -700,7 +725,20 @@ public class CatalogItemPricingPreviewService {
     ) {
         Long sourceId = resolveSourceId(request);
 
+        // Priced in the picked UOM unit, as the line will be once saved
+        Long uomGroupUnitId =
+                request.billingItemType() == BillingItemTypes.MEDICATION
+                        ? request.uomGroupUnitId()
+                        : null;
+
         return PatientServiceAndProduct.builder()
+                .uomGroupUnitId(uomGroupUnitId)
+                .uomPriceFactor(
+                        uomPriceFactorHelper.resolveBrandFactor(
+                                request.brandMedicationId(),
+                                uomGroupUnitId
+                        )
+                )
                 .patientId(request.patientId())
                 .encounterId(encounter.getId())
                 .billingItemType(request.billingItemType())
@@ -708,6 +746,7 @@ public class CatalogItemPricingPreviewService {
                 .diagnosticTestId(request.diagnosticTestId())
                 .serviceId(request.serviceId())
                 .procedureId(request.procedureId())
+                .vaccineBrandId(request.vaccineBrandId())
                 .sourceId(sourceId)
                 .serviceSource(ServiceSource.SERVICE_AND_PRODUCT)
                 .quantity(
@@ -802,6 +841,15 @@ public class CatalogItemPricingPreviewService {
                     );
                 }
             }
+            case VACCINE -> {
+                if (request.vaccineBrandId() == null) {
+                    throw new BadRequestAlertException(
+                            "Vaccine brand is required.",
+                            ENTITY_NAME,
+                            "vaccineBrand.required"
+                    );
+                }
+            }
             default -> throw new BadRequestAlertException(
                     "Unsupported catalog item type.",
                     ENTITY_NAME,
@@ -819,6 +867,7 @@ public class CatalogItemPricingPreviewService {
             case MEDICATION -> request.brandMedicationId();
             case LABORATORY, RADIOLOGY, PATHOLOGY ->
                     request.diagnosticTestId();
+            case VACCINE -> request.vaccineBrandId();
         };
     }
 

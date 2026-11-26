@@ -8,6 +8,7 @@ import com.dazzle.asklepios.domain.enumeration.billing.RoundingModeType;
 import com.dazzle.asklepios.domain.enumeration.billing.TaxType;
 import com.dazzle.asklepios.service.dto.billing.BillingPricingInput;
 import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
+import com.dazzle.asklepios.service.dto.billing.PartyTaxDistribution;
 import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,10 @@ public class BillingPricingService {
 
     private static final String ENTITY_NAME =
             "billingPricing";
+
+    private static final int MONEY_SCALE = 4;
+
+    private static final int RATIO_SCALE = 10;
 
     public void calculate(
             BillingProcessingContext context
@@ -191,6 +196,111 @@ public class BillingPricingService {
                 taxAmount,
                 netAmount
         );
+    }
+
+    /**
+     * Splits the tax calculated on one item between the patient share and the
+     * insurance share, then removes the portion of a party whose toggle is off.
+     *
+     * The shares are the responsibility amounts produced by the existing
+     * contract / coverage rules on the tax-inclusive net amount. Each party's
+     * tax portion is proportional to its own share, so:
+     *
+     * - Patient Copayment controls only the patient's tax portion.
+     * - Claim Share controls only the insurance's tax portion.
+     * - A party with a zero share carries zero tax.
+     * - A removed portion is never moved to the other party.
+     *
+     * For self-pay the caller passes a zero insurance share, so the whole tax
+     * belongs to the patient and only Patient Copayment applies.
+     */
+    public PartyTaxDistribution distributeTax(
+            BigDecimal calculatedTax,
+            BigDecimal patientShare,
+            BigDecimal insuranceShare,
+            Boolean taxOnPatientCopayment,
+            Boolean taxOnClaimShare
+    ) {
+        BigDecimal tax = money(calculatedTax);
+        BigDecimal patient = money(patientShare);
+        BigDecimal insurance = money(insuranceShare);
+
+        BigDecimal patientTaxPortion;
+
+        if (tax.signum() == 0 || patient.signum() == 0) {
+            patientTaxPortion = money(BigDecimal.ZERO);
+        } else if (insurance.signum() == 0) {
+            patientTaxPortion = tax;
+        } else {
+            patientTaxPortion =
+                    tax.multiply(patient)
+                            .divide(
+                                    patient.add(insurance),
+                                    MONEY_SCALE,
+                                    RoundingMode.HALF_UP
+                            );
+        }
+
+        BigDecimal insuranceTaxPortion =
+                insurance.signum() == 0
+                        ? money(BigDecimal.ZERO)
+                        : tax.subtract(patientTaxPortion);
+
+        BigDecimal patientTax =
+                isApplied(taxOnPatientCopayment)
+                        ? patientTaxPortion
+                        : money(BigDecimal.ZERO);
+
+        BigDecimal insuranceTax =
+                isApplied(taxOnClaimShare)
+                        ? insuranceTaxPortion
+                        : money(BigDecimal.ZERO);
+
+        return new PartyTaxDistribution(
+                tax,
+                patientTax,
+                insuranceTax,
+                patient.subtract(patientTaxPortion).add(patientTax),
+                insurance.subtract(insuranceTaxPortion).add(insuranceTax)
+        );
+    }
+
+    /**
+     * Part of a patient share the patient actually pays: 1 when the Patient
+     * Copayment toggle keeps the tax, otherwise the share without its
+     * proportional tax portion ({@code 1 - tax / net}), as {@link #distributeTax}
+     * removes it.
+     */
+    public BigDecimal patientPayableRatio(
+            BigDecimal calculatedTax,
+            BigDecimal netAmount,
+            Boolean taxOnPatientCopayment
+    ) {
+        BigDecimal tax = money(calculatedTax);
+        BigDecimal net = money(netAmount);
+
+        if (isApplied(taxOnPatientCopayment)
+                || tax.signum() <= 0
+                || net.compareTo(tax) <= 0) {
+            return BigDecimal.ONE;
+        }
+
+        return BigDecimal.ONE.subtract(
+                tax.divide(net, RATIO_SCALE, RoundingMode.HALF_UP)
+        );
+    }
+
+    /**
+     * Taxes saved before the toggles existed carry no value; they applied tax
+     * to every share, so a missing toggle means "applied".
+     */
+    private boolean isApplied(Boolean toggle) {
+        return !Boolean.FALSE.equals(toggle);
+    }
+
+    private BigDecimal money(BigDecimal value) {
+        return defaultZero(value)
+                .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
     }
 
     private BigDecimal calculateDiscount(

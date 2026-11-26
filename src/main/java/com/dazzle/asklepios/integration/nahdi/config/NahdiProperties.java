@@ -13,7 +13,8 @@ public record NahdiProperties(
         String providerToken,
         Integer timeoutSeconds,
         String sendPrescriptionEndpoint,
-        Prescription prescription
+        Prescription prescription,
+        Dispensing dispensing
 ) {
 
     /**
@@ -24,8 +25,23 @@ public record NahdiProperties(
             String typeCash,
             String typeInsurance,
             String itemApprovalStatus,
+            // APP_STATUS of a line cancelled after the prescription was sent.
+            String itemCancelledStatus,
             // "SFDA" or "NPHIES": the item code sent first; the other one is used when it is missing.
             String itemCodePriority
+    ) {}
+
+    /**
+     * Dispensing status of a sent prescription, read from Nahdi sales invoices.
+     *
+     * @param salesInvoicesEndpoint GetSalesInvoices path
+     * @param saleInvoiceType       Invoice_Type of a sale (the medications on it were dispensed)
+     * @param returnInvoiceType     Invoice_Type of a return (the medications on it are no longer dispensed)
+     */
+    public record Dispensing(
+            String salesInvoicesEndpoint,
+            String saleInvoiceType,
+            String returnInvoiceType
     ) {}
 
     @Override

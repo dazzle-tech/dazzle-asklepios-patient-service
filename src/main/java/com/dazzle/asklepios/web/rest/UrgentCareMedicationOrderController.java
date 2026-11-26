@@ -493,6 +493,24 @@ public class UrgentCareMedicationOrderController {
         LOG.debug("[CANCEL] response -> id={} status={}", result.getId(), result.getStatus());
         return ResponseEntity.ok(result);
     }
+
+    /** Doctor cancel of a whole medication, even after submit: given doses stay, the rest are discarded */
+    @PostMapping("/urgent-care-medication-orders/group/{orderGroupId}/cancel")
+    public ResponseEntity<List<UrgentCareMedicationOrder>> cancelGroup(
+            @PathVariable("orderGroupId") Long orderGroupId,
+            @Valid @RequestBody UrgentCareMedicationOrderCancelDTO dto
+    ) {
+        LOG.debug("[CANCEL_GROUP] request -> orderGroupId={} reason={}", orderGroupId, dto.cancellationReason());
+
+        List<UrgentCareMedicationOrder> result = UrgentCareMedicationOrderService.cancelGroup(
+                orderGroupId,
+                currentUsername(),
+                dto.cancellationReason()
+        );
+
+        LOG.debug("[CANCEL_GROUP] response -> orderGroupId={} size={}", orderGroupId, result.size());
+        return ResponseEntity.ok(result);
+    }
     @PutMapping("/urgent-care-medication-orders/{orderId}/actual-administer-time")
     public ResponseEntity<UrgentCareMedicationOrder> setActualAdministerTime(
             @PathVariable Long orderId,

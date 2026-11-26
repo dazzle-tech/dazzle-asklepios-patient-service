@@ -2,6 +2,7 @@ package com.dazzle.asklepios.domain;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticOrderTestStatus;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.TestType;
+import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -10,6 +11,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PastOrPresent;
 import lombok.AllArgsConstructor;
@@ -130,6 +132,25 @@ public class DiagnosticOrderTest extends AbstractAuditingEntity implements Seria
 
     @Column(name = "confirmed_at")
     private Instant confirmedAt;
+
+    @Transient
+    @EqualsAndHashCode.Exclude
+    private Boolean coveragePreApprovalPending;
+
+    /**
+     * Response only (not stored): pre-authorization status of the test's billing line,
+     * filled by DiagnosticPreAuthorizationService.
+     */
+    @Transient
+    @EqualsAndHashCode.Exclude
+    private PreAuthorizationStatus preAuthorizationStatus;
+
+    /**
+     * Response only (not stored): true when sample collection waits on pre-authorization.
+     */
+    @Transient
+    @EqualsAndHashCode.Exclude
+    private Boolean preAuthorizationBlocked;
 
     @Column(name = "print_number", length = 100)
     private String printNumber;

@@ -321,6 +321,9 @@ public class DiagnosticOrderController {
 
             @RequestParam(name = "encounterId", required = false) Long encounterId,
 
+            @RequestParam(name = "encounterIdIn", required = false)
+            List<Long> encounterIdIn,
+
             @RequestParam(name = "status", required = false) DiagnosticStatus status,
             @RequestParam(name = "statusIn", required = false) List<DiagnosticStatus> statusIn,
             @RequestParam(name = "statusNotIn", required = false) List<DiagnosticStatus> statusNotIn,
@@ -347,10 +350,10 @@ public class DiagnosticOrderController {
 
             @ParameterObject Pageable pageable
     ) {
-        LOG.debug("[DiagnosticOrder] FILTER - request received. patientId={} patientIdIn={} encounterId={} status={} statusIn={} " +
+        LOG.debug("[DiagnosticOrder] FILTER - request received. patientId={} patientIdIn={} encounterId={} encounterIdIn={} status={} statusIn={} " +
                         "statusNotIn={} excludeStatus={} saveDraft={} isUrgent={} labStatus={} labStatusIn={} radStatus={} " +
                         "submittedDateFrom={} submittedDateTo={} departmentId={} fromDepartmentIdIn={} testType={} orderNumber={} pageable={}",
-                patientId, patientIdIn, encounterId, status, statusIn, statusNotIn, excludeStatus, saveDraft, isUrgent,
+                patientId, patientIdIn, encounterId, encounterIdIn, status, statusIn, statusNotIn, excludeStatus, saveDraft, isUrgent,
                 labStatus, labStatusIn, radStatus, submittedDateFrom, submittedDateTo, departmentId, fromDepartmentIdIn, testType,
                 orderNumber, pageable);
 
@@ -358,6 +361,7 @@ public class DiagnosticOrderController {
                 patientId,
                 patientIdIn,
                 encounterId,
+                encounterIdIn,
                 status,
                 statusIn,
                 statusNotIn,

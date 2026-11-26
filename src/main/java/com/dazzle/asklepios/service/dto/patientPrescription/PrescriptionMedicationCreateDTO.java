@@ -18,7 +18,7 @@ public class PrescriptionMedicationCreateDTO {
     public Long pharmaceuticalId;
     @NotNull public PrescriptionInstructionsType instructionsType;
     public String instructions;
-    public Long dose;
+    public BigDecimal dose;
     public String doesUnit;
     public String rout;
     public String frequency;
@@ -28,8 +28,10 @@ public class PrescriptionMedicationCreateDTO {
     public Boolean chronicMedication;
     public BigDecimal duration;
     public String durationType;
+    // When empty it is calculated from dose x frequency x duration.
+    public BigDecimal quantity;
 
-    public Long maximumDose;
+    public BigDecimal maximumDose;
     public Boolean allowedSubstitute;
 
     public String indicationManually;

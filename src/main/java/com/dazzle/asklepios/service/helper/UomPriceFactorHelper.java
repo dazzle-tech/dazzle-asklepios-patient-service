@@ -1,8 +1,11 @@
 package com.dazzle.asklepios.service.helper;
 
+import com.dazzle.asklepios.client.setup.BrandMedicationClient;
 import com.dazzle.asklepios.client.setup.UomGroupClient;
+import com.dazzle.asklepios.client.setup.dto.BrandMedicationSetupDTO;
 import com.dazzle.asklepios.client.setup.dto.UomGroupRelationDTO;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
+import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -23,9 +26,34 @@ public class UomPriceFactorHelper {
     private static final MathContext PRECISION = MathContext.DECIMAL64;
 
     private final UomGroupClient uomGroupClient;
+    private final BrandMedicationClient brandMedicationClient;
 
-    public UomPriceFactorHelper(UomGroupClient uomGroupClient) {
+    public UomPriceFactorHelper(UomGroupClient uomGroupClient, BrandMedicationClient brandMedicationClient) {
         this.uomGroupClient = uomGroupClient;
+        this.brandMedicationClient = brandMedicationClient;
+    }
+
+    /**
+     * Factor for charging a brand medication in {@code chargedUnitId}, or null
+     * when no unit is picked (the brand is then charged in its price base unit).
+     */
+    public BigDecimal resolveBrandFactor(Long brandMedicationId, Long chargedUnitId) {
+        if (brandMedicationId == null || chargedUnitId == null) {
+            return null;
+        }
+
+        BrandMedicationSetupDTO brand;
+        try {
+            brand = brandMedicationClient.getBrandMedication(brandMedicationId);
+        } catch (feign.FeignException.NotFound ex) {
+            throw new NotFoundAlertException(
+                    "Brand Medication not found: " + brandMedicationId,
+                    "BrandMedication",
+                    "notfound"
+            );
+        }
+
+        return resolveFactor(brand.uomGroupId(), chargedUnitId, brand.priceBaseUomId());
     }
 
     /**

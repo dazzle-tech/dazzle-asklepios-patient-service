@@ -86,4 +86,13 @@ public class User implements Serializable {
 
     @Column(name="can_un_complete_encounter")
     private boolean canUnCompleteEncounter;
+
+    @Column(name="can_cancel_service_before_invoice")
+    private boolean canCancelServiceBeforeInvoice;
+
+    @Column(name="can_edit_submitted_prescription")
+    private boolean canEditSubmittedPrescription;
+
+    @Column(name="can_collect_zero_payment")
+    private boolean canCollectZeroPayment;
 }

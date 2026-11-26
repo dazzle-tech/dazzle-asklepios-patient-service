@@ -39,8 +39,6 @@ public record VitalSignsUpdateDTO(
         @NotNull
         Integer respiratoryRate,
 
-        String fastingBloodGlucose,
-
         String fluidStatus,
 
         String edema,

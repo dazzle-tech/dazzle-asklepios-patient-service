@@ -191,7 +191,7 @@ public class DiagnosticOrderTestResultController {
         String username = currentUsername();
 
         DiagnosticOrderTestResult updated =
-                statusService.toggleReview(id, username);
+                service.toggleReview(id, username);
 
         return ResponseEntity.ok(
                 DiagnosticOrderTestResultResponseVM.ofEntity(updated)
@@ -204,7 +204,7 @@ public class DiagnosticOrderTestResultController {
 
         String username = currentUsername();
 
-        statusService.bulkToggleReview(
+        service.bulkToggleReview(
                 dto.ids(),
                 username
         );

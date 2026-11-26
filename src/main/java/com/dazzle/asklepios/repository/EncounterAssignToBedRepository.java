@@ -3,17 +3,20 @@ package com.dazzle.asklepios.repository;
 import com.dazzle.asklepios.domain.EncounterAssignToBed;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 import java.util.List;
 import java.util.Optional;
 
-public interface EncounterAssignToBedRepository extends JpaRepository<EncounterAssignToBed, Long> {
+public interface EncounterAssignToBedRepository extends JpaRepository<EncounterAssignToBed, Long>, JpaSpecificationExecutor<EncounterAssignToBed> {
 
     Optional<EncounterAssignToBed> findByEncounter_IdAndIsActiveTrue(Long encounterId);
 
     List<EncounterAssignToBed> findAllByEncounter_IdInAndIsActiveTrue(List<Long> encounterIds);
 
+    @EntityGraph(attributePaths = {"encounter", "patient"})
     List<EncounterAssignToBed> findAllByBedIdInAndIsActiveTrue(List<Long> bedIds);
 
     boolean existsByBedIdAndIsActiveTrue(Long bedId);

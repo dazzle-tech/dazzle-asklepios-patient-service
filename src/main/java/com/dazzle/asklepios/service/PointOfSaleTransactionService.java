@@ -18,6 +18,7 @@ import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleEntryMode;
 import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleSourceType;
 import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleTransactionStatus;
 import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleTransactionType;
+import com.dazzle.asklepios.repository.BillingPaymentTransactionRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.PointOfSaleCheckInRepository;
@@ -57,6 +58,7 @@ public class PointOfSaleTransactionService {
     private final PointOfSaleWebhookLogService pointOfSaleWebhookLogService;
     private final NamiCloudClient namiCloudClient;
     private final BillingPaymentService billingPaymentService;
+    private final BillingPaymentTransactionRepository billingPaymentTransactionRepository;
 
     public PointOfSaleTransactionDTO purchase(
             CreatePointOfSaleTransactionDTO request
@@ -293,7 +295,8 @@ public class PointOfSaleTransactionService {
 
     @Transactional
     public void processWebhook(
-            PointOfSaleWebhookDTO webhook
+            PointOfSaleWebhookDTO webhook,
+            String token
     ) {
 
         LOG.info(
@@ -315,6 +318,31 @@ public class PointOfSaleTransactionService {
                                         "notFound"
                                 )
                         );
+
+        String expectedToken =
+                transaction.getConfiguration() != null
+                        ? transaction.getConfiguration().getWebhookToken()
+                        : null;
+
+        if (
+                expectedToken == null ||
+                        expectedToken.isBlank() ||
+                        !expectedToken.equals(token)
+        ) {
+
+            LOG.warn(
+                    "Webhook Rejected - Invalid Token. InternalId={}, ExternalTransactionId={}",
+                    transaction.getId(),
+                    transaction.getExternalTransactionId()
+            );
+
+            throw new BadRequestAlertException(
+                    "Invalid webhook token",
+                    "pointOfSaleTransaction",
+                    "invalidWebhookToken"
+            );
+        }
+
         pointOfSaleWebhookLogService.create(
                 transaction,
                 webhook
@@ -693,6 +721,32 @@ public class PointOfSaleTransactionService {
                     "Only approved transactions can be completed",
                     "pointOfSaleTransaction",
                     "notApproved"
+            );
+        }
+
+        boolean alreadyPaid =
+                transaction.getExternalTransactionId() != null &&
+                        !billingPaymentTransactionRepository
+                                .findAllByProcessorReferenceInAndStatus(
+                                        List.of(
+                                                transaction.getExternalTransactionId()
+                                        ),
+                                        BillingPaymentTransactionStatus.SUCCESS
+                                )
+                                .isEmpty();
+
+        if (alreadyPaid) {
+
+            LOG.info(
+                    "POS transaction already has a successful payment, refusing to complete again. InternalId={}, ExternalTransactionId={}",
+                    transaction.getId(),
+                    transaction.getExternalTransactionId()
+            );
+
+            throw new BadRequestAlertException(
+                    "This transaction already has a completed payment",
+                    "pointOfSaleTransaction",
+                    "alreadyPaid"
             );
         }
 

@@ -17,7 +17,7 @@ class InvestigationResultsPdfRendererTest {
     private final InvestigationResultsPdfRenderer renderer = new InvestigationResultsPdfRenderer();
 
     @Test
-    void keepsPdfWhenWithinOneMegabyte() {
+    void keepsPdfWhenWithinTenMegabytes() {
         byte[] pdf = renderer.render(sampleReport());
 
         Attachment attachment = renderer.attachmentFor(pdf);
@@ -29,8 +29,8 @@ class InvestigationResultsPdfRendererTest {
     }
 
     @Test
-    void zipsPdfWhenLargerThanOneMegabyte() throws Exception {
-        byte[] pdf = new byte[1_000_001];
+    void zipsPdfWhenLargerThanTenMegabytes() throws Exception {
+        byte[] pdf = new byte[10_000_001];
         pdf[0] = '%';
         pdf[1] = 'P';
         pdf[2] = 'D';

@@ -116,6 +116,7 @@ public class   ClaimEncounterCopyService {
         copy.setChiefComplaint(encounter.getChiefComplaint());
         copy.setHistoryOfPresentIllness(encounter.getHistoryOfPresentIllness());
         copy.setPhysicalExamination(encounter.getPhysicalExaminationSummery());
+        copy.setInvestigationNotPerformedReason(encounter.getInvestigationNotPerformedReason());
         encounterAssessmentRepository
                 .findTopByEncounterIdOrderByCreatedDateDesc(encounter.getId())
                 .map(EncounterAssessment::getAssessment)
@@ -220,7 +221,8 @@ public class   ClaimEncounterCopyService {
                 copy.getBloodPressureSystolic(),
                 copy.getBloodPressureDiastolic(),
                 copy.getHeight(),
-                copy.getWeight()
+                copy.getWeight(),
+                copy.getInvestigationNotPerformedReason()
         );
     }
     @Transactional
@@ -250,6 +252,7 @@ public class   ClaimEncounterCopyService {
         copy.setBloodPressureDiastolic(request.bloodPressureDiastolic());
         copy.setHeight(request.height());
         copy.setWeight(request.weight());
+        copy.setInvestigationNotPerformedReason(request.investigationNotPerformedReason());
 
         return mapToResponse(claimEncounterCopyRepository.save(copy));
     }
@@ -266,6 +269,8 @@ public class   ClaimEncounterCopyService {
                         .type(diagnosis.getType())
                         .suspected(diagnosis.getSuspected())
                         .major(diagnosis.getMajor())
+                        .originalCreatedBy(diagnosis.getCreatedBy())
+                        .originalCreatedDate(diagnosis.getCreatedDate())
                         .build())
                 .toList();
 
@@ -288,6 +293,8 @@ public class   ClaimEncounterCopyService {
                                 .encounterId(encounterId)
                                 .progressNoteId(progressNote.getId())
                                 .noteText(progressNote.getNoteText())
+                                .originalCreatedBy(progressNote.getCreatedBy())
+                                .originalCreatedDate(progressNote.getCreatedDate())
                                 .build())
                         .toList();
 
@@ -307,6 +314,8 @@ public class   ClaimEncounterCopyService {
 
                     copy.setClaimEncounterCopyId(claimEncounterCopyId);
                     copy.setSocialHistoryId(socialHistory.getId());
+                    copy.setOriginalCreatedBy(socialHistory.getCreatedBy());
+                    copy.setOriginalCreatedDate(socialHistory.getCreatedDate());
 
                     copy.setIsCurrentSmoker(socialHistory.getIsCurrentSmoker());
                     copy.setSmokeStartDate(socialHistory.getSmokeStartDate());
@@ -361,6 +370,8 @@ public class   ClaimEncounterCopyService {
 
                     copy.setClaimEncounterCopyId(claimEncounterCopyId);
                     copy.setSurgicalHistoryId(surgicalHistory.getId());
+                    copy.setOriginalCreatedBy(surgicalHistory.getCreatedBy());
+                    copy.setOriginalCreatedDate(surgicalHistory.getCreatedDate());
 
                     copy.setSurgery(surgicalHistory.getSurgery());
                     copy.setDateOfSurgery(
@@ -418,6 +429,8 @@ public class   ClaimEncounterCopyService {
                     copy.setPatientProblemId(
                             patientProblem.getId()
                     );
+                    copy.setOriginalCreatedBy(patientProblem.getCreatedBy());
+                    copy.setOriginalCreatedDate(patientProblem.getCreatedDate());
 
                     copy.setCondition(
                             patientProblem.getCondition()
@@ -485,6 +498,8 @@ public class   ClaimEncounterCopyService {
                     copy.setFamilyHistoryId(
                             familyHistory.getId()
                     );
+                    copy.setOriginalCreatedBy(familyHistory.getCreatedBy());
+                    copy.setOriginalCreatedDate(familyHistory.getCreatedDate());
 
                     copy.setCondition(
                             familyHistory.getCondition()
@@ -531,6 +546,8 @@ public class   ClaimEncounterCopyService {
 
                     copy.setClaimEncounterCopyId(claimEncounterCopyId);
                     copy.setHospitalizationId(hospitalization.getId());
+                    copy.setOriginalCreatedBy(hospitalization.getCreatedBy());
+                    copy.setOriginalCreatedDate(hospitalization.getCreatedDate());
 
                     copy.setFacility(hospitalization.getFacility());
                     copy.setReason(hospitalization.getReason());
@@ -576,6 +593,8 @@ public class   ClaimEncounterCopyService {
 
                     copy.setClaimEncounterCopyId(claimEncounterCopyId);
                     copy.setCurrentMedicationId(currentMedication.getId());
+                    copy.setOriginalCreatedBy(currentMedication.getCreatedBy());
+                    copy.setOriginalCreatedDate(currentMedication.getCreatedDate());
                     copy.setActiveIngredientId(
                             currentMedication.getActiveIngredientId()
                     );
@@ -630,6 +649,8 @@ public class   ClaimEncounterCopyService {
 
                     copy.setClaimEncounterCopyId(claimEncounterCopyId);
                     copy.setDiagnosticOrderTestResultId(result.getId());
+                    copy.setOriginalCreatedBy(result.getCreatedBy());
+                    copy.setOriginalCreatedDate(result.getCreatedDate());
                     copy.setOrderTestId(result.getOrderTestId());
                     copy.setProfileTestId(result.getProfileTestId());
                     copy.setResultValueNumber(result.getResultValueNumber());
@@ -679,6 +700,8 @@ public class   ClaimEncounterCopyService {
 
                     copy.setClaimEncounterCopyId(claimEncounterCopyId);
                     copy.setDiagnosticOrderTestReportId(report.getId());
+                    copy.setOriginalCreatedBy(report.getCreatedBy());
+                    copy.setOriginalCreatedDate(report.getCreatedDate());
                     copy.setOrderTestId(report.getOrderTestId());
                     copy.setReport(report.getReport());
                     copy.setRadiologistInformation(report.getRadiologistInformation());

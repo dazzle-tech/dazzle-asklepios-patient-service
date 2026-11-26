@@ -4,5 +4,7 @@ public enum FinancialDocumentType {
     INVOICE,
     CREDIT_NOTE,
     DEBIT_NOTE,
-    RECEIPT
+    RECEIPT,
+    PAYMENT,
+    REFUND
 }

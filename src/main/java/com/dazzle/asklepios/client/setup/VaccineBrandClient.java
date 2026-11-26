@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.client.setup;
 
 
+import com.dazzle.asklepios.client.setup.dto.VaccineBrandSetupDTO;
 import com.dazzle.asklepios.config.SetupServiceFeignConfig;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.ResponseEntity;
@@ -12,5 +13,8 @@ public interface VaccineBrandClient {
 
     @GetMapping("/api/setup/vaccine-brands/{id}")
     ResponseEntity<Void> existsVaccineBrand(@PathVariable Long id);
+
+    @GetMapping("/api/setup/vaccine-brands/{id}")
+    VaccineBrandSetupDTO getVaccineBrand(@PathVariable("id") Long id);
 
     }

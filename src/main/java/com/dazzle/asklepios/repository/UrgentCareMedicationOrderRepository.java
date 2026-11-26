@@ -27,4 +27,6 @@ public interface UrgentCareMedicationOrderRepository extends JpaRepository<Urgen
             Collection<MedicationOrderStatus> statuses,
             Pageable pageable
     );
+
+    List<UrgentCareMedicationOrder> findByOrderGroupIdOrderByDoseTimeAscIdAsc(Long orderGroupId);
 }

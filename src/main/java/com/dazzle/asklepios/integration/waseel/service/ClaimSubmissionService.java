@@ -1,5 +1,7 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
+import com.dazzle.asklepios.domain.ClaimEncounterCopyDiagnosticOrderTestReport;
+import com.dazzle.asklepios.domain.ClaimEncounterCopyDiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.ClaimItem;
 import com.dazzle.asklepios.domain.ClaimRequest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
@@ -31,6 +33,8 @@ import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimUploadRespon
 import com.dazzle.asklepios.integration.waseel.event.InsuranceInvoiceIssuedEvent;
 import com.dazzle.asklepios.client.setup.dto.NphiesPayerDTO;
 import com.dazzle.asklepios.client.setup.dto.PayorDTO;
+import com.dazzle.asklepios.repository.ClaimEncounterCopyDiagnosticOrderTestReportRepository;
+import com.dazzle.asklepios.repository.ClaimEncounterCopyDiagnosticOrderTestResultRepository;
 import com.dazzle.asklepios.repository.ClaimItemRepository;
 import com.dazzle.asklepios.repository.ClaimRequestRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
@@ -112,6 +116,8 @@ public class ClaimSubmissionService {
     private final FinancialDocumentItemRepository financialDocumentItemRepository;
     private final PatientServiceAndProductRepository patientServiceAndProductRepository;
     private final DiagnosticOrderTestRepository diagnosticOrderTestRepository;
+    private final ClaimEncounterCopyDiagnosticOrderTestResultRepository claimEncounterCopyDiagnosticOrderTestResultRepository;
+    private final ClaimEncounterCopyDiagnosticOrderTestReportRepository claimEncounterCopyDiagnosticOrderTestReportRepository;
     private final WaseelClaimClassification waseelClaimClassification;
     private final PatientActivityService patientActivityService;
 
@@ -135,6 +141,8 @@ public class ClaimSubmissionService {
             FinancialDocumentItemRepository financialDocumentItemRepository,
             PatientServiceAndProductRepository patientServiceAndProductRepository,
             DiagnosticOrderTestRepository diagnosticOrderTestRepository,
+            ClaimEncounterCopyDiagnosticOrderTestResultRepository claimEncounterCopyDiagnosticOrderTestResultRepository,
+            ClaimEncounterCopyDiagnosticOrderTestReportRepository claimEncounterCopyDiagnosticOrderTestReportRepository,
             WaseelClaimClassification waseelClaimClassification,
             PatientActivityService patientActivityService
     ) {
@@ -157,6 +165,8 @@ public class ClaimSubmissionService {
         this.financialDocumentItemRepository = financialDocumentItemRepository;
         this.patientServiceAndProductRepository = patientServiceAndProductRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
+        this.claimEncounterCopyDiagnosticOrderTestResultRepository = claimEncounterCopyDiagnosticOrderTestResultRepository;
+        this.claimEncounterCopyDiagnosticOrderTestReportRepository = claimEncounterCopyDiagnosticOrderTestReportRepository;
         this.waseelClaimClassification = waseelClaimClassification;
         this.patientActivityService = patientActivityService;
     }
@@ -328,7 +338,7 @@ public class ClaimSubmissionService {
             Instant fromDate,
             Instant toDate
     ) {
-        return listPendingInsuranceInvoices(payorId, null, fromDate, toDate, null, null, null, null);
+        return listPendingInsuranceInvoices(payorId, null, fromDate, toDate, null, null, null, null, null, null);
     }
 
     @Transactional(readOnly = true)
@@ -338,7 +348,18 @@ public class ClaimSubmissionService {
             Instant fromDate,
             Instant toDate
     ) {
-        return listPendingInsuranceInvoices(payorId, payerNphiesId, fromDate, toDate, null, null, null, null);
+        return listPendingInsuranceInvoices(
+                payorId,
+                payerNphiesId,
+                fromDate,
+                toDate,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
     }
 
     @Transactional(readOnly = true)
@@ -350,18 +371,29 @@ public class ClaimSubmissionService {
             LocalDate encounterDateFrom,
             LocalDate encounterDateTo,
             WaseelClaimType claimType,
-            WaseelClaimSubType claimSubType
+            WaseelClaimSubType claimSubType,
+            String medicalRecordNumber,
+            String encounterNumber
     ) {
         waseelClaimClassification.assertTypeAndSubType(claimType, claimSubType);
 
         Instant from = fromDate != null ? fromDate : Instant.EPOCH;
         Instant to = toDate != null ? toDate : Instant.parse("9999-12-31T00:00:00Z");
-        List<String> nphiesIds = resolvePayerNphiesIds(payorId, payerNphiesId);
-        boolean useNphiesFilter = nphiesIds.stream().anyMatch(this::isNphiesCode);
-        Long resolvedPayorId = payorId != null ? payorId : -1L;
+        Long linkedPayorId = payorHelper.resolvePayorId(payorId, payerNphiesId);
+        Long resolvedPayorId = linkedPayorId != null
+                ? linkedPayorId
+                : (payorId != null && payorId > 0 ? payorId : -1L);
+        List<String> nphiesIds = resolvePayerNphiesIds(
+                linkedPayorId != null ? linkedPayorId : payorId,
+                payerNphiesId
+        );
+        boolean useNphiesFilter = nphiesIds.stream().anyMatch(id -> id != null && !id.isBlank());
+
+        String mrn = claimSearchToken(medicalRecordNumber);
+        String encounterNo = claimSearchToken(encounterNumber);
 
         log.info(
-                "[CLAIM_BATCH] Listing pending invoices payorId={} payerNphiesId={} nphiesIds={} from={} to={} type={} subType={} encounterDateFrom={} encounterDateTo={}",
+                "[CLAIM_BATCH] Listing pending invoices payorId={} payerNphiesId={} nphiesIds={} from={} to={} type={} subType={} encounterDateFrom={} encounterDateTo={} mrn={} encounterNumber={}",
                 payorId,
                 payerNphiesId,
                 nphiesIds,
@@ -370,7 +402,9 @@ public class ClaimSubmissionService {
                 claimType,
                 claimSubType,
                 encounterDateFrom,
-                encounterDateTo
+                encounterDateTo,
+                mrn,
+                encounterNo
         );
 
         List<FinancialDocument> invoices = financialDocumentRepository.findPendingInsuranceClaimInvoices(
@@ -383,7 +417,9 @@ public class ClaimSubmissionService {
                         encounterDateTo,
                         CLAIMABLE_INVOICE_STATUSES.stream().map(Enum::name).toList(),
                         ACTIVE_STATUSES.stream().map(Enum::name).toList(),
-                        claimType.name()
+                        claimType.name(),
+                        mrn,
+                        encounterNo
                 )
                 .stream()
                 .filter(invoice -> belongsToSelectedPayor(invoice, resolvedPayorId, nphiesIds, useNphiesFilter))
@@ -402,6 +438,8 @@ public class ClaimSubmissionService {
             LocalDate encounterDateTo,
             WaseelClaimType claimType,
             WaseelClaimSubType claimSubType,
+            String medicalRecordNumber,
+            String encounterNumber,
             Pageable pageable
     ) {
         List<PendingClaimInvoiceResponse> rows = listPendingInsuranceInvoices(
@@ -412,7 +450,9 @@ public class ClaimSubmissionService {
                 encounterDateFrom,
                 encounterDateTo,
                 claimType,
-                claimSubType
+                claimSubType,
+                medicalRecordNumber,
+                encounterNumber
         );
         Page<PendingClaimInvoiceResponse> page = toPage(rows, pageable);
         log.info(
@@ -423,6 +463,18 @@ public class ClaimSubmissionService {
                 page.getTotalElements()
         );
         return page;
+    }
+
+    private String claimSearchToken(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+
+        return value.trim()
+                .toLowerCase()
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, rollbackFor = Exception.class)
@@ -607,24 +659,21 @@ public class ClaimSubmissionService {
                 .map(PatientEncounter::getPatientInsuranceId)
                 .flatMap(patientInsuranceRepository::findById)
                 .map(insurance -> {
-                    if (useNphiesFilter) {
-                        String insuranceNphiesId = insurance.getPayerNphiesId();
-                        return insuranceNphiesId != null
-                                && nphiesIds.contains(insuranceNphiesId.toLowerCase(java.util.Locale.ROOT));
-                    }
-
-                    return selectedPayorId != null
+                    Long linkedPayorId = payorHelper.resolvePayorId(
+                            insurance.getPayorId(),
+                            insurance.getPayerNphiesId()
+                    );
+                    boolean samePayor = selectedPayorId != null
                             && selectedPayorId > 0
-                            && selectedPayorId.equals(insurance.getPayorId());
+                            && (selectedPayorId.equals(insurance.getPayorId())
+                            || selectedPayorId.equals(linkedPayorId));
+                    String insuranceNphiesId = insurance.getPayerNphiesId();
+                    boolean sameCompany = useNphiesFilter
+                            && insuranceNphiesId != null
+                            && nphiesIds.contains(insuranceNphiesId.toLowerCase(java.util.Locale.ROOT));
+                    return samePayor || sameCompany;
                 })
                 .orElse(false);
-    }
-
-    private boolean isNphiesCode(String value) {
-        if (value == null || value.isBlank()) {
-            return false;
-        }
-        return value.chars().anyMatch(ch -> !Character.isDigit(ch));
     }
 
     private String resolveEncounterPayerNphiesId(Long encounterId) {
@@ -641,15 +690,10 @@ public class ClaimSubmissionService {
         return patientEncounterRepository.findById(encounterId)
                 .map(PatientEncounter::getPatientInsuranceId)
                 .flatMap(patientInsuranceRepository::findById)
-                .map(insurance -> {
-                    if (insurance.getPayorId() != null) {
-                        return insurance.getPayorId();
-                    }
-
-                    NphiesPayerDTO nphiesPayer =
-                            nphiesPayerHelper.findByNphiesId(insurance.getPayerNphiesId());
-                    return nphiesPayer == null ? null : nphiesPayer.id();
-                })
+                .map(insurance -> payorHelper.resolvePayorId(
+                        insurance.getPayorId(),
+                        insurance.getPayerNphiesId()
+                ))
                 .orElse(null);
     }
 
@@ -756,6 +800,9 @@ public class ClaimSubmissionService {
                 .collect(Collectors.toMap(Patient::getId, Function.identity()));
 
         Set<Long> unapprovedOrderTestIds = unapprovedDiagnosticOrderTestIds(productsById.values());
+        Set<Long> serviceProductIdsWithResult = serviceProductIdsWithClaimResult(productsById.values());
+        Map<Long, ClaimRequest> rejectedClaimsByInvoiceId =
+                latestRejectedClaims(invoiceIds, claimType);
 
         List<PendingClaimInvoiceResponse> results = new ArrayList<>();
         for (FinancialDocument invoice : invoices) {
@@ -791,6 +838,7 @@ public class ClaimSubmissionService {
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
             }
 
+            ClaimRequest rejectedClaim = rejectedClaimsByInvoiceId.get(invoice.getId());
             results.add(new PendingClaimInvoiceResponse(
                     invoice.getId(),
                     invoice.getDocumentNumber(),
@@ -808,11 +856,49 @@ public class ClaimSubmissionService {
                     claimSubType,
                     matchingItems.size(),
                     matchingNet.setScale(2, RoundingMode.HALF_UP),
-                    !hasUnapprovedDiagnosticResult(matchingItems, productsById, unapprovedOrderTestIds)
+                    !hasUnapprovedDiagnosticResult(
+                            matchingItems, productsById, unapprovedOrderTestIds, serviceProductIdsWithResult),
+                    rejectedClaim != null,
+                    rejectionMessage(rejectedClaim)
             ));
         }
 
         return results;
+    }
+
+    private Map<Long, ClaimRequest> latestRejectedClaims(
+            List<Long> invoiceIds,
+            WaseelClaimType claimType
+    ) {
+        if (invoiceIds == null || invoiceIds.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<Long, ClaimRequest> latestByInvoiceId = new LinkedHashMap<>();
+        for (ClaimRequest claim : claimRequestRepository.findByFinancialDocumentIdInAndStatusOrderByIdDesc(
+                invoiceIds,
+                ClaimStatus.REJECTED
+        )) {
+            if (claim.getFinancialDocumentId() == null || !matchesClaimType(claim, claimType)) {
+                continue;
+            }
+            latestByInvoiceId.putIfAbsent(claim.getFinancialDocumentId(), claim);
+        }
+        return latestByInvoiceId;
+    }
+
+    private boolean matchesClaimType(ClaimRequest claim, WaseelClaimType claimType) {
+        if (claim.getClaimType() == claimType) {
+            return true;
+        }
+        return claimType == WaseelClaimType.PROFESSIONAL && claim.getClaimType() == null;
+    }
+
+    private String rejectionMessage(ClaimRequest claim) {
+        if (claim == null || claim.getMessage() == null || claim.getMessage().isBlank()) {
+            return null;
+        }
+        return claim.getMessage().trim();
     }
 
     private Set<Long> unapprovedDiagnosticOrderTestIds(Collection<PatientServiceAndProduct> products) {
@@ -852,7 +938,8 @@ public class ClaimSubmissionService {
     private boolean hasUnapprovedDiagnosticResult(
             List<FinancialDocumentItem> items,
             Map<Long, PatientServiceAndProduct> productsById,
-            Set<Long> unapprovedOrderTestIds
+            Set<Long> unapprovedOrderTestIds,
+            Set<Long> serviceProductIdsWithResult
     ) {
         return items.stream()
                 .map(item -> item.getPatientServiceProductId() == null
@@ -860,7 +947,36 @@ public class ClaimSubmissionService {
                         : productsById.get(item.getPatientServiceProductId()))
                 .filter(this::isDiagnosticItem)
                 .anyMatch(product -> product.getSourceId() == null
-                        || unapprovedOrderTestIds.contains(product.getSourceId()));
+                        ? !serviceProductIdsWithResult.contains(product.getId())
+                        : unapprovedOrderTestIds.contains(product.getSourceId()));
+    }
+
+    /**
+     * Laboratory / radiology lines ordered from Service and Products have no order test to approve.
+     * A result or report entered for them on the claim encounter copy counts as approved.
+     */
+    private Set<Long> serviceProductIdsWithClaimResult(Collection<PatientServiceAndProduct> products) {
+        List<Long> serviceProductIds = products.stream()
+                .filter(this::isDiagnosticItem)
+                .filter(product -> product.getSourceId() == null)
+                .map(PatientServiceAndProduct::getId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (serviceProductIds.isEmpty()) {
+            return Set.of();
+        }
+
+        Set<Long> withResult = new HashSet<>();
+        claimEncounterCopyDiagnosticOrderTestResultRepository.findByPatientServiceProductIdIn(serviceProductIds)
+                .stream()
+                .map(ClaimEncounterCopyDiagnosticOrderTestResult::getPatientServiceProductId)
+                .forEach(withResult::add);
+        claimEncounterCopyDiagnosticOrderTestReportRepository.findByPatientServiceProductIdIn(serviceProductIds)
+                .stream()
+                .map(ClaimEncounterCopyDiagnosticOrderTestReport::getPatientServiceProductId)
+                .forEach(withResult::add);
+        return withResult;
     }
 
     private Set<Long> invoicesWithUnapprovedDiagnosticResults(
@@ -890,6 +1006,7 @@ public class ClaimSubmissionService {
                 .collect(Collectors.toMap(PatientServiceAndProduct::getId, Function.identity(), (a, b) -> a));
 
         Set<Long> unapprovedOrderTestIds = unapprovedDiagnosticOrderTestIds(productsById.values());
+        Set<Long> serviceProductIdsWithResult = serviceProductIdsWithClaimResult(productsById.values());
         Set<Long> blocked = new HashSet<>();
         itemsByInvoiceId.forEach((invoiceId, items) -> {
             List<FinancialDocumentItem> claimItems = items.stream()
@@ -900,7 +1017,8 @@ public class ClaimSubmissionService {
                             claimType
                     ))
                     .toList();
-            if (hasUnapprovedDiagnosticResult(claimItems, productsById, unapprovedOrderTestIds)) {
+            if (hasUnapprovedDiagnosticResult(
+                    claimItems, productsById, unapprovedOrderTestIds, serviceProductIdsWithResult)) {
                 blocked.add(invoiceId);
             }
         });

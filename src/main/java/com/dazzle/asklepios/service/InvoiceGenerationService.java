@@ -127,6 +127,7 @@ public class InvoiceGenerationService {
     private final EncounterChargeLineEnsuringService encounterChargeLineEnsuringService;
     private final EncounterBillingGuardService encounterBillingGuardService;
     private final ClaimEncounterCopyService claimEncounterCopyService;
+    private final EncounterInvestigationReasonGuard encounterInvestigationReasonGuard;
     private final PatientActivityService patientActivityService;
 
     @Transactional(readOnly = true)
@@ -176,6 +177,12 @@ public class InvoiceGenerationService {
                         ? eligibilitySnapshot.eligibilityResponseId()
                         : resolveLiveEligibilityReference(encounter);
 
+        String coverageType = resolveCoverageType(encounterId);
+        boolean eligibilityFreezeRequired =
+                "INSURANCE".equals(coverageType)
+                        && billingEligibilitySnapshotService.isEligibilityFreezeRequired(encounterId);
+        String displayCoverageType = resolveDisplayCoverageType(encounterId, coverageType);
+
         return new EncounterInvoiceDetailsResponse(
                 encounter.getId(),
                 encounter.getEncounterNumber(),
@@ -185,12 +192,13 @@ public class InvoiceGenerationService {
                 resolveBillingStatus(encounter),
                 encounter.getFinanciallyClosedAt(),
                 encounter.getFinanciallyClosedBy(),
-                resolveCoverageType(encounterId),
+                displayCoverageType,
                 encounter.getPatientInsuranceId(),
                 eligibilityReference,
                 eligibilitySnapshot,
                 mapPatientHeader(patient),
-                billingSummary
+                billingSummary,
+                eligibilityFreezeRequired
         );
     }
 
@@ -381,15 +389,12 @@ public class InvoiceGenerationService {
         }
 
         if ("INSURANCE".equals(resolveCoverageType(encounterId))) {
-            try {
-                billingEligibilitySnapshotService.ensureFrozenForEncounter(encounterId);
-            } catch (NotFoundAlertException exception) {
-                throw new BadRequestAlertException(
-                        "Insurance eligibility is required before financial closure.",
-                        ENTITY_NAME,
-                        "encounter.eligibility.required"
-                );
-            }
+            billingEligibilitySnapshotService.requireReadyForFinancialClose(encounterId);
+            encounterInvestigationReasonGuard.requireReasonWhenNoInvestigation(
+                    encounter,
+                    encounterServices,
+                    request.investigationNotPerformedReason()
+            );
         }
 
         if (hasFinalInvoice(encounterId)) {
@@ -702,10 +707,13 @@ public class InvoiceGenerationService {
                             ? money(line.getInsuranceResponsibilityAmount())
                             : money(line.getPatientResponsibilityAmount());
 
+            boolean wholeLineToPatient = false;
+
             if (subtype == FinancialDocumentSubtype.PATIENT
                     && shareAmount.signum() == 0
                     && document.getEligibilityReference() == null) {
                 shareAmount = money(line.getNetAmount());
+                wholeLineToPatient = true;
             }
 
             if (shareAmount.signum() <= 0) {
@@ -713,12 +721,26 @@ public class InvoiceGenerationService {
             }
 
             BigDecimal lineNet = money(line.getNetAmount());
-            BigDecimal grossAmount =
-                    proportional(line.getGrossAmount(), shareAmount, lineNet);
-            BigDecimal discountAmount =
-                    proportional(line.getDiscountAmount(), shareAmount, lineNet);
             BigDecimal taxAmount =
-                    proportional(line.getTaxAmount(), shareAmount, lineNet);
+                    resolveShareTax(
+                            line,
+                            subtype,
+                            shareAmount,
+                            lineNet,
+                            wholeLineToPatient
+                    );
+
+            /*
+             * Gross and discount follow the share before tax, so a party whose
+             * tax was removed still shows its full pre-tax amounts.
+             */
+            BigDecimal shareBeforeTax = shareAmount.subtract(taxAmount);
+            BigDecimal lineBeforeTax =
+                    lineNet.subtract(money(line.getTaxAmount()));
+            BigDecimal grossAmount =
+                    proportional(line.getGrossAmount(), shareBeforeTax, lineBeforeTax);
+            BigDecimal discountAmount =
+                    proportional(line.getDiscountAmount(), shareBeforeTax, lineBeforeTax);
 
             BigDecimal patientShare =
                     subtype == FinancialDocumentSubtype.PATIENT
@@ -825,6 +847,42 @@ public class InvoiceGenerationService {
                         subtype,
                         FINAL_INVOICE_STATUSES
                 );
+    }
+
+    /**
+     * Uses the tax already distributed on the charge line for the invoiced
+     * party instead of recalculating it. Lines whose party tax does not add up
+     * to the line tax (billed before the Patient Copayment / Claim Share
+     * toggles, or reshaped by a later adjustment) keep the previous
+     * proportional split.
+     */
+    private BigDecimal resolveShareTax(
+            BillingChargeLine line,
+            FinancialDocumentSubtype subtype,
+            BigDecimal shareAmount,
+            BigDecimal lineNet,
+            boolean wholeLineToPatient
+    ) {
+        BigDecimal lineTax = money(line.getTaxAmount());
+
+        if (wholeLineToPatient) {
+            return lineTax;
+        }
+
+        BigDecimal patientTax = money(line.getPatientTaxAmount());
+        BigDecimal insuranceTax = money(line.getInsuranceTaxAmount());
+
+        boolean distributed =
+                line.getCalculatedTaxAmount() != null
+                        && patientTax.add(insuranceTax).compareTo(lineTax) == 0;
+
+        if (!distributed) {
+            return proportional(line.getTaxAmount(), shareAmount, lineNet);
+        }
+
+        return subtype == FinancialDocumentSubtype.INSURANCE_CLAIM
+                ? insuranceTax
+                : patientTax;
     }
 
     private BigDecimal proportional(
@@ -1031,6 +1089,32 @@ public class InvoiceGenerationService {
                 encounterId,
                 FinancialDocumentSubtype.PATIENT
         );
+    }
+
+    /**
+     * An insurance visit whose lines wait for pre-approval, or for the patient's choice
+     * after a rejection / partial approval, has no insurance responsibility yet.
+     * The billing screen still shows it as insurance so the pre-authorization actions
+     * stay available. Invoice logic keeps using {@link #resolveCoverageType(Long)}.
+     */
+    private String resolveDisplayCoverageType(Long encounterId, String coverageType) {
+        if ("INSURANCE".equals(coverageType)) {
+            return coverageType;
+        }
+
+        boolean hasLineAwaitingApproval =
+                patientServiceAndProductRepository
+                        .existsByEncounterIdAndPatientInsuranceIdIsNotNullAndPreAuthorizationStatusInAndPaymentStatusNot(
+                                encounterId,
+                                EnumSet.of(
+                                        PreAuthorizationStatus.PENDING_APPROVAL,
+                                        PreAuthorizationStatus.PARTIAL,
+                                        PreAuthorizationStatus.REJECTED
+                                ),
+                                PaymentStatus.CANCELLED
+                        );
+
+        return hasLineAwaitingApproval ? "INSURANCE" : coverageType;
     }
 
     private String resolveCoverageType(Long encounterId) {

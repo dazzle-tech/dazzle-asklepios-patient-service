@@ -1,20 +1,27 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
 import com.dazzle.asklepios.client.radiologyImage.PacsIntegrationClient;
+import com.dazzle.asklepios.client.setup.dto.DepartmentDTO;
 import com.dazzle.asklepios.domain.DiagnosticOrder;
 import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestReport;
+import com.dazzle.asklepios.domain.DiagnosticTest;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.RadiologyImageStatus;
 import com.dazzle.asklepios.domain.enumeration.Severity;
 import com.dazzle.asklepios.domain.enumeration.TestType;
+import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.repository.DiagnosticOrderRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportCommentsRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestReportRepository;
 import com.dazzle.asklepios.repository.DiagnosticOrderTestRepository;
+import com.dazzle.asklepios.repository.DiagnosticTestRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
+import com.dazzle.asklepios.service.helper.DepartmentHelper;
+import com.dazzle.asklepios.service.helper.NotificationHelper;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportCreateDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportRejectDTO;
 import com.dazzle.asklepios.service.dto.radiology.DiagnosticOrderTestReportReviewDTO;
@@ -39,9 +46,13 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Service layer for managing {@link DiagnosticOrderTestReport}.
@@ -66,6 +77,9 @@ public class DiagnosticOrderTestReportService {
     private final DiagnosticOrderStatusService diagnosticOrderStatusService;
     private final DiagnosticOrderTestStatusService diagnosticOrderTestStatusService;
     private final DiagnosticOrderTestReportCommentsRepository diagnosticOrderTestReportCommentsRepository;
+    private final NotificationHelper notificationHelper;
+    private final DepartmentHelper departmentHelper;
+    private final DiagnosticTestRepository diagnosticTestRepository;
 
     public DiagnosticOrderTestReportService(
             DiagnosticOrderTestReportRepository diagnosticOrderTestReportRepository,
@@ -75,7 +89,10 @@ public class DiagnosticOrderTestReportService {
             PacsIntegrationClient pacsIntegrationService, DiagnosticOrderTestService diagnosticOrderTestService,
             DiagnosticOrderStatusService diagnosticOrderStatusService,
             DiagnosticOrderTestStatusService diagnosticOrderTestStatusService,
-            DiagnosticOrderTestReportCommentsRepository diagnosticOrderTestReportCommentsRepository
+            DiagnosticOrderTestReportCommentsRepository diagnosticOrderTestReportCommentsRepository,
+            NotificationHelper notificationHelper,
+            DepartmentHelper departmentHelper,
+            DiagnosticTestRepository diagnosticTestRepository
     ) {
         this.diagnosticOrderTestReportRepository = diagnosticOrderTestReportRepository;
         this.diagnosticOrderTestRepository = diagnosticOrderTestRepository;
@@ -86,6 +103,9 @@ public class DiagnosticOrderTestReportService {
         this.diagnosticOrderStatusService = diagnosticOrderStatusService;
         this.diagnosticOrderTestStatusService = diagnosticOrderTestStatusService;
         this.diagnosticOrderTestReportCommentsRepository = diagnosticOrderTestReportCommentsRepository;
+        this.notificationHelper = notificationHelper;
+        this.departmentHelper = departmentHelper;
+        this.diagnosticTestRepository = diagnosticTestRepository;
     }
 
     private String currentUsername() {
@@ -93,9 +113,9 @@ public class DiagnosticOrderTestReportService {
         if (username == null) {
             LOG.warn("[DiagnosticOrderTestReportService] AUTH - unauthenticated request");
             throw new BadRequestAlertException(
-                    "unauthenticated",
+                    "No authenticated user",
                     "diagnostic_order_tests_report",
-                    "No authenticated user"
+                    "unauthenticated"
             );
         }
         return username;
@@ -106,9 +126,9 @@ public class DiagnosticOrderTestReportService {
                 .orElseThrow(() -> {
                     LOG.warn("[DiagnosticOrderTestReportService] REQUIRE_RADIOLOGY_TEST - test not found. testId={}", testId);
                     return new BadRequestAlertException(
-                            "notfound_or_not_radiology",
+                            "Radiology DiagnosticOrderTest not found with id " + testId,
                             "diagnostic_order_tests",
-                            "Radiology DiagnosticOrderTest not found with id " + testId
+                            "notfound_or_not_radiology"
                     );
                 });
 
@@ -116,9 +136,9 @@ public class DiagnosticOrderTestReportService {
             LOG.warn("[DiagnosticOrderTestReportService] REQUIRE_RADIOLOGY_TEST - test is not radiology. testId={} orderType={}",
                     testId, test.getOrderType());
             throw new BadRequestAlertException(
-                    "notfound_or_not_radiology",
+                    "Radiology DiagnosticOrderTest not found with id " + testId,
                     "diagnostic_order_tests",
-                    "Radiology DiagnosticOrderTest not found with id " + testId
+                    "notfound_or_not_radiology"
             );
         }
 
@@ -131,9 +151,9 @@ public class DiagnosticOrderTestReportService {
         LOG.debug("[DiagnosticOrderTestReportService] RECOMPUTE_ORDER_STATUS - start. orderTestId={}", orderTestId);
         DiagnosticOrderTest test = diagnosticOrderTestRepository.findById(orderTestId)
                 .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
+                        "DiagnosticOrderTest not found with id " + orderTestId,
                         "diagnostic_order_tests",
-                        "DiagnosticOrderTest not found with id " + orderTestId
+                        "notfound"
                 ));
         diagnosticOrderStatusService.recomputeLabRadStatuses(test.getOrderId());
         LOG.debug("[DiagnosticOrderTestReportService] RECOMPUTE_ORDER_STATUS - done. orderTestId={} orderId={}",
@@ -155,16 +175,16 @@ public class DiagnosticOrderTestReportService {
 
 
         if (orderTest.getProcessingStatus() != DiagnosticStatus.ACCEPTED) {
-            throw new BadRequestAlertException("not_accepted", "diagnostic_order_tests",
-                    "Radiology orderTest must be ACCEPTED before creating report");
+            throw new BadRequestAlertException("Radiology orderTest must be ACCEPTED before creating report", "diagnostic_order_tests",
+                    "not_accepted");
         }
 
         diagnosticOrderTestReportRepository.findByOrderTestId(reportCreateDTO.orderTestId())
                 .ifPresent(existing -> {
                     throw new BadRequestAlertException(
-                            "already_exists",
+                            "Report already exists for this Test=" + reportCreateDTO.orderTestId(),
                             "diagnostic_order_tests_report",
-                            "Report already exists for this Test=" + reportCreateDTO.orderTestId()
+                            "already_exists"
                     );
                 });
 
@@ -195,9 +215,9 @@ public class DiagnosticOrderTestReportService {
         LOG.debug("[DiagnosticOrderTestReportService] UPDATE_RADIOLOGY_REPORT - start. reportId={} payload={}", reportId, orderTestReportUpdateDTO);
         DiagnosticOrderTestReport report = diagnosticOrderTestReportRepository.findById(reportId)
                 .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
+                        "Report not found with id " + reportId,
                         "diagnostic_order_tests_report",
-                        "Report not found with id " + reportId
+                        "notfound"
                 ));
 
         requireRadiologyTest(report.getOrderTestId());
@@ -207,9 +227,9 @@ public class DiagnosticOrderTestReportService {
                 LOG.warn("[DiagnosticOrderTestReportService] UPDATE_RADIOLOGY_REPORT - report text update blocked. reportId={} orderTestId={} imageStatus={}",
                         reportId, report.getOrderTestId(), report.getImageStatus());
                 throw new BadRequestAlertException(
-                        "invalid_state",
+                        "Cannot write report before image is FINISHED",
                         "diagnostic_order_tests_report",
-                        "Cannot write report before image is FINISHED"
+                        "invalid_state"
                 );
             }
         }
@@ -248,10 +268,10 @@ public class DiagnosticOrderTestReportService {
                 diagnosticOrderTestReportRepository
                         .findByOrderTestId(orderTestReportReviewDTO.orderTestId())
                         .orElseThrow(() -> new BadRequestAlertException(
-                                "notfound",
-                                "diagnostic_order_tests_report",
                                 "Report not found for orderTestId "
-                                        + orderTestReportReviewDTO.orderTestId()
+                                        + orderTestReportReviewDTO.orderTestId(),
+                                "diagnostic_order_tests_report",
+                                "notfound"
                         ));
 
         String currentUser = currentUsername();
@@ -277,6 +297,10 @@ public class DiagnosticOrderTestReportService {
         DiagnosticOrderTestReport saved =
                 diagnosticOrderTestReportRepository.save(report);
 
+        if (saved.getReviewDate() != null) {
+            notificationForRadiologyResultReviewed(saved);
+        }
+
         recomputeOrderStatusesByOrderTestId(saved.getOrderTestId());
 
         LOG.debug("[DiagnosticOrderTestReportService] TOGGLE_REVIEW_RADIOLOGY_REPORT - done. reportId={} orderTestId={}",
@@ -291,9 +315,9 @@ public class DiagnosticOrderTestReportService {
 
         DiagnosticOrderTestReport report = diagnosticOrderTestReportRepository.findByOrderTestId(orderTestReportRejectDTO.orderTestId())
                 .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
+                        "Report not found for orderTestId " + orderTestReportRejectDTO.orderTestId(),
                         "diagnostic_order_tests_report",
-                        "Report not found for orderTestId " + orderTestReportRejectDTO.orderTestId()
+                        "notfound"
                 ));
 
         report.setRejectedBy(currentUsername());
@@ -316,9 +340,9 @@ public class DiagnosticOrderTestReportService {
 
         if (test.getProcessingStatus() != DiagnosticStatus.ACCEPTED) {
             throw new BadRequestAlertException(
-                    "not_accepted",
+                    "Radiology test must be ACCEPTED before starting imaging",
                     "diagnostic_order_tests",
-                    "Radiology test must be ACCEPTED before starting imaging"
+                    "not_accepted"
             );
         }
 
@@ -353,9 +377,9 @@ public class DiagnosticOrderTestReportService {
 
         diagnosticOrderTestReportRepository.findByOrderTestId(testId)
                 .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
+                        "Report not found for orderTestId " + testId,
                         "diagnostic_order_tests_report",
-                        "Report not found for orderTestId " + testId
+                        "notfound"
                 ));
 
         RadiologyImageStatusResponseVM response = setImageStatusByReport(testId, RadiologyImageStatus.PAUSED);
@@ -370,9 +394,9 @@ public class DiagnosticOrderTestReportService {
 
         diagnosticOrderTestReportRepository.findByOrderTestId(testId)
                 .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
+                        "Report not found for orderTestId " + testId,
                         "diagnostic_order_tests_report",
-                        "Report not found for orderTestId " + testId
+                        "notfound"
                 ));
 
         RadiologyImageStatusResponseVM response = setImageStatusByReport(testId, RadiologyImageStatus.RESUMED);
@@ -387,9 +411,9 @@ public class DiagnosticOrderTestReportService {
 
         diagnosticOrderTestReportRepository.findByOrderTestId(testId)
                 .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
+                        "Report not found for orderTestId " + testId,
                         "diagnostic_order_tests_report",
-                        "Report not found for orderTestId " + testId
+                        "notfound"
                 ));
 
         RadiologyImageStatusResponseVM vm = setImageStatusByReport(testId, RadiologyImageStatus.FINISHED);
@@ -405,9 +429,9 @@ public class DiagnosticOrderTestReportService {
         LOG.debug("[DiagnosticOrderTestReportService] APPROVE_RADIOLOGY_REPORT - start. reportId={}", reportId);
         DiagnosticOrderTestReport report = diagnosticOrderTestReportRepository.findById(reportId)
                 .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
+                        "Report not found with id " + reportId,
                         "diagnostic_order_tests_report",
-                        "Report not found with id " + reportId
+                        "notfound"
                 ));
 
         requireRadiologyTest(report.getOrderTestId());
@@ -432,9 +456,9 @@ public class DiagnosticOrderTestReportService {
         LOG.debug("[DiagnosticOrderTestReportService] SECOND_APPROVE_RADIOLOGY_REPORT - start. reportId={}", reportId);
         DiagnosticOrderTestReport report = diagnosticOrderTestReportRepository.findById(reportId)
                 .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
+                        "Report not found with id " + reportId,
                         "diagnostic_order_tests_report",
-                        "Report not found with id " + reportId
+                        "notfound"
                 ));
 
         requireRadiologyTest(report.getOrderTestId());
@@ -443,9 +467,9 @@ public class DiagnosticOrderTestReportService {
             LOG.warn("[DiagnosticOrderTestReportService] SECOND_APPROVE_RADIOLOGY_REPORT - first approval missing. reportId={} orderTestId={}",
                     reportId, report.getOrderTestId());
             throw new BadRequestAlertException(
-                    "first_approve_required",
+                    "First approve is required before second approve",
                     "diagnostic_order_tests_report",
-                    "First approve is required before second approve"
+                    "first_approve_required"
             );
         }
 
@@ -453,9 +477,9 @@ public class DiagnosticOrderTestReportService {
             LOG.warn("[DiagnosticOrderTestReportService] SECOND_APPROVE_RADIOLOGY_REPORT - already second approved. reportId={} orderTestId={} secondApprovedBy={}",
                     reportId, report.getOrderTestId(), report.getSecondApprovedBy());
             throw new BadRequestAlertException(
-                    "already_second_approved",
+                    "Report already second approved",
                     "diagnostic_order_tests_report",
-                    "Report already second approved"
+                    "already_second_approved"
             );
         }
 
@@ -465,9 +489,9 @@ public class DiagnosticOrderTestReportService {
             LOG.warn("[DiagnosticOrderTestReportService] SECOND_APPROVE_RADIOLOGY_REPORT - same user attempted second approval. reportId={} user={}",
                     reportId, currentUser);
             throw new BadRequestAlertException(
-                    "same_user_not_allowed",
+                    "Second approve must be performed by a different user",
                     "diagnostic_order_tests_report",
-                    "Second approve must be performed by a different user"
+                    "same_user_not_allowed"
             );
         }
 
@@ -487,9 +511,9 @@ public class DiagnosticOrderTestReportService {
         LOG.debug("[DiagnosticOrderTestReportService] SET_IMAGE_STATUS - start. orderTestId={} imageStatusTo={}", orderTestId, imageStatusTo);
         DiagnosticOrderTestReport report = diagnosticOrderTestReportRepository.findByOrderTestId(orderTestId)
                 .orElseThrow(() -> new BadRequestAlertException(
-                        "notfound",
+                        "Report not found for orderTestId " + orderTestId,
                         "diagnostic_order_tests_report",
-                        "Report not found for orderTestId " + orderTestId
+                        "notfound"
                 ));
 
         ensureImageTransitionAllowed(report.getImageStatus(), imageStatusTo);
@@ -529,13 +553,13 @@ public class DiagnosticOrderTestReportService {
 
         if (imageStatusFrom == null) {
             LOG.warn("[DiagnosticOrderTestReportService] ENSURE_IMAGE_TRANSITION_ALLOWED - missing current image status. target={}", imageStatusTo);
-            throw new BadRequestAlertException("missing_state", "diagnostic_order_tests_report", "Image status is missing");
+            throw new BadRequestAlertException("Image status is missing", "diagnostic_order_tests_report", "missing_state");
         }
 
         if (imageStatusFrom == RadiologyImageStatus.FINISHED) {
             LOG.warn("[DiagnosticOrderTestReportService] ENSURE_IMAGE_TRANSITION_ALLOWED - transition blocked because workflow finished. from={} to={}",
                     imageStatusFrom, imageStatusTo);
-            throw new BadRequestAlertException("invalid_transition", "diagnostic_order_tests_report", "Image workflow already finished");
+            throw new BadRequestAlertException("Image workflow already finished", "diagnostic_order_tests_report", "invalid_transition");
         }
 
         boolean ok =
@@ -549,9 +573,9 @@ public class DiagnosticOrderTestReportService {
     private BadRequestAlertException invalidImageTransition(RadiologyImageStatus from, RadiologyImageStatus to) {
         LOG.warn("[DiagnosticOrderTestReportService] ENSURE_IMAGE_TRANSITION_ALLOWED - invalid transition. from={} to={}", from, to);
         return new BadRequestAlertException(
-                "invalid_transition",
+                "Invalid transition " + from + " -> " + to,
                 "diagnostic_order_tests_report",
-                "Invalid transition " + from + " -> " + to
+                "invalid_transition"
         );
     }
 
@@ -797,8 +821,9 @@ public class DiagnosticOrderTestReportService {
         Page<DiagnosticOrderTestReport> page =
                 diagnosticOrderTestReportRepository.findAll(spec, pageable);
 
-        List<Long> reportIds = page.getContent()
-                .stream()
+        List<DiagnosticOrderTestReport> reports = page.getContent();
+
+        List<Long> reportIds = reports.stream()
                 .map(DiagnosticOrderTestReport::getId)
                 .toList();
 
@@ -807,10 +832,61 @@ public class DiagnosticOrderTestReportService {
                 : new HashSet<>(diagnosticOrderTestReportCommentsRepository
                 .findDistinctReportIdByReportIdIn(reportIds));
 
+        Map<Long, String> testNamesByOrderTestId = loadTestNamesByOrderTestId(reports);
+
         return page.map(report -> {
             boolean hasNote = reportIdsWithNotes.contains(report.getId());
-            return DiagnosticOrderTestReportResponseVM.ofEntityWithNote(report, hasNote);
+            return DiagnosticOrderTestReportResponseVM.ofEntityWithNote(
+                    report,
+                    hasNote,
+                    testNamesByOrderTestId.get(report.getOrderTestId())
+            );
         });
+    }
+
+    private Map<Long, String> loadTestNamesByOrderTestId(List<DiagnosticOrderTestReport> reports) {
+        Set<Long> orderTestIds = reports.stream()
+                .map(DiagnosticOrderTestReport::getOrderTestId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (orderTestIds.isEmpty()) {
+            return Map.of();
+        }
+
+        List<DiagnosticOrderTest> orderTests = diagnosticOrderTestRepository.findAllById(orderTestIds);
+        Set<Long> testIds = orderTests.stream()
+                .map(DiagnosticOrderTest::getTestId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        Map<Long, String> testNamesById = new LinkedHashMap<>();
+        if (!testIds.isEmpty()) {
+            for (DiagnosticTest test : diagnosticTestRepository.findAllById(testIds)) {
+                String name = blankToNull(test.getName());
+                if (test.getId() != null && name != null) {
+                    testNamesById.put(test.getId(), name);
+                }
+            }
+        }
+
+        Map<Long, String> testNamesByOrderTestId = new LinkedHashMap<>();
+        for (DiagnosticOrderTest orderTest : orderTests) {
+            if (orderTest.getId() == null || orderTest.getTestId() == null) {
+                continue;
+            }
+            String name = testNamesById.get(orderTest.getTestId());
+            if (name != null) {
+                testNamesByOrderTestId.put(orderTest.getId(), name);
+            }
+        }
+        return testNamesByOrderTestId;
+    }
+
+    private String blankToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 
 
@@ -1060,6 +1136,101 @@ public class DiagnosticOrderTestReportService {
         return ACCESSION_PREFIX + trimmed;
     }
 
+    private void notificationForRadiologyResultReviewed(DiagnosticOrderTestReport report) {
+        if (report == null || report.getOrderTestId() == null) {
+            return;
+        }
+
+        DiagnosticOrderTest orderTest = diagnosticOrderTestRepository.findById(report.getOrderTestId())
+                .orElse(null);
+
+        if (orderTest == null || orderTest.getOrderId() == null) {
+            LOG.warn(
+                    "Skip radiology result reviewed notification because order test/order is missing. reportId={}, orderTestId={}",
+                    report.getId(),
+                    report.getOrderTestId()
+            );
+            return;
+        }
+
+        DiagnosticOrder order = diagnosticOrderRepository.findById(orderTest.getOrderId())
+                .orElse(null);
+
+        if (order == null) {
+            LOG.warn(
+                    "Skip radiology result reviewed notification because order is missing. reportId={}, orderId={}",
+                    report.getId(),
+                    orderTest.getOrderId()
+            );
+            return;
+        }
+
+        Long departmentId = orderTest.getReceivedDepartmentId() != null
+                ? orderTest.getReceivedDepartmentId()
+                : order.getFromDepartmentId();
+        if (departmentId == null && order.getEncounter() != null) {
+            departmentId = order.getEncounter().getDepartmentId();
+        }
+
+        if (departmentId == null) {
+            LOG.warn(
+                    "Skip radiology result reviewed notification because department is missing. reportId={}, orderTestId={}, orderId={}",
+                    report.getId(),
+                    orderTest.getId(),
+                    order.getId()
+            );
+            return;
+        }
+
+        DepartmentDTO department = departmentHelper.getDepartment(departmentId);
+        String login = SecurityUtils.getCurrentUserLogin().orElse(null);
+        Patient patient = order.getPatientId() == null
+                ? null
+                : patientRepository.findById(order.getPatientId()).orElse(null);
+
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
+                notificationHelper.resolveRecipients(departmentId, login, report.getCreatedBy(), patient, null, false);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("report_id", report.getId());
+        data.put("order_test_id", orderTest.getId());
+        data.put("order_id", order.getId());
+        data.put("patient_id", order.getPatientId());
+        data.put("patient_name", notificationHelper.getPatientName(patient));
+        data.put("encounter_id", order.getEncounter() != null ? order.getEncounter().getId() : "");
+        data.put("department_id", departmentId);
+        data.put("department_name", department != null ? department.name() : "");
+        data.put("test_id", orderTest.getTestId());
+        data.put("test_type", orderTest.getOrderType() != null ? orderTest.getOrderType().toString() : "");
+        data.put("report_severity", report.getSeverity() != null ? report.getSeverity().toString() : "");
+        data.put("reviewed_by", report.getReviewBy() != null ? report.getReviewBy() : "");
+        data.put("reviewed_date", report.getReviewDate() != null ? report.getReviewDate().toString() : "");
+
+        try {
+            LOG.debug(
+                    "Creating radiology result reviewed notification. reportId={}, departmentId={}, recipientsByRule={}",
+                    report.getId(),
+                    departmentId,
+                    recipientsByRule
+            );
+
+            notificationHelper.sendNotification(
+                    null,
+                    NotificationCode.RADIOLOGY_RESULT_REVIEWED,
+                    recipientsByRule,
+                    data,
+                    "DIAGNOSTIC_ORDER_TEST_REPORT",
+                    report.getId()
+            );
+        } catch (Exception e) {
+            LOG.warn(
+                    "Failed to create radiology result reviewed notification. reportId={}, error={}",
+                    report.getId(),
+                    e.getMessage()
+            );
+        }
+    }
+
     @Transactional
     public void bulkToggleReview(
             List<Long> ids
@@ -1074,9 +1245,9 @@ public class DiagnosticOrderTestReportService {
                     diagnosticOrderTestReportRepository
                             .findById(id)
                             .orElseThrow(() -> new BadRequestAlertException(
-                                    "notfound",
+                                    "Report not found for Id " + id,
                                     "diagnostic_order_tests_report",
-                                    "Report not found for Id " + id
+                                    "notfound"
                             ));
 
             if (report.getReviewDate() == null) {
@@ -1101,10 +1272,14 @@ public class DiagnosticOrderTestReportService {
                 );
             }
 
-            diagnosticOrderTestReportRepository.save(report);
+            DiagnosticOrderTestReport saved = diagnosticOrderTestReportRepository.save(report);
+
+            if (saved.getReviewDate() != null) {
+                notificationForRadiologyResultReviewed(saved);
+            }
 
             recomputeOrderStatusesByOrderTestId(
-                    report.getOrderTestId()
+                    saved.getOrderTestId()
             );
         });
     }

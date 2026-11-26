@@ -91,6 +91,8 @@ public class BillingPricingInputFactory {
                 defaultZero(
                         response.taxFixedAmount()
                 ),
+                response.taxApplyOnPatientCopayment(),
+                response.taxApplyOnClaimShare(),
 
                 resolvedPrice.currency(),
                 response.pricingSource(),
@@ -167,6 +169,12 @@ public class BillingPricingInputFactory {
                                 ? null
                                 : adjustments.taxFixedAmount()
                 ),
+                adjustments == null
+                        ? null
+                        : adjustments.taxApplyOnPatientCopayment(),
+                adjustments == null
+                        ? null
+                        : adjustments.taxApplyOnClaimShare(),
 
                 resolvedPrice.currency(),
                 resolveFallbackPricingSource(),
@@ -349,6 +357,7 @@ public class BillingPricingInputFactory {
             case LABORATORY,
                  RADIOLOGY,
                  PATHOLOGY -> item.getDiagnosticTestId();
+            case VACCINE -> item.getVaccineBrandId();
         };
     }
 

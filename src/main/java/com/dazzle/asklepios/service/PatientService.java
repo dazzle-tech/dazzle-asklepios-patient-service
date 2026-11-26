@@ -2,6 +2,7 @@ package com.dazzle.asklepios.service;
 
 import com.dazzle.asklepios.client.notification.dto.NotificationResolvedRecipientDTO;
 import com.dazzle.asklepios.client.setup.SystemConfigurationClient;
+import com.dazzle.asklepios.client.setup.dto.PayorDTO;
 import com.dazzle.asklepios.domain.DuplicationCandidate;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDocument;
@@ -11,6 +12,7 @@ import com.dazzle.asklepios.domain.enumeration.notification.NotificationCode;
 import com.dazzle.asklepios.integration.waseel.service.CchiPatientLookupService;
 import com.dazzle.asklepios.repository.DuplicationCandidateRepository;
 import com.dazzle.asklepios.repository.PatientDocumentRepository;
+import com.dazzle.asklepios.repository.PatientLoginOtpRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.security.SecurityUtils;
 import com.dazzle.asklepios.service.dto.patient.ExternalPatientCreateDTO;
@@ -23,12 +25,16 @@ import com.dazzle.asklepios.service.dto.patient.PatientPinDTO;
 import com.dazzle.asklepios.service.dto.patient.PatientUpdateDTO;
 import com.dazzle.asklepios.service.dto.patient.UnknownPatientCreateDTO;
 import com.dazzle.asklepios.service.helper.NotificationHelper;
+import com.dazzle.asklepios.service.helper.PayorHelper;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.InvalidPasswordException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.web.rest.errors.PatientAlreadyActiveException;
 import com.dazzle.asklepios.web.rest.vm.patient.CreatePasswordKeyValidationVM;
+import com.dazzle.asklepios.web.rest.vm.patient.PortalAppUpdateNotificationVM;
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
@@ -66,6 +72,7 @@ public class PatientService {
     private static final Logger LOG = LoggerFactory.getLogger(PatientService.class);
 
     private final PatientRepository patientRepository;
+    private final PatientLoginOtpRepository patientLoginOtpRepository;
     private final PatientDocumentRepository patientDocumentRepository;
     private final DuplicationCandidateRepository duplicationCandidateRepository;
     private static final long CREATE_PASSWORD_KEY_EXPIRATION_HOURS = 24;
@@ -76,25 +83,30 @@ public class PatientService {
     private final SystemConfigurationClient systemConfigurationClient;
     private final NotificationHelper notificationHelper;
     private final CchiPatientLookupService cchiPatientLookupService;
+    private final PayorHelper payorHelper;
     private final PatientDocumentService patientDocumentService;
 
     public PatientService(
             PatientRepository patientRepository,
+            PatientLoginOtpRepository patientLoginOtpRepository,
             PatientDocumentRepository patientDocumentRepository,
             DuplicationCandidateRepository duplicationCandidateRepository,
             PasswordEncoder passwordEncoder,
             SystemConfigurationClient systemConfigurationClient,
             NotificationHelper notificationHelper,
             CchiPatientLookupService cchiPatientLookupService,
+            PayorHelper payorHelper,
             PatientDocumentService patientDocumentService
     ) {
         this.patientRepository = patientRepository;
+        this.patientLoginOtpRepository = patientLoginOtpRepository;
         this.patientDocumentRepository = patientDocumentRepository;
         this.duplicationCandidateRepository = duplicationCandidateRepository;
         this.passwordEncoder = passwordEncoder;
         this.systemConfigurationClient = systemConfigurationClient;
         this.notificationHelper = notificationHelper;
         this.cchiPatientLookupService = cchiPatientLookupService;
+        this.payorHelper = payorHelper;
         this.patientDocumentService = patientDocumentService;
     }
 
@@ -460,6 +472,29 @@ public class PatientService {
                 }
             }
 
+            if (filter.mrn() != null && !filter.mrn().isBlank()) {
+                predicates.add(cb.equal(root.get("medicalRecordNumber"), filter.mrn().trim()));
+            }
+
+            if (filter.primaryMobileNumber() != null && !filter.primaryMobileNumber().isBlank()) {
+                predicates.add(
+                        cb.equal(root.get("primaryMobileNumber"), filter.primaryMobileNumber().trim())
+                );
+            }
+
+            if (filter.dateOfBirth() != null) {
+                predicates.add(cb.equal(root.get("dateOfBirth"), filter.dateOfBirth()));
+            }
+
+            if (filter.documentNumber() != null && !filter.documentNumber().isBlank()) {
+                Join<Patient, PatientDocument> documents =
+                        root.join("patientDocuments", JoinType.INNER);
+                predicates.add(cb.equal(documents.get("number"), filter.documentNumber().trim()));
+                if (query != null) {
+                    query.distinct(true);
+                }
+            }
+
             if (filter.registrationDateFrom() != null) {
 
                 predicates.add(
@@ -496,12 +531,27 @@ public class PatientService {
                         insuranceRoot.get("patient").get("id")
                 );
 
-                insuranceSubQuery.where(
-                        cb.equal(
-                                insuranceRoot.get("payorId"),
-                                filter.insuranceId()
-                        )
-                );
+                PayorDTO company = payorHelper.findPayor(filter.insuranceId(), null);
+                Long linkedPayorId = company != null && company.id() != null
+                        ? company.id()
+                        : filter.insuranceId();
+                String nphiesId = company == null || company.nphiesId() == null || company.nphiesId().isBlank()
+                        ? null
+                        : company.nphiesId().trim().toLowerCase();
+
+                List<Predicate> companyMatch = new ArrayList<>();
+                companyMatch.add(cb.equal(insuranceRoot.get("payorId"), linkedPayorId));
+                if (!linkedPayorId.equals(filter.insuranceId())) {
+                    companyMatch.add(cb.equal(insuranceRoot.get("payorId"), filter.insuranceId()));
+                }
+                if (nphiesId != null) {
+                    companyMatch.add(cb.equal(
+                            cb.lower(insuranceRoot.get("payerNphiesId")),
+                            nphiesId
+                    ));
+                }
+
+                insuranceSubQuery.where(cb.or(companyMatch.toArray(Predicate[]::new)));
 
                 predicates.add(
                         root.get("id").in(insuranceSubQuery)
@@ -1118,6 +1168,55 @@ public class PatientService {
         return patients.stream()
                 .filter(patient -> patient.getId().equals(patientId))
                 .findFirst();
+    }
+
+    public PortalAppUpdateNotificationVM notifyPortalPatientsToUpdateAppVersion() {
+        List<Patient> patients = patientLoginOtpRepository.findDistinctPatientByPatientIsNotNull();
+        int notified = 0;
+
+        for (Patient patient : patients) {
+            try {
+                Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
+                        notificationHelper.recipientsForPatient(patient);
+
+                if (recipientsByRule == null || recipientsByRule.isEmpty()) {
+                    LOG.debug(
+                            "[NOTIFICATION] Skip app version update because patient has no reachable channel. patientId={}",
+                            patient.getId()
+                    );
+                    continue;
+                }
+
+                Map<String, Object> data = new LinkedHashMap<>();
+                data.put("patient_name", getPatientName(patient));
+                data.put("medical_record_number", patient.getMedicalRecordNumber());
+
+                notificationHelper.sendNotification(
+                        null,
+                        NotificationCode.PATIENT_APP_VERSION_UPDATE,
+                        recipientsByRule,
+                        data,
+                        "PATIENT",
+                        patient.getId()
+                );
+                notified++;
+            } catch (Exception e) {
+                LOG.warn(
+                        "[NOTIFICATION] Failed to send app version update notification. patientId={}, error={}",
+                        patient.getId(),
+                        e.getMessage(),
+                        e
+                );
+            }
+        }
+
+        LOG.info(
+                "[NOTIFICATION] App version update notification finished. portalPatients={}, notified={}",
+                patients.size(),
+                notified
+        );
+
+        return new PortalAppUpdateNotificationVM(patients.size(), notified);
     }
 
     private void sendPatientWelcomeNotification(Patient patient) {

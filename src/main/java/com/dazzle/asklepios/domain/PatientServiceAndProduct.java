@@ -15,6 +15,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -63,6 +64,9 @@ public class PatientServiceAndProduct extends AbstractAuditingEntity<Long> imple
 
     @Column(name = "procedure_id")
     private Long procedureId;
+
+    @Column(name = "vaccine_brand_id")
+    private Long vaccineBrandId;
 
     @NotNull
     @Enumerated(EnumType.STRING)
@@ -203,6 +207,10 @@ public class PatientServiceAndProduct extends AbstractAuditingEntity<Long> imple
     @Column(name = "waseel_sbs_code", length = 100)
     private String waseelSbsCode;
 
+    /** FDI tooth of a dental procedure line: a procedure on several teeth is billed one line per tooth. */
+    @Column(name = "tooth_number", length = 10)
+    private String toothNumber;
+
     @NotNull
     @Column(name = "pre_authorization_required", nullable = false)
     @Builder.Default
@@ -213,6 +221,26 @@ public class PatientServiceAndProduct extends AbstractAuditingEntity<Long> imple
 
     @Column(name = "pre_authorization_reference_no", length = 100)
     private String preAuthorizationReferenceNo;
+
+    /**
+     * Clinical/fulfillment status of the source order (lab, radiology, procedure, ...).
+     * Populated only on list responses. Not persisted and not used in billing.
+     */
+    @Transient
+    private String clinicalStatus;
+
+    /**
+     * Why a local (NPHIES) pre-approval holds this line, e.g. "Coverage limit exceeded".
+     * Populated only on list responses. Java {@code transient}, not JPA {@code @Transient}:
+     * the Hibernate Jackson module drops {@code @Transient} fields from the JSON.
+     */
+    private transient String preAuthorizationReason;
+
+    /**
+     * Insurance amount the payer approved on a partial approval; the patient pays the rest if they
+     * accept. Populated only on list responses (Java {@code transient}, see above).
+     */
+    private transient BigDecimal preAuthorizationApprovedAmount;
 
     /**
      * Insurance visit item that is not on the insurance price list and was

@@ -13,20 +13,31 @@ waseel:
     system-type: ${WASEEL_SYSTEM_TYPE:1}
     timeout-seconds: 90
 
+# Changing a prescription after it was submitted (add/edit/cancel a medication, resend to the pharmacy),
+# in the visit and from the EMR on a closed visit. false = nobody; true = users who have the permission.
+prescription:
+  edit-after-submit:
+    enabled: ${PRESCRIPTION_EDIT_AFTER_SUBMIT_ENABLED:true}
+
 # Nahdi pharmacy integration (prescriptions are sent to Nahdi on submit)
 nahdi:
   enabled: ${NAHDI_ENABLED:false}
   base-url: ${NAHDI_BASE_URL:https://m2.nahdi.sa/ProvidersIntegration/Home}
   provider-id: ${NAHDI_PROVIDER_ID:}
   provider-token: ${NAHDI_PROVIDER_TOKEN:}
-  timeout-seconds: ${NAHDI_TIMEOUT_SECONDS:30}
+  timeout-seconds: ${NAHDI_TIMEOUT_SECONDS:60}
   send-prescription-endpoint: ${NAHDI_SEND_PRESCRIPTION_ENDPOINT:/SendPrescription_clinics}
   prescription:
     status: ${NAHDI_PRESCRIPTION_STATUS:Approved}
     type-cash: ${NAHDI_PRESCRIPTION_TYPE_CASH:1}
     type-insurance: ${NAHDI_PRESCRIPTION_TYPE_INSURANCE:2}
     item-approval-status: ${NAHDI_ITEM_APPROVAL_STATUS:A}
+    item-cancelled-status: ${NAHDI_ITEM_CANCELLED_STATUS:C}
     item-code-priority: ${NAHDI_ITEM_CODE_PRIORITY:SFDA}
+  dispensing:
+    sales-invoices-endpoint: ${NAHDI_SALES_INVOICES_ENDPOINT:/GetSalesInvoices}
+    sale-invoice-type: ${NAHDI_SALE_INVOICE_TYPE:SALE}
+    return-invoice-type: ${NAHDI_RETURN_INVOICE_TYPE:RETURN}
 
 management:
   prometheus:
@@ -50,6 +61,7 @@ application:
       refund-endpoint: ${NAMI_REFUND_ENDPOINT:/api/payments/performTransaction}
       reversal-endpoint: ${NAMI_REVERSAL_ENDPOINT:/api/payments/performTransaction}
       register-endpoint: ${NAMI_REGISTER_ENDPOINT:/api/terminals/register}
+      terminal-by-serial-number-endpoint: ${NAMI_TERMINAL_BY_SERIAL_NUMBER_ENDPOINT:/api/terminals/terminalBySerialNo/{terminalSerialNumber}}
       webhook-generate-url-endpoint: ${NAMI_WEBHOOK_GENERATE_URL_ENDPOINT:/api/webhooks/generate-url}
       webhook-register-endpoint: ${NAMI_WEBHOOK_REGISTER_ENDPOINT:/api/webhooks/register}
       webhook-base-url: ${NAMI_WEBHOOK_BASE_URL:https://api-tst.onehealth.com.sa}
@@ -133,7 +145,7 @@ patient:
     secretAccessKey: ${ATTACHMENTS_SECRET_ACCESS_KEY}
     presignExpirySeconds: 300
     maxBytes: 52428800
-    allowed: application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png,text/plain
+    allowed: application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/jpeg,image/png,text/plain,audio/webm,audio/mp4,audio/mpeg,audio/wav,audio/ogg
   appointment:
     template-interval-ended:
       cron: "0 0 7 * * *"
@@ -144,6 +156,10 @@ patient:
       cron: "0 0 7 * * *"
       zone: "Asia/Gaza"
       lead-days: 7
+  ambient-scribe:
+    audio-retention:
+      cron: "0 30 2 * * *"
+      zone: "Asia/Gaza"
   portal:
     # Shared secret for POST /api/patient/patient-portal/request-otp, verify-login-otp,
     # and POST /api/patient/external.

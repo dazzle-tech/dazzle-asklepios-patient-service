@@ -5,6 +5,10 @@ import java.time.LocalDate;
 public record FacilityPatientFilterDTO(
 
         String patientName,
+        String mrn,
+        String primaryMobileNumber,
+        String documentNumber,
+        LocalDate dateOfBirth,
 
         LocalDate registrationDateFrom,
 

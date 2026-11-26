@@ -13,6 +13,7 @@ public record ToothActionDTO(
         String note,
         ToothSurface surface,
         boolean existing,
+        Integer visitNumber,
         String imageName,
         String toothNumber,
         String anesthesiaUsed,
@@ -20,10 +21,18 @@ public record ToothActionDTO(
         boolean cancelled,
         String cancelledBy,
         Instant cancelledDate,
-        String cancellationReason
+        String cancellationReason,
+        Long carriedFromActionId,
+        String originalRecordedBy,
+        Instant originalRecordedAt
 ) implements Serializable {
 
     public static ToothActionDTO fromEntity(ToothAction entity) {
+        return fromEntity(entity, null);
+    }
+
+    /** {@code origin} is the original action a carried-forward finding was copied from (may be null). */
+    public static ToothActionDTO fromEntity(ToothAction entity, ToothAction origin) {
         return new ToothActionDTO(
                 entity.getId(),
                 entity.getToothId(),
@@ -31,6 +40,7 @@ public record ToothActionDTO(
                 entity.getNote(),
                 entity.getSurface(),
                 entity.isExisting(),
+                entity.getVisitNumber(),
                 entity.getImageName(),
                 entity.getToothNumber(),
                 entity.getAnesthesiaUsed(),
@@ -38,7 +48,10 @@ public record ToothActionDTO(
                 entity.isCancelled(),
                 entity.getCancelledBy(),
                 entity.getCancelledDate(),
-                entity.getCancellationReason()
+                entity.getCancellationReason(),
+                entity.getCarriedFromActionId(),
+                origin == null ? null : origin.getCreatedBy(),
+                origin == null ? null : origin.getCreatedDate()
         );
     }
 }

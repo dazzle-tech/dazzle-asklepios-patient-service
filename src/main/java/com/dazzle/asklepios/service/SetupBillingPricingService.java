@@ -5,12 +5,14 @@ import com.dazzle.asklepios.client.setup.DiagnosticTestClient;
 import com.dazzle.asklepios.client.setup.ProcedureClient;
 import com.dazzle.asklepios.client.setup.ServiceClient;
 import com.dazzle.asklepios.client.setup.SetupBillingPricingClient;
+import com.dazzle.asklepios.client.setup.VaccineBrandClient;
 import com.dazzle.asklepios.client.setup.dto.BillingPricingResolveRequest;
 import com.dazzle.asklepios.client.setup.dto.BillingPricingResolveResponse;
 import com.dazzle.asklepios.client.setup.dto.BrandMedicationSetupDTO;
 import com.dazzle.asklepios.client.setup.dto.DiagnosticTestSetupDTO;
 import com.dazzle.asklepios.client.setup.dto.ProcedureSetupDTO;
 import com.dazzle.asklepios.client.setup.dto.ServiceSetupDTO;
+import com.dazzle.asklepios.client.setup.dto.VaccineBrandSetupDTO;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
@@ -51,6 +53,9 @@ public class SetupBillingPricingService {
 
     private final BrandMedicationClient
             brandMedicationClient;
+
+    private final VaccineBrandClient
+            vaccineBrandClient;
 
     /*
      * ============================================================
@@ -305,6 +310,11 @@ public class SetupBillingPricingService {
                     resolveDiagnosticTestFallback(
                             request
                     );
+
+            case VACCINE ->
+                    resolveVaccineBrandFallback(
+                            request
+                    );
         };
     }
 
@@ -467,6 +477,48 @@ public class SetupBillingPricingService {
                 medication.id(),
                 medication.code(),
                 medication.name()
+        );
+    }
+
+    /*
+     * ============================================================
+     * VACCINE FALLBACK
+     * ============================================================
+     */
+
+    private ResolvedBillingPrice
+    resolveVaccineBrandFallback(
+            BillingPricingResolveRequest request
+    ) {
+        VaccineBrandSetupDTO vaccineBrand =
+                callSetupItem(
+                        request.billingItemType(),
+                        request.sourceId(),
+                        () ->
+                                vaccineBrandClient
+                                        .getVaccineBrand(
+                                                request.sourceId()
+                                        )
+                );
+
+        validateActive(
+                vaccineBrand.isActive(),
+                request.billingItemType(),
+                request.sourceId()
+        );
+
+        Currency currency =
+                parseCurrency(
+                        vaccineBrand.currency()
+                );
+
+        return buildFallbackResult(
+                request,
+                vaccineBrand.price(),
+                currency,
+                vaccineBrand.id(),
+                vaccineBrand.code(),
+                vaccineBrand.name()
         );
     }
 
@@ -684,6 +736,19 @@ public class SetupBillingPricingService {
                                                 )
                         );
                 yield diagnosticTest.price();
+            }
+            case VACCINE -> {
+                VaccineBrandSetupDTO vaccineBrand =
+                        callSetupItem(
+                                request.billingItemType(),
+                                request.sourceId(),
+                                () ->
+                                        vaccineBrandClient
+                                                .getVaccineBrand(
+                                                        request.sourceId()
+                                                )
+                        );
+                yield vaccineBrand.price();
             }
         };
     }

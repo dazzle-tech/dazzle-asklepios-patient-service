@@ -6,5 +6,6 @@ public enum BillingItemTypes {
     RADIOLOGY,
     PATHOLOGY,
     SERVICE,
-    PROCEDURE
+    PROCEDURE,
+    VACCINE
 }

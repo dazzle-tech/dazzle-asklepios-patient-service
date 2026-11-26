@@ -27,9 +27,11 @@ public record PatientEncounterCompletionValidationDTO(
         boolean surgicalHistory,
         boolean socialHistory,
 
-        boolean progressNotes,
         boolean vitalSigns,
         boolean bodyMeasurements,
+
+        /** False when a Waseel insurance visit without investigations has no reason why none was done. */
+        boolean investigationNotPerformedReason,
 
         boolean canComplete,
 

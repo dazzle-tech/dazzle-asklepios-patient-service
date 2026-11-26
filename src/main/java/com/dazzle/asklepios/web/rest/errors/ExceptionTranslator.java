@@ -3,6 +3,7 @@ package com.dazzle.asklepios.web.rest.errors;
 import static org.springframework.core.annotation.AnnotatedElementUtils.findMergedAnnotation;
 
 import com.dazzle.asklepios.config.Constants;
+import com.dazzle.asklepios.web.rest.filter.RequestIdFilter;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -14,6 +15,7 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.MessageSourceResolvable;
 import org.springframework.core.env.Environment;
@@ -23,6 +25,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
+import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageConversionException;
 import org.springframework.lang.Nullable;
@@ -66,7 +69,7 @@ public class ExceptionTranslator extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler
     public ResponseEntity<Object> handleAnyException(Throwable ex, NativeWebRequest request) {
-        LOG.debug("Converting Exception to Problem Details:", ex);
+        logException(ex);
         ProblemDetailWithCause pdCause = wrapAndCustomizeProblem(ex, request);
         return handleExceptionInternal((Exception) ex, pdCause, buildHeaders(ex), HttpStatusCode.valueOf(pdCause.getStatus()), request);
     }
@@ -81,7 +84,25 @@ public class ExceptionTranslator extends ResponseEntityExceptionHandler {
         WebRequest request
     ) {
         body = body == null ? wrapAndCustomizeProblem((Throwable) ex, (NativeWebRequest) request) : body;
+        if (body instanceof ProblemDetail problem) {
+            addRequestId(problem);
+        }
         return super.handleExceptionInternal(ex, body, headers, statusCode, request);
+    }
+
+    private void logException(Throwable ex) {
+        if (BusinessExceptions.isBusinessException(ex)) {
+            LOG.warn("[BUSINESS_EXCEPTION] exceptionType={} message={}", ex.getClass().getSimpleName(), ex.getMessage());
+            return;
+        }
+        LOG.error("[SYSTEM_EXCEPTION] exceptionType={} message={}", ex.getClass().getSimpleName(), ex.getMessage(), ex);
+    }
+
+    private void addRequestId(ProblemDetail problem) {
+        String requestId = MDC.get(RequestIdFilter.REQUEST_ID);
+        if (StringUtils.isNotBlank(requestId)) {
+            problem.setProperty(RequestIdFilter.REQUEST_ID, requestId);
+        }
     }
 
     @Override

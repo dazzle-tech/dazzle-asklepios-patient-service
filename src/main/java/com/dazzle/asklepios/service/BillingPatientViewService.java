@@ -233,7 +233,8 @@ public class BillingPatientViewService {
                 invoiceBalance.outstandingAmount(),
                 items,
                 encounter.getCoverageType(),
-                encounter.getPatientInsuranceId()
+                encounter.getPatientInsuranceId(),
+                sumOpenReserved(lines)
         );
     }
 
@@ -370,6 +371,10 @@ public class BillingPatientViewService {
                 responsibilities.stream()
                         .map(this::mapResponsibility)
                         .toList(),
+                null,
+                null,
+                null,
+                null,
                 null
         );
     }
@@ -569,8 +574,23 @@ public class BillingPatientViewService {
                 zero(),
                 List.of(),
                 encounter.getCoverageType(),
-                encounter.getPatientInsuranceId()
+                encounter.getPatientInsuranceId(),
+                zero()
         );
+    }
+
+    private BigDecimal sumOpenReserved(
+            List<BillingChargeLine> lines
+    ) {
+        return lines.stream()
+                .filter(line ->
+                        line.getStatus()
+                                != BillingChargeLineStatus.CANCELLED
+                )
+                .map(line ->
+                        money(line.getReservedAmount())
+                )
+                .reduce(zero(), BigDecimal::add);
     }
 
     private BigDecimal toDecimal(

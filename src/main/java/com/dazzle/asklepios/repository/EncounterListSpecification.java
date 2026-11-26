@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.repository;
 import com.dazzle.asklepios.domain.Patient;
+import com.dazzle.asklepios.domain.PatientDocument;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
@@ -81,6 +82,44 @@ public final class EncounterListSpecification {
                     cb.lower(patient.get("medicalRecordNumber")),
                     "%" + mrn.trim().toLowerCase() + "%"
             );
+        };
+    }
+
+    public static Specification<PatientEncounter> primaryMobileNumberEquals(
+            String primaryMobileNumber
+    ) {
+        return (root, query, cb) -> {
+            Join<PatientEncounter, Patient> patient =
+                    root.join("patient", JoinType.INNER);
+            return cb.equal(
+                    patient.get("primaryMobileNumber"),
+                    primaryMobileNumber.trim()
+            );
+        };
+    }
+
+    public static Specification<PatientEncounter> documentNumberEquals(
+            String documentNumber
+    ) {
+        return (root, query, cb) -> {
+            Join<PatientEncounter, Patient> patient =
+                    root.join("patient", JoinType.INNER);
+            Join<Patient, PatientDocument> documents =
+                    patient.join("patientDocuments", JoinType.INNER);
+            if (query != null) {
+                query.distinct(true);
+            }
+            return cb.equal(documents.get("number"), documentNumber.trim());
+        };
+    }
+
+    public static Specification<PatientEncounter> dateOfBirthEquals(
+            LocalDate dateOfBirth
+    ) {
+        return (root, query, cb) -> {
+            Join<PatientEncounter, Patient> patient =
+                    root.join("patient", JoinType.INNER);
+            return cb.equal(patient.get("dateOfBirth"), dateOfBirth);
         };
     }
 

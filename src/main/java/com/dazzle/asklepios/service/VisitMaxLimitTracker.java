@@ -59,21 +59,51 @@ public final class VisitMaxLimitTracker {
     }
 
     public InsuranceSplit consume(InsuranceSplit split, BigDecimal netAmount) {
+        return consume(split, netAmount, BigDecimal.ONE);
+    }
+
+    /**
+     * The pool caps what the patient actually pays. When only part of the
+     * patient share is charged to the patient (its tax portion removed by the
+     * Patient Copayment toggle), only that payable part,
+     * {@code patientShare * payableRatio}, is drawn from the pool.
+     */
+    public InsuranceSplit consume(
+            InsuranceSplit split,
+            BigDecimal netAmount,
+            BigDecimal payableRatio
+    ) {
         if (split == null || !hasLimit()) {
             return split;
         }
 
+        BigDecimal ratio = normalizeRatio(payableRatio);
         BigDecimal normalizedNet = money(netAmount);
         BigDecimal requestedPatient = money(split.patientShare());
-        BigDecimal patientShare = requestedPatient.min(remaining).min(normalizedNet);
+        BigDecimal maxPatientShare =
+                ratio.compareTo(BigDecimal.ONE) == 0
+                        ? remaining
+                        : remaining.divide(ratio, MONEY_SCALE, RoundingMode.HALF_UP);
+        BigDecimal patientShare = requestedPatient.min(maxPatientShare).min(normalizedNet);
         if (patientShare.signum() < 0) {
             patientShare = BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
         }
 
-        remaining = remaining.subtract(patientShare).max(BigDecimal.ZERO);
+        BigDecimal payablePatientShare = money(patientShare.multiply(ratio));
+        remaining = remaining.subtract(payablePatientShare).max(BigDecimal.ZERO);
         BigDecimal insuranceShare = money(normalizedNet.subtract(patientShare));
 
         return new InsuranceSplit(patientShare, insuranceShare);
+    }
+
+    private static BigDecimal normalizeRatio(BigDecimal payableRatio) {
+        if (payableRatio == null
+                || payableRatio.signum() <= 0
+                || payableRatio.compareTo(BigDecimal.ONE) > 0) {
+            return BigDecimal.ONE;
+        }
+
+        return payableRatio;
     }
 
     private static BigDecimal money(BigDecimal value) {

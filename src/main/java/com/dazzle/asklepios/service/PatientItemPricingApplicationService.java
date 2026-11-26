@@ -3,6 +3,7 @@ package com.dazzle.asklepios.service;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.PriceSource;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingPriceSource;
+import com.dazzle.asklepios.domain.enumeration.billing.TaxType;
 import com.dazzle.asklepios.service.dto.billing.BillingPricingInput;
 import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
 import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
@@ -39,9 +40,12 @@ public class PatientItemPricingApplicationService {
         this.billingPricingService = billingPricingService;
     }
 
-    public void applyToItem(PatientServiceAndProduct item, Long facilityId) {
+    /**
+     * @return the percentage tax applied to the item, zero when it has no percentage tax
+     */
+    public BigDecimal applyToItem(PatientServiceAndProduct item, Long facilityId) {
         if (item == null) {
-            return;
+            return BigDecimal.ZERO;
         }
 
         if (facilityId == null) {
@@ -99,6 +103,10 @@ public class PatientItemPricingApplicationService {
                 discountAmount,
                 netAmount
         );
+
+        return taxAmount.signum() > 0 && pricingInput.taxType() == TaxType.PERCENTAGE
+                ? defaultZero(pricingInput.taxRate())
+                : BigDecimal.ZERO;
     }
 
     private PriceSource mapPriceSource(BillingPriceSource source) {

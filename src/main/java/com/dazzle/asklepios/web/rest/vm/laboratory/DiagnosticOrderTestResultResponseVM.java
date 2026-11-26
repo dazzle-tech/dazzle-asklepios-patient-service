@@ -1,5 +1,6 @@
 package com.dazzle.asklepios.web.rest.vm.laboratory;
 
+import com.dazzle.asklepios.domain.DiagnosticOrderTest;
 import com.dazzle.asklepios.domain.DiagnosticOrderTestResult;
 import com.dazzle.asklepios.domain.enumeration.DiagnosticStatus;
 import com.dazzle.asklepios.domain.enumeration.TestResultType;
@@ -15,6 +16,7 @@ public record DiagnosticOrderTestResultResponseVM(
         Long profileTestId,
         BigDecimal resultValueNumber,
         String resultValueText,
+        String resultValueTextDisplayValue,
 
         // persisted fields (DB)
         TestResultMarker marker,
@@ -40,7 +42,15 @@ public record DiagnosticOrderTestResultResponseVM(
         String createdBy,
         String lastModifiedBy,
         boolean hasNote,
-        TestResultType resultTypeAtEntry
+        TestResultType resultTypeAtEntry,
+
+        String testName,
+        String profileName,
+        DiagnosticStatus testProcessingStatus,
+        Instant testCreatedDate,
+        Instant testAcceptedDate,
+        Instant testRejectedDate,
+        String testRejectedReason
 ) implements Serializable {
 
     public static DiagnosticOrderTestResultResponseVM ofEntity(DiagnosticOrderTestResult diagnosticOrderTestResult) {
@@ -50,6 +60,7 @@ public record DiagnosticOrderTestResultResponseVM(
                 diagnosticOrderTestResult.getProfileTestId(),
                 diagnosticOrderTestResult.getResultValueNumber(),
                 diagnosticOrderTestResult.getResultValueText(),
+                null,
                 diagnosticOrderTestResult.getMarker(),
 
                 // view-only defaults = persisted values
@@ -70,7 +81,14 @@ public record DiagnosticOrderTestResultResponseVM(
                 diagnosticOrderTestResult.getCreatedBy(),
                 diagnosticOrderTestResult.getLastModifiedBy(),
                 false,
-                diagnosticOrderTestResult.getResultTypeAtEntry()
+                diagnosticOrderTestResult.getResultTypeAtEntry(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
         );
     }
 
@@ -78,7 +96,11 @@ public record DiagnosticOrderTestResultResponseVM(
             DiagnosticOrderTestResult diagnosticOrderTestResult,
             TestResultMarker viewMarker,
             String viewNormalRange,
-            Boolean hasNote
+            Boolean hasNote,
+            String testName,
+            String profileName,
+            DiagnosticOrderTest orderTest,
+            String resultValueTextDisplayValue
     ) {
         return new DiagnosticOrderTestResultResponseVM(
                 diagnosticOrderTestResult.getId(),
@@ -86,6 +108,7 @@ public record DiagnosticOrderTestResultResponseVM(
                 diagnosticOrderTestResult.getProfileTestId(),
                 diagnosticOrderTestResult.getResultValueNumber(),
                 diagnosticOrderTestResult.getResultValueText(),
+                resultValueTextDisplayValue,
                 diagnosticOrderTestResult.getMarker(),
 
                 viewMarker,
@@ -105,7 +128,14 @@ public record DiagnosticOrderTestResultResponseVM(
                 diagnosticOrderTestResult.getCreatedBy(),
                 diagnosticOrderTestResult.getLastModifiedBy(),
                 hasNote,
-                diagnosticOrderTestResult.getResultTypeAtEntry()
+                diagnosticOrderTestResult.getResultTypeAtEntry(),
+                testName,
+                profileName,
+                orderTest == null ? null : orderTest.getProcessingStatus(),
+                orderTest == null ? null : orderTest.getCreatedDate(),
+                orderTest == null ? null : orderTest.getAcceptedDate(),
+                orderTest == null ? null : orderTest.getRejectedDate(),
+                orderTest == null ? null : orderTest.getRejectedReason()
         );
     }
 

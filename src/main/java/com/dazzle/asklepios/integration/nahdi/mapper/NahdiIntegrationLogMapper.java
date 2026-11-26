@@ -16,23 +16,26 @@ public class NahdiIntegrationLogMapper {
         }
         return new NahdiIntegrationLogDTO(
                 entity.getId(),
+                entity.getPrescriptionId(),
                 entity.getEndpoint(),
                 entity.getRequestPayload(),
                 entity.getResponsePayload(),
                 entity.getStatus(),
                 entity.getOrderNumber(),
-                entity.getCreatedDate()
+                entity.getCreatedDate(),
+                entity.getCreatedBy()
         );
     }
 
     /**
-     * {@code id} and {@code createdDate} are managed by persistence and auditing, so they are not copied.
+     * {@code id}, {@code createdDate} and {@code createdBy} are managed by persistence and auditing, so they are not copied.
      */
     public NahdiIntegrationLog toEntity(NahdiIntegrationLogDTO dto) {
         if (dto == null) {
             return null;
         }
         NahdiIntegrationLog entity = new NahdiIntegrationLog();
+        entity.setPrescriptionId(dto.prescriptionId());
         entity.setEndpoint(dto.endpoint());
         entity.setRequestPayload(dto.requestPayload());
         entity.setResponsePayload(dto.responsePayload());

@@ -3,7 +3,6 @@ package com.dazzle.asklepios.service.dto.billing;
 import com.dazzle.asklepios.domain.enumeration.Currency;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingCoverageType;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 
 import java.io.Serializable;
@@ -25,8 +24,14 @@ public record PreviewDefaultServicesPricingRequest(
 
         Long patientInsuranceId,
 
-        @NotEmpty
-        List<@Valid PrepareDefaultServiceItem> items
+        @NotNull
+        List<@Valid PrepareDefaultServiceItem> items,
+
+        List<@Valid PrepareDefaultProcedureItem> procedures
 
 ) implements Serializable {
+
+    public List<PrepareDefaultProcedureItem> defaultProcedures() {
+        return procedures == null ? List.of() : procedures;
+    }
 }

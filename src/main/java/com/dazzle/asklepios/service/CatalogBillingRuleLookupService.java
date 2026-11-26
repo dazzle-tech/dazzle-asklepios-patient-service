@@ -103,6 +103,8 @@ public class CatalogBillingRuleLookupService {
                 case MEDICATION -> readBrandMedicationRuleId(
                         brandMedicationId
                 );
+                // A vaccine brand has no catalog billing rule: the default VACCINE rule applies
+                case VACCINE -> null;
             };
         } catch (FeignException exception) {
             LOG.warn(

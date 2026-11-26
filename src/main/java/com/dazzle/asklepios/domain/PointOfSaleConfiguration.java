@@ -54,5 +54,8 @@ public class PointOfSaleConfiguration extends AbstractAuditingEntity<Long> imple
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = Boolean.TRUE;
 
+    @Column(name = "webhook_token", length = 500)
+    private String webhookToken;
+
     // getters setters equals hashCode
 }

@@ -221,8 +221,7 @@ public class BillingLedger extends AbstractAuditingEntity<Long> implements Seria
     @Column(name = "description", length = 500)
     private String description;
 
-    @Size(max = 500)
-    @Column(name = "reason", length = 500)
+    @Column(name = "reason", columnDefinition = "text")
     private String reason;
 
     @NotNull

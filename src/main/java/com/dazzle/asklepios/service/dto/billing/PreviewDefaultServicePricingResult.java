@@ -7,6 +7,11 @@ public record PreviewDefaultServicePricingResult(
 
         Long serviceId,
 
+        /*
+         * Set instead of serviceId when the priced item is a default procedure.
+         */
+        Long procedureId,
+
         Integer sequence,
 
         BigDecimal setupUnitPrice,
@@ -37,7 +42,19 @@ public record PreviewDefaultServicePricingResult(
 
         String notCoveredReason,
 
-        BigDecimal cashUnitPrice
+        BigDecimal cashUnitPrice,
+
+        /*
+         * The coverage contract holds this service for pre-approval.
+         * Patient and insurance shares are zero until the payer decision.
+         */
+        boolean preAuthorizationRequired,
+
+        /*
+         * Why the coverage contract bills this service fully to the patient:
+         * CONTRACT_EXCLUSION or NOT_IN_COVERAGES. Null when it does not.
+         */
+        String contractCashReason
 
 ) implements Serializable {
 }

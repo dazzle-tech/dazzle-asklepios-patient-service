@@ -26,6 +26,10 @@ public record BillingAdjustmentResolveResponse(
 
         BigDecimal taxFixedAmount,
 
+        Boolean taxApplyOnPatientCopayment,
+
+        Boolean taxApplyOnClaimShare,
+
         Long discountId,
 
         String discountCode,

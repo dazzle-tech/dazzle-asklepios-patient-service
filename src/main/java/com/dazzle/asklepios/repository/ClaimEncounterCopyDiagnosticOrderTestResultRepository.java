@@ -3,6 +3,7 @@ package com.dazzle.asklepios.repository;
 import com.dazzle.asklepios.domain.ClaimEncounterCopyDiagnosticOrderTestResult;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface ClaimEncounterCopyDiagnosticOrderTestResultRepository
@@ -16,5 +17,10 @@ public interface ClaimEncounterCopyDiagnosticOrderTestResultRepository
     List<ClaimEncounterCopyDiagnosticOrderTestResult>
     findByClaimEncounterCopyId(
             Long claimEncounterCopyId
+    );
+
+    List<ClaimEncounterCopyDiagnosticOrderTestResult>
+    findByPatientServiceProductIdIn(
+            Collection<Long> patientServiceProductIds
     );
 }

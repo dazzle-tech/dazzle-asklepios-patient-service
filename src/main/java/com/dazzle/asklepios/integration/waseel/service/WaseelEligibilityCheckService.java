@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.integration.waseel.service;
 
 import com.dazzle.asklepios.client.setup.dto.PayorDTO;
+import com.dazzle.asklepios.client.setup.dto.TpaResolutionDTO;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.WaseelEligibilityRequest;
@@ -23,9 +24,10 @@ import com.dazzle.asklepios.integration.waseel.service.mapper.AsklepiosLovCodes;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientRepository;
 import com.dazzle.asklepios.repository.WaseelEligibilityRequestRepository;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,12 +39,19 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
 public class WaseelEligibilityCheckService {
 
+    private static final Logger LOG = LoggerFactory.getLogger(WaseelEligibilityCheckService.class);
+
     private static final String ENTITY_NAME = "waseelEligibility";
+    /** Error property set when the payer (or the expiry date) says the patient is not eligible. */
+    private static final String NOT_ELIGIBLE_PROPERTY = "notEligible";
+    /** Waseel placeholder for "no TPA". */
+    private static final String NO_TPA_MARKER = "-1";
 
     private final PatientRepository patientRepository;
     private final PatientInsuranceRepository patientInsuranceRepository;
@@ -75,12 +84,14 @@ public class WaseelEligibilityCheckService {
         validateBeforeWaseelCall(patient, insurance, request);
 
         LocalDate serviceDate = resolveServiceDate(request.serviceDate());
+        String tpaNphiesId = resolveTpaNphiesId(insurance);
 
         EligibilityRequest waseelRequest = buildWaseelEligibilityRequest(
                 patient,
                 insurance,
                 request,
-                serviceDate
+                serviceDate,
+                tpaNphiesId
         );
 
         System.out.println("WASEEL REQUEST JSON = " + toJson(waseelRequest));
@@ -89,7 +100,7 @@ public class WaseelEligibilityCheckService {
                 .patientId(patient.getId())
                 .patientInsuranceId(insurance.getId())
                 .providerId(properties.providerId())
-                .destinationId(resolveDestinationId(request.destinationId(), insurance))
+                .destinationId(waseelRequest.destinationId())
                 .serviceDate(serviceDate)
                 .benefits(Boolean.TRUE.equals(request.benefits()))
                 .discovery(Boolean.TRUE.equals(request.discovery()))
@@ -108,22 +119,39 @@ public class WaseelEligibilityCheckService {
 
             log.setApiStatus(response == null ? null : response.status());
             log.setStatusCode(response == null ? null : response.outcome());
-            log.setMessage(response == null ? null : response.disposition());
             log.setEligibilityResponseId(response == null ? null : response.nphiesResponseId());
             log.setEligibilityResponseUrl(response == null ? null : response.eligibilityIdentifierUrl());
-            log.setRequestStatus("SUCCESS");
             log.setRespondedAt(Instant.now());
             log.setResponseJson(toJson(response));
 
-            WaseelEligibilityRequest saved = eligibilityLogRepository.save(log);
-
-            if (response != null) {
-                eligibilityPatientInsuranceSyncService.syncFromEligibilityResponse(
-                        insurance,
-                        response,
-                        saved.getId()
+            Optional<WaseelEligibilityRejectionInterpreter.Rejection> rejection =
+                    WaseelEligibilityRejectionInterpreter.fromResponse(response, objectMapper);
+            if (rejection.isPresent()) {
+                LOG.warn(
+                        "[WASEEL_ELIGIBILITY] Rejected patientId={} patientInsuranceId={} destinationId={} response={}",
+                        patient.getId(),
+                        insurance.getId(),
+                        waseelRequest.destinationId(),
+                        log.getResponseJson()
+                );
+                throw notEligible(
+                        rejection.get().message(),
+                        rejection.get().errorKey()
                 );
             }
+
+            log.setMessage(response.disposition());
+            log.setRequestStatus("SUCCESS");
+
+            WaseelEligibilityRequest saved = eligibilityLogRepository.save(log);
+
+            PatientInsurance syncedInsurance = response == null
+                    ? null
+                    : eligibilityPatientInsuranceSyncService.syncFromEligibilityResponse(
+                            insurance,
+                            response,
+                            saved.getId()
+                    );
 
             triggerBackendPreAuthorizationSubmission(request);
 
@@ -141,7 +169,7 @@ public class WaseelEligibilityCheckService {
                     eligibilityNote
             );
 
-            return toResult(saved);
+            return toResult(saved, syncedInsurance);
 
         } catch (HttpClientErrorException ex) {
             markFailed(log, ex.getMessage());
@@ -174,7 +202,18 @@ public class WaseelEligibilityCheckService {
     }
 
     private BadRequestAlertException mapWaseelClientError(HttpClientErrorException ex) {
-        String waseelMessage = extractWaseelErrorMessage(ex.getResponseBodyAsString());
+        String responseBody = ex.getResponseBodyAsString();
+        Optional<WaseelEligibilityRejectionInterpreter.Rejection> notFound =
+                WaseelEligibilityRejectionInterpreter.insuranceNotFoundFromHttpBody(responseBody, objectMapper);
+        if (notFound.isPresent()) {
+            return new BadRequestAlertException(
+                    notFound.get().message(),
+                    ENTITY_NAME,
+                    notFound.get().errorKey()
+            );
+        }
+
+        String waseelMessage = extractWaseelErrorMessage(responseBody);
 
         if (waseelMessage != null && waseelMessage.toLowerCase().contains("failed to read request")) {
             return new BadRequestAlertException(
@@ -201,27 +240,7 @@ public class WaseelEligibilityCheckService {
     }
 
     private String extractWaseelErrorMessage(String responseBody) {
-        if (responseBody == null || responseBody.isBlank()) {
-            return null;
-        }
-
-        try {
-            JsonNode node = objectMapper.readTree(responseBody);
-
-            if (node.hasNonNull("detail")) {
-                return node.get("detail").asText();
-            }
-            if (node.hasNonNull("message")) {
-                return node.get("message").asText();
-            }
-            if (node.hasNonNull("error")) {
-                return node.get("error").asText();
-            }
-        } catch (Exception ignored) {
-            // ignore parsing error
-        }
-
-        return responseBody.trim();
+        return WaseelEligibilityRejectionInterpreter.describeHttpError(responseBody, objectMapper);
     }
 
     private void triggerBackendPreAuthorizationSubmission(EligibilityCheckRequest request) {
@@ -238,9 +257,10 @@ public class WaseelEligibilityCheckService {
             Patient patient,
             PatientInsurance insurance,
             EligibilityCheckRequest request,
-            LocalDate serviceDate
+            LocalDate serviceDate,
+            String tpaNphiesId
     ) {
-        EligibilityInsurancePlanDTO insurancePlan = buildInsurancePlan(insurance);
+        EligibilityInsurancePlanDTO insurancePlan = buildInsurancePlan(insurance, tpaNphiesId);
 
         EligibilityBeneficiaryDTO beneficiary = new EligibilityBeneficiaryDTO(
                 patient.getId(),
@@ -297,7 +317,7 @@ public class WaseelEligibilityCheckService {
                 Boolean.TRUE.equals(request.emergency()),
                 false,
                 null,
-                resolveDestinationId(request.destinationId(), insurance)
+                resolveDestinationId(request.destinationId(), insurance, tpaNphiesId)
         );
     }
 
@@ -308,9 +328,8 @@ public class WaseelEligibilityCheckService {
     ) {
         if (insurance.getExpirationDate() == null
                 || insurance.getExpirationDate().isBefore(LocalDate.now())) {
-            throw new BadRequestAlertException(
+            throw notEligible(
                     "Insurance plan is expired.",
-                    ENTITY_NAME,
                     "insurance.expired"
             );
         }
@@ -364,9 +383,8 @@ public class WaseelEligibilityCheckService {
         }
     }
 
-    private EligibilityInsurancePlanDTO buildInsurancePlan(PatientInsurance insurance) {
+    private EligibilityInsurancePlanDTO buildInsurancePlan(PatientInsurance insurance, String tpaNphiesId) {
         String payerNphiesId = resolvePayerNphiesId(insurance);
-        String tpaNphiesId = resolveTpaNphiesId(insurance);
 
         return new EligibilityInsurancePlanDTO(
                 null,
@@ -404,27 +422,57 @@ public class WaseelEligibilityCheckService {
         );
     }
 
+    /**
+     * Stops the check when the TPA of a TPA-managed policy is unknown: sending it to the payer
+     * instead would route the request to the wrong destination.
+     */
     private String resolveTpaNphiesId(PatientInsurance insurance) {
         String stored = clean(insurance.getTpaNphiesId());
-        if (!isBlank(stored)) {
+        if (NO_TPA_MARKER.equals(stored)) {
+            stored = null;
+        }
+        if (stored != null && !isBlank(insurance.getTpaName())) {
             return stored;
         }
 
-        PayorDTO payor = payorHelper.findPayor(insurance.getPayorId(), insurance.getPayerNphiesId());
-        if (payor == null) {
-            return null;
+        TpaResolutionDTO tpa = payorHelper.resolveTpa(
+                resolvePayerNphiesId(insurance),
+                clean(insurance.getPolicyNumber()),
+                stored
+        );
+
+        if (TpaResolutionDTO.SELECTION_REQUIRED.equals(tpa.status())) {
+            throw new BadRequestAlertException(
+                    "This insurance company works with more than one TPA. "
+                            + "Edit the patient insurance and select the TPA before checking eligibility.",
+                    ENTITY_NAME,
+                    "tpa.selectionRequired"
+            );
         }
 
-        return clean(payor.tpaNphiesId());
+        if (TpaResolutionDTO.NPHIES_ID_MISSING.equals(tpa.status())) {
+            throw new BadRequestAlertException(
+                    "TPA \"" + tpa.tpaName() + "\" has no NPHIES ID. Add it in TPA setup before checking eligibility.",
+                    ENTITY_NAME,
+                    "tpa.nphiesIdMissing"
+            );
+        }
+
+        insurance.setTpaNphiesId(tpa.tpaNphiesId());
+        insurance.setTpaName(tpa.tpaName());
+        return tpa.tpaNphiesId();
     }
 
-    private String resolveDestinationId(String requestDestinationId, PatientInsurance insurance) {
+    private String resolveDestinationId(
+            String requestDestinationId,
+            PatientInsurance insurance,
+            String tpaNphiesId
+    ) {
         String destinationId = clean(requestDestinationId);
         if (destinationId != null) {
             return destinationId;
         }
 
-        String tpaNphiesId = resolveTpaNphiesId(insurance);
         if (tpaNphiesId != null) {
             return tpaNphiesId;
         }
@@ -462,7 +510,16 @@ public class WaseelEligibilityCheckService {
         );
     }
 
-    private EligibilityCheckResponse toResult(WaseelEligibilityRequest log) {
+    /**
+     * Eligibility is read from the insurance as this check synced it. When this check did not sync it
+     * (no matching coverage in the payer response), eligibility is left unknown.
+     */
+    private EligibilityCheckResponse toResult(WaseelEligibilityRequest log, PatientInsurance syncedInsurance) {
+        boolean syncedByThisCheck = syncedInsurance != null
+                && log.getId() != null
+                && log.getId().equals(syncedInsurance.getLastEligibilityRequestId());
+        String notEligibleReason = syncedByThisCheck ? notEligibleReason(syncedInsurance) : null;
+
         return new EligibilityCheckResponse(
                 log.getId(),
                 log.getApiStatus(),
@@ -470,8 +527,28 @@ public class WaseelEligibilityCheckService {
                 log.getMessage(),
                 log.getEligibilityResponseId(),
                 log.getEligibilityResponseUrl(),
-                log.getRequestStatus()
+                log.getRequestStatus(),
+                syncedByThisCheck ? notEligibleReason == null : null,
+                notEligibleReason
         );
+    }
+
+    private String notEligibleReason(PatientInsurance insurance) {
+        String siteEligibility = clean(insurance.getSiteEligibility());
+        if (siteEligibility != null && !"eligible".equalsIgnoreCase(siteEligibility)) {
+            return "The patient is not eligible (" + siteEligibility + ").";
+        }
+        if ("false".equalsIgnoreCase(clean(insurance.getInforce()))) {
+            return "The patient insurance is not in force.";
+        }
+        return null;
+    }
+
+    /** A rejection the payment screen may offer to bill as Self Pay. */
+    private BadRequestAlertException notEligible(String message, String errorKey) {
+        BadRequestAlertException exception = new BadRequestAlertException(message, ENTITY_NAME, errorKey);
+        exception.getBody().setProperty(NOT_ELIGIBLE_PROPERTY, true);
+        return exception;
     }
 
     private String resolveDocumentType(Patient patient) {

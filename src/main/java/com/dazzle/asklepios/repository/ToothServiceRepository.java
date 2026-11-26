@@ -1,10 +1,11 @@
 package com.dazzle.asklepios.repository;
 
 import com.dazzle.asklepios.domain.ToothService;
+import com.dazzle.asklepios.repository.projection.DentalChartProjections;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
 
 public interface ToothServiceRepository extends JpaRepository<ToothService, Long> {
 
@@ -12,5 +13,5 @@ public interface ToothServiceRepository extends JpaRepository<ToothService, Long
 
     List<ToothService> findByToothActionIdAndCancelledFalse(Long toothActionId);
 
-    Optional<ToothService> findByToothIdAndServiceIdAndCancelledFalse(Long toothId, Long serviceId);
+    List<DentalChartProjections.ToothIdView> findDistinctByToothIdInAndCancelledFalse(Collection<Long> toothIds);
 }

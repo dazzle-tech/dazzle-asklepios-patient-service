@@ -122,6 +122,8 @@ public class EncounterBillingSummaryService {
     private final BillingEngineService
             billingEngineService;
 
+    private final ClinicalFulfillmentStatusResolver
+            clinicalFulfillmentStatusResolver;
     private final DiagnosticChargeTimingService
             diagnosticChargeTimingService;
 
@@ -167,9 +169,12 @@ public class EncounterBillingSummaryService {
 
             return emptySummary(
                     encounter,
-                    buildUnbilledItemSummaries(
-                            encounter,
-                            List.of()
+                    clinicalFulfillmentStatusResolver.attachToSummaries(
+                            buildUnbilledItemSummaries(
+                                    encounter,
+                                    List.of()
+                            ),
+                            encounter.getId()
                     ),
                     invoiceBalance
             );
@@ -277,6 +282,13 @@ public class EncounterBillingSummaryService {
             );
         }
 
+        items = new ArrayList<>(
+                clinicalFulfillmentStatusResolver.attachToSummaries(
+                        items,
+                        encounter.getId()
+                )
+        );
+
         BigDecimal walletSettledAmount =
                 settlementTotals.walletSettledAmount();
 
@@ -286,6 +298,13 @@ public class EncounterBillingSummaryService {
                             money(invoiceBalance.paidAmount())
                     );
         }
+
+        BigDecimal encounterWalletAmount =
+                money(
+                        settlementTotals
+                                .walletOnlyAmount()
+                                .add(sumOpenReserved(lines))
+                );
 
         return new EncounterBillingSummary(
                 charge.getId(),
@@ -322,7 +341,8 @@ public class EncounterBillingSummaryService {
                 invoiceBalance.outstandingAmount(),
                 items,
                 encounter.getCoverageType(),
-                encounter.getPatientInsuranceId()
+                encounter.getPatientInsuranceId(),
+                encounterWalletAmount
         );
     }
 
@@ -419,8 +439,30 @@ public class EncounterBillingSummaryService {
                 responsibilities.stream()
                         .map(this::buildResponsibilitySummary)
                         .toList(),
-                pricingDisplay.taxRate()
+                null,
+                pricingDisplay.taxRate(),
+                pricingDisplay.discountType(),
+                pricingDisplay.discountRate(),
+                pricingDisplay.discountSource(),
+                pricingDisplay.discountReason(),
+                resolvePartyTax(line, line.getPatientTaxAmount()),
+                resolvePartyTax(line, line.getInsuranceTaxAmount()),
+                pricingDisplay.priceListName()
         );
+    }
+
+    /**
+     * Party tax is reported only when it was distributed on the line;
+     * lines billed before the Patient Copayment / Claim Share toggles
+     * existed return null.
+     */
+    private BigDecimal resolvePartyTax(
+            BillingChargeLine line,
+            BigDecimal partyTax
+    ) {
+        return line.getCalculatedTaxAmount() == null
+                ? null
+                : money(partyTax);
     }
 
     private BillingResponsibilitySummary buildResponsibilitySummary(
@@ -549,8 +591,7 @@ public class EncounterBillingSummaryService {
 
         PaymentStatus paymentStatus = item.getPaymentStatus();
         if (paymentStatus == PaymentStatus.CANCELLED
-                || paymentStatus == PaymentStatus.EXEMPTED
-                || paymentStatus == PaymentStatus.SKIPPED_PENDING_PRE_AUTH) {
+                || paymentStatus == PaymentStatus.EXEMPTED) {
             return false;
         }
 
@@ -680,9 +721,31 @@ public class EncounterBillingSummaryService {
                 BillingChargeLineStatus.DRAFT,
                 item.getCreatedDate(),
                 List.of(),
+                null,
                 pricingResponse == null
                         ? null
-                        : pricingResponse.taxRate()
+                        : pricingResponse.taxRate(),
+                pricingResponse == null || pricingResponse.discountType() == null
+                        ? null
+                        : pricingResponse.discountType().name(),
+                pricingResponse == null
+                        ? null
+                        : pricingResponse.discountRate(),
+                pricingResponse == null
+                        ? null
+                        : firstText(
+                        pricingResponse.priceListName(),
+                        pricingResponse.priceListCode()
+                ),
+                null,
+                null,
+                null,
+                pricingResponse == null
+                        ? null
+                        : firstText(
+                        pricingResponse.priceListName(),
+                        pricingResponse.priceListCode()
+                )
         );
     }
 
@@ -738,7 +801,8 @@ public class EncounterBillingSummaryService {
                         ? List.of()
                         : items,
                 encounter.getCoverageType(),
-                encounter.getPatientInsuranceId()
+                encounter.getPatientInsuranceId(),
+                zero()
         );
     }
 
@@ -838,7 +902,15 @@ public class EncounterBillingSummaryService {
                 item.status(),
                 item.chargedAt(),
                 item.responsibilities(),
-                item.taxRate()
+                item.clinicalStatus(),
+                item.taxRate(),
+                item.discountType(),
+                item.discountRate(),
+                item.discountSource(),
+                item.discountReason(),
+                item.patientTaxAmount(),
+                item.insuranceTaxAmount(),
+                item.priceListName()
         );
     }
 
@@ -858,6 +930,8 @@ public class EncounterBillingSummaryService {
                         );
 
         BigDecimal walletSettled =
+                zero();
+        BigDecimal walletOnly =
                 zero();
         BigDecimal debitSettled =
                 zero();
@@ -884,8 +958,17 @@ public class EncounterBillingSummaryService {
 
             switch (sourceType) {
                 case RESERVATION,
-                     WALLET_AVAILABLE,
-                     PAYMENT ->
+                     WALLET_AVAILABLE -> {
+                    walletSettled =
+                            walletSettled.add(
+                                    amount
+                            );
+                    walletOnly =
+                            walletOnly.add(
+                                    amount
+                            );
+                }
+                case PAYMENT ->
                         walletSettled =
                                 walletSettled.add(
                                         amount
@@ -903,13 +986,29 @@ public class EncounterBillingSummaryService {
 
         return new SettlementTotals(
                 money(walletSettled),
-                money(debitSettled)
+                money(debitSettled),
+                money(walletOnly)
         );
+    }
+
+    private BigDecimal sumOpenReserved(
+            List<BillingChargeLine> lines
+    ) {
+        return lines.stream()
+                .filter(line ->
+                        line.getStatus()
+                                != BillingChargeLineStatus.CANCELLED
+                )
+                .map(line ->
+                        money(line.getReservedAmount())
+                )
+                .reduce(zero(), BigDecimal::add);
     }
 
     private record SettlementTotals(
             BigDecimal walletSettledAmount,
-            BigDecimal debitSettledAmount
+            BigDecimal debitSettledAmount,
+            BigDecimal walletOnlyAmount
     ) {
     }
 
@@ -1006,6 +1105,20 @@ public class EncounterBillingSummaryService {
                 MONEY_SCALE,
                 RoundingMode.HALF_UP
         );
+    }
+
+    private String firstText(String... values) {
+        if (values == null) {
+            return null;
+        }
+
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+
+        return null;
     }
 
     private PricingDisplayFields resolvePricingDisplayFields(
@@ -1105,12 +1218,30 @@ public class EncounterBillingSummaryService {
                             resolvedUnitPrice,
                             priceSource,
                             priceListItemCode,
-                            snapshot.getTaxRate()
+                            snapshot.getTaxRate(),
+                            snapshot.getDiscountType() == null
+                                    ? null
+                                    : snapshot.getDiscountType().name(),
+                            snapshot.getDiscountRate(),
+                            firstText(
+                                    snapshot.getPriceListName(),
+                                    snapshot.getPriceListCode()
+                            ),
+                            firstText(snapshot.getDiscountReason()),
+                            firstText(
+                                    snapshot.getPriceListName(),
+                                    snapshot.getPriceListCode()
+                            )
                     );
                 })
                 .orElseGet(
                         () ->
                                 new PricingDisplayFields(
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
                                         null,
                                         null,
                                         null,
@@ -1260,7 +1391,12 @@ public class EncounterBillingSummaryService {
             BigDecimal resolvedUnitPrice,
             String priceSource,
             String priceListItemCode,
-            BigDecimal taxRate
+            BigDecimal taxRate,
+            String discountType,
+            BigDecimal discountRate,
+            String discountSource,
+            String discountReason,
+            String priceListName
     ) {
     }
 

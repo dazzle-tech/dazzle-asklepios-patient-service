@@ -271,6 +271,7 @@ public class PatientPrescriptionService {
 
         PatientPrescription saved = prescriptionRepository.save(entity);
 
+        notificationForPrescriptionSubmitted(saved);
         notificationForHighAlertMedication(saved);
 
         patientServiceAndProductService.syncPrescriptionMedicationsForPreAuthorization(
@@ -369,6 +370,61 @@ public class PatientPrescriptionService {
 
     private PatientEncounter getEncounter(Long id) {
         return patientEncounterRepository.findById(id).orElseThrow(() -> new BadRequestAlertException("notfound" + id, "PatientPrescription", "Patient Encounter not found: "));
+    }
+
+    private void notificationForPrescriptionSubmitted(PatientPrescription prescription) {
+        if (prescription == null) {
+            return;
+        }
+
+        Long departmentId = resolvePrescriptionDepartmentId(prescription);
+        DepartmentDTO department = departmentId != null ? departmentHelper.getDepartment(departmentId) : null;
+
+        if (departmentId == null) {
+            LOG.warn("Skip prescription submitted notification because department is missing. prescriptionId={}", prescription.getId());
+            return;
+        }
+
+        String login = SecurityUtils.getCurrentUserLogin().orElse(null);
+        Map<String, List<NotificationResolvedRecipientDTO>> recipientsByRule =
+                notificationHelper.resolveRecipients(departmentId, login, prescription.getCreatedBy(), prescription.getPatient(), null, false);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("prescription_id", prescription.getId());
+        data.put("prescription_num", prescription.getPrescriptionNum() != null ? prescription.getPrescriptionNum() : "");
+        data.put("patient_id", prescription.getPatient() != null ? prescription.getPatient().getId() : "");
+        data.put("patient_name", notificationHelper.getPatientName(prescription.getPatient()));
+        data.put("encounter_id", resolvePrescriptionEncounterId(prescription));
+        data.put("department_id", departmentId);
+        data.put("department_name", department != null ? department.name() : "");
+        data.put("status", prescription.getStatus() != null ? prescription.getStatus().toString() : "");
+        data.put("urgency_level", prescription.getUrgencyLevel() != null ? prescription.getUrgencyLevel().toString() : "");
+        data.put("submitted_by", prescription.getSubmitedBy() != null ? prescription.getSubmitedBy() : "");
+        data.put("submitted_date", prescription.getSubmitedDate() != null ? prescription.getSubmitedDate().toString() : "");
+
+        try {
+            LOG.debug(
+                    "Creating prescription submitted notification. prescriptionId={}, departmentId={}, recipientsByRule={}",
+                    prescription.getId(),
+                    departmentId,
+                    recipientsByRule
+            );
+
+            notificationHelper.sendNotification(
+                    null,
+                    NotificationCode.PRESCRIPTION_SUBMITTED,
+                    recipientsByRule,
+                    data,
+                    "PRESCRIPTION",
+                    prescription.getId()
+            );
+        } catch (Exception e) {
+            LOG.warn(
+                    "Failed to create prescription submitted notification. prescriptionId={}, error={}",
+                    prescription.getId(),
+                    e.getMessage()
+            );
+        }
     }
 
     private void notificationForHighAlertMedication(PatientPrescription prescription) {

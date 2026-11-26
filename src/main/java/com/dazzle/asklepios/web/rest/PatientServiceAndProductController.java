@@ -3,6 +3,9 @@ package com.dazzle.asklepios.web.rest;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
+import com.dazzle.asklepios.service.ClinicalFulfillmentStatusResolver;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationDecisionDetailsService;
+import com.dazzle.asklepios.service.CoveragePreApprovalLimitService;
 import com.dazzle.asklepios.service.EncounterReopenGuard;
 import com.dazzle.asklepios.service.PatientServiceAndProductService;
 import com.dazzle.asklepios.service.dto.patientServiceProduct.PatientServiceProductCreateDTO;
@@ -40,13 +43,22 @@ public class PatientServiceAndProductController {
     private static final Logger LOG = LoggerFactory.getLogger(PatientServiceAndProductController.class);
 
     private final PatientServiceAndProductService patientServiceAndProductService;
+    private final ClinicalFulfillmentStatusResolver clinicalFulfillmentStatusResolver;
+    private final CoveragePreApprovalLimitService coveragePreApprovalLimitService;
+    private final PreAuthorizationDecisionDetailsService preAuthorizationDecisionDetailsService;
     private final EncounterReopenGuard encounterReopenGuard;
 
     public PatientServiceAndProductController(
             PatientServiceAndProductService patientServiceAndProductService,
+            ClinicalFulfillmentStatusResolver clinicalFulfillmentStatusResolver,
+            CoveragePreApprovalLimitService coveragePreApprovalLimitService,
+            PreAuthorizationDecisionDetailsService preAuthorizationDecisionDetailsService,
             EncounterReopenGuard encounterReopenGuard
     ) {
         this.patientServiceAndProductService = patientServiceAndProductService;
+        this.clinicalFulfillmentStatusResolver = clinicalFulfillmentStatusResolver;
+        this.coveragePreApprovalLimitService = coveragePreApprovalLimitService;
+        this.preAuthorizationDecisionDetailsService = preAuthorizationDecisionDetailsService;
         this.encounterReopenGuard = encounterReopenGuard;
     }
 
@@ -62,7 +74,8 @@ public class PatientServiceAndProductController {
                 patientServiceProductCreateDTO.brandMedicationId(),
                 patientServiceProductCreateDTO.diagnosticTestId(),
                 patientServiceProductCreateDTO.serviceId(),
-                patientServiceProductCreateDTO.procedureId()
+                patientServiceProductCreateDTO.procedureId(),
+                patientServiceProductCreateDTO.vaccineBrandId()
         );
 
         encounterReopenGuard.rejectIfOpenReopenSession(patientServiceProductCreateDTO.encounterId());
@@ -86,6 +99,9 @@ public class PatientServiceAndProductController {
 
         Page<PatientServiceAndProduct> page =
                 patientServiceAndProductService.findAllServicesAndProductsByEncounterId(pageable, encounterId);
+        clinicalFulfillmentStatusResolver.attachToItems(page.getContent());
+        coveragePreApprovalLimitService.attachHoldReasons(page.getContent());
+        preAuthorizationDecisionDetailsService.attach(page.getContent());
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
@@ -105,7 +121,7 @@ public class PatientServiceAndProductController {
         Page<PatientServiceAndProduct> page =
                 patientServiceAndProductService
                         .findAllServicesAndProductsByPatientId(pageable, patientId);
-
+        clinicalFulfillmentStatusResolver.attachToItems(page.getContent());
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
@@ -135,7 +151,8 @@ public class PatientServiceAndProductController {
                 patientServiceProductUpdateDTO.brandMedicationId(),
                 patientServiceProductUpdateDTO.diagnosticTestId(),
                 patientServiceProductUpdateDTO.serviceId(),
-                patientServiceProductUpdateDTO.procedureId()
+                patientServiceProductUpdateDTO.procedureId(),
+                patientServiceProductUpdateDTO.vaccineBrandId()
         );
 
         PatientServiceAndProduct updated =
@@ -164,7 +181,8 @@ public class PatientServiceAndProductController {
                     dto.brandMedicationId(),
                     dto.diagnosticTestId(),
                     dto.serviceId(),
-                    dto.procedureId()
+                    dto.procedureId(),
+                    dto.vaccineBrandId()
             );
         }
 
@@ -211,6 +229,7 @@ public class PatientServiceAndProductController {
                                 source,
                                 sourceId
                         );
+        clinicalFulfillmentStatusResolver.attachToItems(page.getContent());
 
         HttpHeaders headers = PaginationUtil.generatePaginationHttpHeaders(
                 ServletUriComponentsBuilder.fromCurrentRequest(), page
@@ -223,7 +242,8 @@ public class PatientServiceAndProductController {
             Long brandMedicationId,
             Long diagnosticTestId,
             Long serviceId,
-            Long procedureId
+            Long procedureId,
+            Long vaccineBrandId
     ) {
         if (billingItemType == null) {
             throw new BadRequestAlertException(
@@ -302,6 +322,24 @@ public class PatientServiceAndProductController {
                             "invalidReferenceCombination",
                             "patientServicesAndProducts",
                             "Only procedureId is allowed for PROCEDURE"
+                    );
+                }
+            }
+
+            case VACCINE -> {
+                if (vaccineBrandId == null) {
+                    throw new BadRequestAlertException(
+                            "vaccineBrandIdRequired",
+                            "patientServicesAndProducts",
+                            "Vaccine brand is required when billing item type is VACCINE"
+                    );
+                }
+
+                if (brandMedicationId != null || diagnosticTestId != null || serviceId != null || procedureId != null) {
+                    throw new BadRequestAlertException(
+                            "invalidReferenceCombination",
+                            "patientServicesAndProducts",
+                            "Only vaccineBrandId is allowed for VACCINE"
                     );
                 }
             }

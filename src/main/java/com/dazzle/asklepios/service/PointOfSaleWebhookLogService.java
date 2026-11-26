@@ -1,9 +1,12 @@
 package com.dazzle.asklepios.service;
 
+import com.dazzle.asklepios.domain.BillingPaymentTransaction;
 import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PointOfSaleTransaction;
 import com.dazzle.asklepios.domain.PointOfSaleWebhookLog;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPaymentTransactionStatus;
 import com.dazzle.asklepios.domain.enumeration.pointOfSale.PointOfSaleSourceType;
+import com.dazzle.asklepios.repository.BillingPaymentTransactionRepository;
 import com.dazzle.asklepios.repository.PatientEncounterRepository;
 import com.dazzle.asklepios.repository.PointOfSaleWebhookLogRepository;
 import com.dazzle.asklepios.service.dto.pointOfSale.PointOfSaleWebhookDTO;
@@ -43,6 +46,9 @@ public class PointOfSaleWebhookLogService {
 
     private final PatientEncounterRepository
             patientEncounterRepository;
+
+    private final BillingPaymentTransactionRepository
+            billingPaymentTransactionRepository;
 
     private final ObjectMapper objectMapper;
 
@@ -391,10 +397,38 @@ public class PointOfSaleWebhookLogService {
                                         )
                                 );
 
+        Set<String> externalTransactionIds =
+                page.getContent()
+                        .stream()
+                        .map(
+                                PointOfSaleWebhookLog::getExternalTransactionId
+                        )
+                        .filter(Objects::nonNull)
+                        .collect(
+                                Collectors.toSet()
+                        );
+
+        Set<String> paidExternalTransactionIds =
+                externalTransactionIds.isEmpty()
+                        ? Set.of()
+                        : billingPaymentTransactionRepository
+                                .findAllByProcessorReferenceInAndStatus(
+                                        externalTransactionIds,
+                                        BillingPaymentTransactionStatus.SUCCESS
+                                )
+                                .stream()
+                                .map(
+                                        BillingPaymentTransaction::getProcessorReference
+                                )
+                                .collect(
+                                        Collectors.toSet()
+                                );
+
         return page.map(
                 entity -> toDto(
                         entity,
-                        encounterNumberById
+                        encounterNumberById,
+                        paidExternalTransactionIds
                 )
         );
     }
@@ -415,7 +449,8 @@ public class PointOfSaleWebhookLogService {
 
     private PointOfSaleWebhookLogDTO toDto(
             PointOfSaleWebhookLog entity,
-            Map<Long, String> encounterNumberById
+            Map<Long, String> encounterNumberById,
+            Set<String> paidExternalTransactionIds
     ) {
 
         PointOfSaleTransaction transaction =
@@ -470,6 +505,11 @@ public class PointOfSaleWebhookLogService {
                 entity.getProcessingStatus(),
 
                 entity.getProcessed(),
+
+                entity.getExternalTransactionId() != null &&
+                        paidExternalTransactionIds.contains(
+                                entity.getExternalTransactionId()
+                        ),
 
                 entity.getCreatedDate()
         );

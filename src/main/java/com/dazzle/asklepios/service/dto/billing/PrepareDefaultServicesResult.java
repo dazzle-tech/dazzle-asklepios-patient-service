@@ -23,6 +23,8 @@ public record PrepareDefaultServicesResult(
 
         List<PreparedDefaultServiceResult> items,
 
+        List<PreparedDefaultProcedureResult> procedures,
+
         boolean processed,
 
         String message
@@ -34,6 +36,21 @@ public record PrepareDefaultServicesResult(
             Long patientServiceProductId,
 
             Long serviceId,
+
+            Integer sequence,
+
+            BillingOperationResult billingResult
+
+    ) implements Serializable {
+    }
+
+    public record PreparedDefaultProcedureResult(
+
+            Long patientServiceProductId,
+
+            Long patientProcedureId,
+
+            Long procedureId,
 
             Integer sequence,
 

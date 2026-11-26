@@ -65,6 +65,7 @@ public class CchiBeneficiaryPatientInsuranceMapper {
         ));
 
         insurance.setPayerNphiesId(clean(source.payerNphiesId()));
+        insurance.setTpaNphiesId(clean(source.tpaNphiesId()));
 
         insurance.setNetworkId(clean(source.networkId()));
         insurance.setSponsorNumber(clean(source.sponsorNumber()));

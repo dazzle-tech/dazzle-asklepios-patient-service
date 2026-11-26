@@ -62,8 +62,8 @@ public class PatientPrescriptionMedication extends AbstractAuditingEntity<Long> 
     @Column(name = "instructions", columnDefinition = "text")
     private String instructions;
 
-    @Column(name = "dose")
-    private Long dose;
+    @Column(name = "dose", precision = 10, scale = 2)
+    private BigDecimal dose;
 
     @Column(name = "does_unit", length = 100)
     private String doesUnit;
@@ -80,11 +80,15 @@ public class PatientPrescriptionMedication extends AbstractAuditingEntity<Long> 
     @Column(name = "duration_type", length = 50)
     private String durationType;
 
+    // Quantity to dispense (e.g. 7 tablets), filled from dose x frequency x duration and editable by the doctor.
+    @Column(name = "quantity", precision = 10, scale = 2)
+    private BigDecimal quantity;
+
     @Column(name = "chronic_medication", nullable = false)
     private Boolean chronicMedication = false;
 
-    @Column(name = "maximum_dose")
-    private Long maximumDose;
+    @Column(name = "maximum_dose", precision = 10, scale = 2)
+    private BigDecimal maximumDose;
 
 
 
@@ -132,5 +136,15 @@ public class PatientPrescriptionMedication extends AbstractAuditingEntity<Long> 
     @Column(name = "cancelled_date")
     private Instant cancelledDate;
 
+    // Dispensing status reported by the external pharmacy (Nahdi). A dispensed line cannot be edited or cancelled.
+    @Builder.Default
+    @Column(name = "is_dispensed", nullable = false)
+    private Boolean dispensed = false;
 
+    @Column(name = "dispensed_at")
+    private Instant dispensedAt;
+
+    // Pharmacy reference of the dispensing (e.g. invoice number).
+    @Column(name = "dispensing_reference", length = 100)
+    private String dispensingReference;
 }

@@ -1,6 +1,7 @@
 package com.dazzle.asklepios.domain;
 
 import com.dazzle.asklepios.domain.enumeration.TestResultType;
+import java.time.Instant;
 import com.dazzle.asklepios.domain.enumeration.diagnostictest.TestResultMarker;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -46,8 +47,12 @@ public class ClaimEncounterCopyDiagnosticOrderTestResult
     @Column(name = "diagnostic_order_test_result_id")
     private Long diagnosticOrderTestResultId;
 
-    @Column(name = "order_test_id", nullable = false)
+    @Column(name = "order_test_id")
     private Long orderTestId;
+
+    /** Source when the test was ordered from Service and Products instead of a diagnostic order. */
+    @Column(name = "patient_service_product_id")
+    private Long patientServiceProductId;
 
     @Column(name = "profile_test_id")
     private Long profileTestId;
@@ -69,4 +74,10 @@ public class ClaimEncounterCopyDiagnosticOrderTestResult
     @Column(name = "result_type_at_entry", length = 20)
     private TestResultType resultTypeAtEntry;
 
+    // Who wrote the original record and when; createdBy/createdDate are the copy's own
+    @Column(name = "original_created_by", length = 50, updatable = false)
+    private String originalCreatedBy;
+
+    @Column(name = "original_created_date", updatable = false)
+    private Instant originalCreatedDate;
 }

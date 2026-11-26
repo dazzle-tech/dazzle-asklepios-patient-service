@@ -10,6 +10,9 @@ public record DentalChartToothDTO(
         Long chartId,
         String toothNumber,
         boolean missing,
+        String inventoryStatus,
+        int pendingTreatments,
+        String inventoryProtection,
         List<ToothActionDTO> actions,
         List<ToothActionLogDTO> history,
         List<ToothServiceDTO> services,
@@ -21,13 +24,18 @@ public record DentalChartToothDTO(
             List<ToothActionDTO> actions,
             List<ToothActionLogDTO> history,
             List<ToothServiceDTO> services,
-            List<ToothCdtDTO> cdts
+            List<ToothCdtDTO> cdts,
+            int pendingTreatments,
+            String inventoryProtection
     ) {
         return new DentalChartToothDTO(
                 entity.getId(),
                 entity.getChartId(),
                 entity.getToothNumber(),
                 entity.isMissing(),
+                entity.getInventoryStatus() != null ? entity.getInventoryStatus().name() : "ACTIVE",
+                pendingTreatments,
+                inventoryProtection,
                 actions,
                 history,
                 services,

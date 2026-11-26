@@ -2,6 +2,7 @@ package com.dazzle.asklepios.domain;
 
 
 import com.dazzle.asklepios.domain.enumeration.DiagnosisType;
+import java.time.Instant;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -58,4 +59,11 @@ public class ClaimEncounterDiagnosis extends AbstractAuditingEntity<Long> implem
     @Column(name = "major", nullable = false)
     @Builder.Default
     private Boolean major = false;
+
+    // Who wrote the original record and when; createdBy/createdDate are the copy's own
+    @Column(name = "original_created_by", length = 50, updatable = false)
+    private String originalCreatedBy;
+
+    @Column(name = "original_created_date", updatable = false)
+    private Instant originalCreatedDate;
 }

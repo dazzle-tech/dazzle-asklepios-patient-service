@@ -12,10 +12,12 @@ import com.dazzle.asklepios.domain.ToothActionLog;
 import com.dazzle.asklepios.domain.ToothCdt;
 import com.dazzle.asklepios.domain.ToothService;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentStatus;
 import com.dazzle.asklepios.domain.enumeration.PlannedTreatmentType;
 import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.ToothActionLogType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
+import com.dazzle.asklepios.integration.waseel.service.readiness.PreAuthorizationReadiness;
 import com.dazzle.asklepios.integration.waseel.service.EncounterPreAuthorizationSyncService;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import com.dazzle.asklepios.repository.DentalChartRepository;
@@ -67,12 +69,15 @@ public class ToothActionService {
     private final CDTCodeHelper cdtCodeHelper;
     private final CdtServiceMappingHelper cdtServiceMappingHelper;
     private final ServiceHelper serviceHelper;
+    private final DentalVisitNumberService dentalVisitNumberService;
     private final InsurancePriceListCoverageService insurancePriceListCoverageService;
     private final PreAuthorizationResolutionService preAuthorizationResolutionService;
     private final EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService;
     private final BillingEngineService billingEngineService;
     private final PatientServiceAndProductService patientServiceAndProductService;
     private final DentalChartService dentalChartService;
+    private final DentalTreatmentPlanService dentalTreatmentPlanService;
+    private final DentalPlannedTreatmentService dentalPlannedTreatmentService;
 
     public ToothActionService(
             DentalChartToothRepository dentalChartToothRepository,
@@ -87,12 +92,15 @@ public class ToothActionService {
             CDTCodeHelper cdtCodeHelper,
             CdtServiceMappingHelper cdtServiceMappingHelper,
             ServiceHelper serviceHelper,
+            DentalVisitNumberService dentalVisitNumberService,
             InsurancePriceListCoverageService insurancePriceListCoverageService,
             PreAuthorizationResolutionService preAuthorizationResolutionService,
             EncounterPreAuthorizationSyncService encounterPreAuthorizationSyncService,
             @Lazy BillingEngineService billingEngineService,
             @Lazy PatientServiceAndProductService patientServiceAndProductService,
-            DentalChartService dentalChartService
+            DentalChartService dentalChartService,
+            DentalTreatmentPlanService dentalTreatmentPlanService,
+            @Lazy DentalPlannedTreatmentService dentalPlannedTreatmentService
     ) {
         this.dentalChartToothRepository = dentalChartToothRepository;
         this.dentalChartRepository = dentalChartRepository;
@@ -106,21 +114,33 @@ public class ToothActionService {
         this.cdtCodeHelper = cdtCodeHelper;
         this.cdtServiceMappingHelper = cdtServiceMappingHelper;
         this.serviceHelper = serviceHelper;
+        this.dentalVisitNumberService = dentalVisitNumberService;
         this.insurancePriceListCoverageService = insurancePriceListCoverageService;
         this.preAuthorizationResolutionService = preAuthorizationResolutionService;
         this.encounterPreAuthorizationSyncService = encounterPreAuthorizationSyncService;
         this.billingEngineService = billingEngineService;
         this.patientServiceAndProductService = patientServiceAndProductService;
         this.dentalChartService = dentalChartService;
+        this.dentalTreatmentPlanService = dentalTreatmentPlanService;
+        this.dentalPlannedTreatmentService = dentalPlannedTreatmentService;
     }
 
     public DentalChartResponseDTO saveToothAction(ToothActionSaveDTO dto) {
+        // Serialize with inventory saves on this chart so a tooth cannot be removed while work is recorded on it.
+        dentalChartService.lockChartOfTooth(dto.toothId());
         DentalChartTooth tooth = getTooth(dto.toothId());
         if (tooth.isMissing()) {
             throw new BadRequestAlertException(
                     "Cannot modify a missing tooth",
                     "toothAction",
                     "toothMissing"
+            );
+        }
+        if (!tooth.isActiveInventory()) {
+            throw new BadRequestAlertException(
+                    "This tooth was removed or replaced in the chart inventory. Its history is kept, but new actions cannot be recorded on it.",
+                    "toothAction",
+                    "toothNotActive"
             );
         }
 
@@ -196,6 +216,13 @@ public class ToothActionService {
 
         ToothAction savedToothAction = toothActionRepository.saveAndFlush(toothAction);
 
+        if (dto.existing() && "TREATMENT".equalsIgnoreCase(action.type())) {
+            dentalVisitNumberService.ensureExistingActionVisitNumber(
+                    chart.getPatient().getId(),
+                    savedToothAction
+            );
+        }
+
         if (!dto.existing() && dto.cdtCodeId() != null) {
             handleCdtFanOut(dto, tooth, chart, savedToothAction);
         }
@@ -230,6 +257,7 @@ public class ToothActionService {
                     "alreadyCancelled"
             );
         }
+        rejectIfLinkedToCompletedTreatment(toothAction);
         if (cancellationReason == null || cancellationReason.trim().isEmpty()) {
             throw new BadRequestAlertException(
                     "Cancellation reason is required",
@@ -279,16 +307,49 @@ public class ToothActionService {
             );
         }
 
+        Long planIdForCompletion = null;
         for (DentalPlannedTreatment plannedTreatment : dentalPlannedTreatmentRepository.findByToothActionIdAndCancelledFalse(toothActionId)) {
-            plannedTreatment.setCancelled(true);
-            plannedTreatment.setCancelledBy(currentUser);
-            plannedTreatment.setCancelledDate(Instant.now());
-            plannedTreatment.setCancellationReason(cancellationReason);
-            dentalPlannedTreatmentRepository.save(plannedTreatment);
+            // Completed treatments already have a charge line; do not cancel them from chart undo.
+            dentalPlannedTreatmentService.cascadeCancelOpen(
+                    plannedTreatment,
+                    cancellationReason,
+                    currentUser
+            );
+            if (plannedTreatment.getTreatmentPlan() != null) {
+                planIdForCompletion = plannedTreatment.getTreatmentPlan().getId();
+            }
+        }
+        if (planIdForCompletion != null) {
+            dentalTreatmentPlanService.evaluateCompletion(planIdForCompletion);
         }
 
         DentalChartTooth tooth = getTooth(toothAction.getToothId());
         return dentalChartService.getChartById(tooth.getChartId());
+    }
+
+    /**
+     * A chart action that records a completed treatment (recorded by its completion, or the action it was
+     * planned from) cannot be cancelled on its own, so the chart and the completed plan never contradict.
+     * Carried-forward copies on later charts are separate findings and are not covered.
+     */
+    private void rejectIfLinkedToCompletedTreatment(ToothAction toothAction) {
+        boolean completed = false;
+        if (toothAction.getSourcePlannedTreatmentId() != null && toothAction.getCarriedFromActionId() == null) {
+            completed = dentalPlannedTreatmentRepository.findById(toothAction.getSourcePlannedTreatmentId())
+                    .filter(p -> !p.isCancelled() && p.getStatus() == PlannedTreatmentStatus.COMPLETED)
+                    .isPresent();
+        }
+        if (!completed) {
+            completed = dentalPlannedTreatmentRepository.findByToothActionIdAndCancelledFalse(toothAction.getId()).stream()
+                    .anyMatch(p -> p.getStatus() == PlannedTreatmentStatus.COMPLETED);
+        }
+        if (completed) {
+            throw new BadRequestAlertException(
+                    "This chart action records a completed treatment and cannot be cancelled on its own.",
+                    "toothAction",
+                    "linkedToCompletedTreatment"
+            );
+        }
     }
 
     private void handleCdtFanOut(
@@ -307,53 +368,68 @@ public class ToothActionService {
                 .build();
         toothCdtRepository.save(toothCdt);
 
+        // Chart CDT treatments create PENDING planned treatments only.
+        // Charge lines are created later via Treatment Plan "Complete".
+        // One session is shared across every mapping row of this chart action.
+        if (dto.treatmentPlanId() == null) {
+            throw new BadRequestAlertException(
+                    "Select a treatment plan before adding a chart treatment",
+                    "toothAction",
+                    "planRequired"
+            );
+        }
+        dentalTreatmentPlanService.assertPlanForNewTreatment(dto.treatmentPlanId(), chart.getPatient().getId());
+        com.dazzle.asklepios.domain.DentalTreatmentSession session = dentalTreatmentPlanService.resolveSession(
+                dto.treatmentPlanId(),
+                dto.treatmentSessionId(),
+                dto.treatmentSessionId() == null
+        );
+        Integer visitNumber = session.getSessionNumber();
+
         List<CdtServiceMappingDTO> mappings = cdtServiceMappingHelper.getServiceMappingsForCdt(dto.cdtCodeId());
+        if (mappings == null || mappings.isEmpty()) {
+            throw new BadRequestAlertException(
+                    "CDT code has no mapped services to create planned treatments",
+                    "toothAction",
+                    "cdtMappingRequired"
+            );
+        }
+
         for (CdtServiceMappingDTO mapping : mappings) {
             ServiceSetupDTO setupService = serviceHelper.getService(mapping.serviceId());
             if (setupService.price() == null) {
                 throw new BadRequestAlertException(
                         "Service '" + setupService.name() + "' has no price configured",
-                        "toothService",
+                        "toothAction",
                         "priceRequired"
                 );
             }
 
-            ToothService toothServiceRow = ToothService.builder()
+            DentalPlannedTreatment plannedTreatment = DentalPlannedTreatment.builder()
+                    .patientId(chart.getPatient().getId())
+                    .encounterId(chart.getEncounter().getId())
+                    .treatmentPlan(session.getTreatmentPlan())
+                    .treatmentSession(session)
+                    .type(PlannedTreatmentType.CURRENT)
+                    .visitNumber(visitNumber)
+                    .cdtCodeId(dto.cdtCodeId())
                     .toothId(tooth.getId())
+                    .note(savedToothAction.getNote())
+                    .surfaces(List.of(dto.surface()))
+                    .insurance(BigDecimal.ZERO)
                     .serviceId(mapping.serviceId())
+                    .price(setupService.price())
+                    .quantity(1L)
+                    .discount(BigDecimal.ZERO)
+                    .status(PlannedTreatmentStatus.PENDING)
                     .source(ServiceSource.DENTAL_CHART_CDT_TREATMENT)
                     .toothActionId(savedToothAction.getId())
-                    .price(setupService.price())
                     .cancelled(false)
                     .build();
-            toothServiceRow = toothServiceRepository.saveAndFlush(toothServiceRow);
-
-            String notes = "For Tooth: " + tooth.getToothNumber();
-            PatientServiceAndProduct billingItem = buildToothServiceBillingItem(
-                    chart,
-                    toothServiceRow,
-                    setupService,
-                    notes
-            );
-            billingItem = patientServiceAndProductRepository.saveAndFlush(billingItem);
-
-            completeDentalBillingFlow(chart, billingItem);
+            DentalPlannedTreatment saved =
+                    dentalPlannedTreatmentRepository.save(plannedTreatment);
+            dentalPlannedTreatmentService.recordCreatedHistory(saved);
         }
-
-        DentalPlannedTreatment plannedTreatment = DentalPlannedTreatment.builder()
-                .patientId(chart.getPatient().getId())
-                .encounterId(chart.getEncounter().getId())
-                .type(PlannedTreatmentType.CURRENT)
-                .cdtCodeId(dto.cdtCodeId())
-                .toothId(tooth.getId())
-                .note(savedToothAction.getNote())
-                .surface(dto.surface())
-                .insurance(BigDecimal.ZERO)
-                .source(ServiceSource.DENTAL_CHART_CDT_TREATMENT)
-                .toothActionId(savedToothAction.getId())
-                .cancelled(false)
-                .build();
-        dentalPlannedTreatmentRepository.save(plannedTreatment);
     }
 
     private PatientServiceAndProduct buildToothServiceBillingItem(
@@ -457,6 +533,22 @@ public class ToothActionService {
         }
 
         billDentalItem(item, chart);
+
+        // Billing held the line (eligibility contract limit): send it to Waseel now, in this transaction.
+        if (isWaitingForWaseel(item)) {
+            try {
+                encounterPreAuthorizationSyncService.submitPendingPreAuthorizationOrThrow(chart.getEncounter().getId());
+            } catch (BadRequestAlertException ex) {
+                throw mapPreAuthorizationFailure(ex);
+            }
+        }
+    }
+
+    private boolean isWaitingForWaseel(PatientServiceAndProduct item) {
+        return patientServiceAndProductRepository.findById(item.getId())
+                .map(saved -> saved.getPreAuthorizationStatus() == PreAuthorizationStatus.PENDING_APPROVAL
+                        && saved.getPreAuthorizationRequestId() == null)
+                .orElse(false);
     }
 
     private void billDentalItem(PatientServiceAndProduct item, DentalChart chart) {
@@ -510,7 +602,9 @@ public class ToothActionService {
                 title
         );
 
-        return new BadRequestAlertException(title, "toothAction", errorKey);
+        BadRequestAlertException mapped = new BadRequestAlertException(title, "toothAction", errorKey);
+        PreAuthorizationReadiness.carryMissingFields(ex, mapped);
+        return mapped;
     }
 
     private DentalChartTooth getTooth(Long toothId) {

@@ -19,6 +19,8 @@ public record NamiProperties(
 
         String registerEndpoint,
 
+        String terminalBySerialNumberEndpoint,
+
         String webhookGenerateUrlEndpoint,
 
         String webhookRegisterEndpoint,

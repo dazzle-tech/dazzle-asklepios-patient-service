@@ -22,7 +22,7 @@ class UomPriceFactorHelperTest {
     private final UomPriceFactorHelper helper = new UomPriceFactorHelper(groupId -> List.of(
             relation(BOX, STRIP, "3"),
             relation(STRIP, TABLET, "10")
-    ));
+    ), null);
 
     @Test
     void sameUnitAsPriceBaseHasFactorOne() {

@@ -9,7 +9,10 @@ public record FinancialCloseRequest(
         @NotBlank
         String requestId,
 
-        Long facilityId
+        Long facilityId,
+
+        /** Why no laboratory or radiology investigation was done, asked when a Waseel insurance visit has none. */
+        String investigationNotPerformedReason
 
 ) implements Serializable {
 }

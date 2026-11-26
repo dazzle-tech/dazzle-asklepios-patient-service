@@ -39,6 +39,8 @@ public record PointOfSaleWebhookLogDTO(
 
         Boolean processed,
 
+        Boolean alreadyPaid,
+
         Instant createdDate
 
 ) implements Serializable {

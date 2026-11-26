@@ -7,7 +7,9 @@ import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.BillingChargeResponsibility;
 import com.dazzle.asklepios.domain.PatientInsurance;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
+import com.dazzle.asklepios.domain.PreAuthorizationItem;
 import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
+import com.dazzle.asklepios.domain.enumeration.CoverageStatus;
 import com.dazzle.asklepios.domain.enumeration.PaymentStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingChargeLineStatus;
 import com.dazzle.asklepios.domain.enumeration.billing.BillingEventType;
@@ -19,13 +21,17 @@ import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.BillingChargeResponsibilityRepository;
 import com.dazzle.asklepios.repository.PatientInsuranceRepository;
 import com.dazzle.asklepios.repository.PatientServiceAndProductRepository;
+import com.dazzle.asklepios.repository.PreAuthorizationItemRepository;
 import com.dazzle.asklepios.service.dto.InsuranceSplit;
+import com.dazzle.asklepios.service.dto.billing.BillingPricingInput;
 import com.dazzle.asklepios.service.dto.billing.BillingProcessingContext;
+import com.dazzle.asklepios.service.dto.billing.PartyTaxDistribution;
 import com.dazzle.asklepios.service.dto.billing.PriceCalculationResult;
 import com.dazzle.asklepios.web.rest.errors.BadRequestAlertException;
 import com.dazzle.asklepios.web.rest.errors.NotFoundAlertException;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.PreAuthorizationStatus;
 import com.dazzle.asklepios.integration.waseel.service.EncounterInsuranceEligibilityService;
+import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationItemMatcher;
 import com.dazzle.asklepios.integration.waseel.service.PreAuthorizationResolutionService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -80,9 +86,13 @@ public class BillingResponsibilityService {
 
     private final PreAuthorizationResolutionService preAuthorizationResolutionService;
 
+    private final PreAuthorizationItemRepository preAuthorizationItemRepository;
+
     private final EncounterInsuranceEligibilityService encounterInsuranceEligibilityService;
 
     private final BillingChargeService billingChargeService;
+
+    private final BillingPricingService billingPricingService;
 
     /**
      * Calculates and persists responsibility rows.
@@ -98,6 +108,11 @@ public class BillingResponsibilityService {
      * 3. Insurance patient:
      *    Patient = configured patient share percentage
      *    Insurance = remaining amount
+     *
+     * The item tax is then split between the two shares and each party's
+     * portion is kept or removed by its own toggle on the item's tax
+     * (Patient Copayment / Claim Share). See
+     * {@link BillingPricingService#distributeTax}.
      */
     @Transactional(
             propagation = Propagation.MANDATORY,
@@ -167,7 +182,10 @@ public class BillingResponsibilityService {
             return;
         }
 
-        if (item.getPatientInsuranceId() == null || item.isUncoveredCashItem()) {
+        boolean contractOverridesPriceListCash =
+                item.isUncoveredCashItem() && nphiesContractOverridesPriceListCash(item);
+        if (item.getPatientInsuranceId() == null
+                || (item.isUncoveredCashItem() && !contractOverridesPriceListCash)) {
             applyCashResponsibility(
                     context,
                     item,
@@ -178,7 +196,12 @@ public class BillingResponsibilityService {
             return;
         }
 
-        if (item.getPreAuthorizationStatus() == PreAuthorizationStatus.REJECTED) {
+        if (contractOverridesPriceListCash) {
+            item.setCoverageStatus(CoverageStatus.COVERED);
+            item.setNotCoveredReason(null);
+        }
+
+        if (PreAuthorizationResolutionService.isDeclinedByPayer(item)) {
             applyCashResponsibility(
                     context,
                     item,
@@ -225,6 +248,19 @@ public class BillingResponsibilityService {
             PatientServiceAndProduct item,
             BillingChargeLine chargeLine
     ) {
+        applyContractDiscount(context, item, chargeLine, BigDecimal.ZERO);
+
+        applyTaxDistribution(
+                context,
+                item,
+                chargeLine,
+                distributeTax(
+                        context,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO
+                )
+        );
+
         chargeLine.setPatientResponsibilityAmount(
                 BigDecimal.ZERO
         );
@@ -297,8 +333,43 @@ public class BillingResponsibilityService {
             BillingProcessingContext context,
             PatientServiceAndProduct item,
             BillingChargeLine chargeLine,
-            BigDecimal netAmount
+            BigDecimal calculatedNetAmount
     ) {
+        applyContractDiscount(context, item, chargeLine, BigDecimal.ZERO);
+
+        /*
+         * Self-pay: the patient carries the whole item, so only the
+         * Patient Copayment toggle decides the tax. Claim Share is ignored
+         * because the insurance share is zero.
+         */
+        BigDecimal netAmount =
+                applyTaxDistribution(
+                        context,
+                        item,
+                        chargeLine,
+                        distributeTax(
+                                context,
+                                calculatedNetAmount,
+                                BigDecimal.ZERO
+                        )
+                );
+
+        /*
+         * Keep net = patient + insurance + other before the responsibility
+         * row flushes the line (ck_billing_charge_line_responsibility).
+         */
+        chargeLine.setPatientResponsibilityAmount(
+                netAmount
+        );
+
+        chargeLine.setInsuranceResponsibilityAmount(
+                BigDecimal.ZERO
+        );
+
+        chargeLine.setOtherPayerResponsibilityAmount(
+                BigDecimal.ZERO
+        );
+
         String idempotencyKey =
                 context.getIdempotencyKey()
                         + ":RESPONSIBILITY:PATIENT";
@@ -329,18 +400,6 @@ public class BillingResponsibilityService {
 
                         idempotencyKey
                 );
-
-        chargeLine.setPatientResponsibilityAmount(
-                netAmount
-        );
-
-        chargeLine.setInsuranceResponsibilityAmount(
-                BigDecimal.ZERO
-        );
-
-        chargeLine.setOtherPayerResponsibilityAmount(
-                BigDecimal.ZERO
-        );
 
         chargeLine.setOutstandingAmount(
                 netAmount
@@ -402,27 +461,76 @@ public class BillingResponsibilityService {
             PatientServiceAndProduct item,
             BillingChargeLine chargeLine,
             PatientInsurance insurance,
-            BigDecimal netAmount
+            BigDecimal calculatedNetAmount
     ) {
-        BigDecimal patientAmount =
-                calculatePatientInsuranceShare(
+        InsuranceSplit split =
+                calculateInsuranceSplit(
                         context,
                         insurance,
                         item,
-                        netAmount
+                        calculatedNetAmount
                 );
 
-        BigDecimal insuranceAmount =
-                money(
-                        netAmount.subtract(
-                                patientAmount
-                        )
+        /*
+         * The split is on the net after the coverage contract discount. What it
+         * leaves out is a price reduction: nobody owes it, so it never reaches
+         * the claim.
+         */
+        applyContractDiscount(
+                context,
+                item,
+                chargeLine,
+                calculatedNetAmount
+                        .subtract(split.patientShare())
+                        .subtract(split.insuranceShare())
+                        .max(BigDecimal.ZERO)
+        );
+
+        PartyTaxDistribution taxDistribution =
+                distributeTax(
+                        context,
+                        split.patientShare(),
+                        split.insuranceShare()
                 );
+
+        BigDecimal netAmount =
+                applyTaxDistribution(
+                        context,
+                        item,
+                        chargeLine,
+                        taxDistribution
+                );
+
+        BigDecimal patientAmount =
+                money(taxDistribution.patientAmount());
+
+        BigDecimal insuranceAmount =
+                money(taxDistribution.insuranceAmount());
 
         validateResponsibilityBalance(
                 netAmount,
                 patientAmount,
                 insuranceAmount,
+                BigDecimal.ZERO
+        );
+
+        /*
+         * Keep net = patient + insurance + other before the responsibility
+         * rows flush the line (ck_billing_charge_line_responsibility).
+         */
+        chargeLine.setPatientInsurance(
+                insurance
+        );
+
+        chargeLine.setPatientResponsibilityAmount(
+                patientAmount
+        );
+
+        chargeLine.setInsuranceResponsibilityAmount(
+                insuranceAmount
+        );
+
+        chargeLine.setOtherPayerResponsibilityAmount(
                 BigDecimal.ZERO
         );
 
@@ -497,22 +605,6 @@ public class BillingResponsibilityService {
                                     + ":RESPONSIBILITY:INSURANCE"
                     );
         }
-
-        chargeLine.setPatientInsurance(
-                insurance
-        );
-
-        chargeLine.setPatientResponsibilityAmount(
-                patientAmount
-        );
-
-        chargeLine.setInsuranceResponsibilityAmount(
-                insuranceAmount
-        );
-
-        chargeLine.setOtherPayerResponsibilityAmount(
-                BigDecimal.ZERO
-        );
 
         chargeLine.setOutstandingAmount(
                 netAmount
@@ -790,7 +882,152 @@ public class BillingResponsibilityService {
         }
     }
 
-    private BigDecimal calculatePatientInsuranceShare(
+    private PartyTaxDistribution distributeTax(
+            BillingProcessingContext context,
+            BigDecimal patientShare,
+            BigDecimal insuranceShare
+    ) {
+        return billingPricingService.distributeTax(
+                context.getPricingResult().taxAmount(),
+                patientShare,
+                insuranceShare,
+                taxOnPatientCopayment(context),
+                taxOnClaimShare(context)
+        );
+    }
+
+    /**
+     * Keeps the applied tax on every place that already carries the item
+     * amounts (charge line, operational item, pricing result), so the
+     * snapshot, ledger, invoice and financial documents all read the same
+     * values without recalculating them.
+     */
+    private BigDecimal applyTaxDistribution(
+            BillingProcessingContext context,
+            PatientServiceAndProduct item,
+            BillingChargeLine chargeLine,
+            PartyTaxDistribution distribution
+    ) {
+        BigDecimal appliedTax =
+                money(distribution.appliedTaxAmount());
+
+        BigDecimal netAmount =
+                money(distribution.netAmount());
+
+        chargeLine.setTaxOnPatientCopayment(
+                taxOnPatientCopayment(context)
+        );
+        chargeLine.setTaxOnClaimShare(
+                taxOnClaimShare(context)
+        );
+        chargeLine.setCalculatedTaxAmount(
+                money(distribution.calculatedTaxAmount())
+        );
+        chargeLine.setPatientTaxAmount(
+                money(distribution.patientTaxAmount())
+        );
+        chargeLine.setInsuranceTaxAmount(
+                money(distribution.insuranceTaxAmount())
+        );
+        chargeLine.setTaxAmount(appliedTax);
+        chargeLine.setNetAmount(netAmount);
+        /*
+         * Keep net = allocated + outstanding before the line is flushed with
+         * the responsibility rows (ck_billing_charge_line_allocation_balance).
+         */
+        chargeLine.setOutstandingAmount(
+                netAmount.subtract(
+                        money(chargeLine.getAllocatedAmount())
+                )
+        );
+
+        item.setTaxAmount(appliedTax);
+        item.setNetAmount(netAmount);
+        item.setTotalAmount(netAmount);
+
+        PriceCalculationResult pricing =
+                context.getPricingResult();
+
+        context.setPricingResult(
+                new PriceCalculationResult(
+                        pricing.quantity(),
+                        pricing.unitPrice(),
+                        pricing.grossAmount(),
+                        pricing.discountAmount(),
+                        pricing.exemptionAmount(),
+                        pricing.taxableAmount(),
+                        appliedTax,
+                        netAmount
+                )
+        );
+
+        return netAmount;
+    }
+
+    /**
+     * New pricing carries the toggles of the resolved tax; a recalculation
+     * without pricing input (eligibility refresh) reuses the toggles stored
+     * on the charge line when it was billed.
+     */
+    private boolean taxOnPatientCopayment(
+            BillingProcessingContext context
+    ) {
+        BillingPricingInput input =
+                context.getPricingInput();
+
+        Boolean toggle =
+                input != null
+                        ? input.taxApplyOnPatientCopayment()
+                        : context.getChargeLine().getTaxOnPatientCopayment();
+
+        return !Boolean.FALSE.equals(toggle);
+    }
+
+    private boolean taxOnClaimShare(
+            BillingProcessingContext context
+    ) {
+        BillingPricingInput input =
+                context.getPricingInput();
+
+        Boolean toggle =
+                input != null
+                        ? input.taxApplyOnClaimShare()
+                        : context.getChargeLine().getTaxOnClaimShare();
+
+        return !Boolean.FALSE.equals(toggle);
+    }
+
+    private void applyContractDiscount(
+            BillingProcessingContext context,
+            PatientServiceAndProduct item,
+            BillingChargeLine chargeLine,
+            BigDecimal contractDiscount
+    ) {
+        PriceCalculationResult pricing =
+                context.getPricingResult();
+
+        BigDecimal discount =
+                money(pricing.discountAmount()).add(money(contractDiscount));
+
+        chargeLine.setContractDiscountAmount(money(contractDiscount));
+        chargeLine.setDiscountAmount(discount);
+        item.setDiscountAmount(discount);
+
+        context.setPricingResult(
+                new PriceCalculationResult(
+                        pricing.quantity(),
+                        pricing.unitPrice(),
+                        pricing.grossAmount(),
+                        discount,
+                        pricing.exemptionAmount(),
+                        pricing.taxableAmount(),
+                        pricing.taxAmount(),
+                        pricing.netAmount()
+                )
+        );
+    }
+
+    private InsuranceSplit calculateInsuranceSplit(
             BillingProcessingContext context,
             PatientInsurance insurance,
             PatientServiceAndProduct item,
@@ -801,10 +1038,51 @@ public class BillingResponsibilityService {
                         insurance,
                         item,
                         netAmount,
-                        context.getVisitMaxLimitTracker()
+                        context.getVisitMaxLimitTracker(),
+                        billingPricingService.patientPayableRatio(
+                                context.getPricingResult().taxAmount(),
+                                netAmount,
+                                taxOnPatientCopayment(context)
+                        )
                 );
 
-        return money(split.patientShare());
+        BigDecimal patientShare = money(split.patientShare());
+        BigDecimal billedNet = patientShare.add(money(split.insuranceShare()));
+
+        /*
+         * Partial approval (NPHIES contract): insurance covers at most the approved
+         * amount; the patient pays the rest of the net amount.
+         */
+        BigDecimal approvedInsuranceAmount = partiallyApprovedInsuranceAmount(item);
+        if (approvedInsuranceAmount != null) {
+            patientShare = patientShare.max(money(billedNet.subtract(approvedInsuranceAmount)));
+            LOG.info(
+                    "[CALCULATE] Partial pre-approval applied pspId={} approvedInsurance={} patientShare={}",
+                    item.getId(),
+                    approvedInsuranceAmount,
+                    patientShare
+            );
+        }
+
+        return new InsuranceSplit(patientShare, money(billedNet.subtract(patientShare)));
+    }
+
+    /**
+     * Insurance amount approved on a partial approval (local decision, or a Waseel partial the patient
+     * accepted), stored as the payer share of the request line for this billing line;
+     * {@code null} when the line is not partially approved.
+     */
+    private BigDecimal partiallyApprovedInsuranceAmount(PatientServiceAndProduct item) {
+        if (!PreAuthorizationResolutionService.isPartiallyApprovedLocally(item)
+                || item.getPreAuthorizationRequestId() == null) {
+            return null;
+        }
+
+        return PreAuthorizationItemMatcher
+                .find(preAuthorizationItemRepository.findByPreAuthorizationIdOrderBySequenceAsc(item.getPreAuthorizationRequestId()), item)
+                .map(PreAuthorizationItem::getPayerShare)
+                .map(this::money)
+                .orElse(null);
     }
 
     private String resolveServiceCategory(
@@ -835,6 +1113,24 @@ public class BillingResponsibilityService {
         }
     }
 
+    private boolean nphiesContractOverridesPriceListCash(PatientServiceAndProduct item) {
+        if (item == null || item.getPatientInsuranceId() == null || item.getPatientId() == null) {
+            return false;
+        }
+
+        String reason = item.getNotCoveredReason();
+        if (!InsurancePriceListCoverageService.ELIGIBILITY_NOT_IN_FORCE.equals(reason)
+                && !InsurancePriceListCoverageService.NOT_IN_INSURANCE_PRICE_LIST.equals(reason)) {
+            return false;
+        }
+
+        return patientInsuranceRepository
+                .findByIdAndPatient_Id(item.getPatientInsuranceId(), item.getPatientId())
+                .filter(insurancePatientShareCalculator::usesNphiesContractRules)
+                .filter(insurancePatientShareCalculator::isLatestCoverageInForce)
+                .isPresent();
+    }
+
     private PatientInsurance loadAndValidateInsurance(
             PatientServiceAndProduct item
     ) {
@@ -859,6 +1155,10 @@ public class BillingResponsibilityService {
                     ENTITY_NAME,
                     "patientInsurance.expired"
             );
+        }
+
+        if (!insurancePatientShareCalculator.isWaseelCoverage(insurance)) {
+            return insurance;
         }
 
         if (insurance.getPayerNphiesId() == null
@@ -1200,7 +1500,7 @@ public class BillingResponsibilityService {
      * (e.g. eligibility re-check). Skips lines that already have allocations.
      */
     @Transactional(
-            propagation = Propagation.REQUIRES_NEW,
+            propagation = Propagation.REQUIRED,
             rollbackFor = Exception.class
     )
     public int refreshInsuranceResponsibilitiesForEncounter(
@@ -1336,28 +1636,93 @@ public class BillingResponsibilityService {
         return refreshedCount;
     }
 
+    /**
+     * Rebuilds the patient/insurance split of one charge line from its stored
+     * pricing, drawing the patient share from the supplied visit max-limit
+     * pool. The line must not hold allocations.
+     */
+    @Transactional(
+            propagation = Propagation.MANDATORY,
+            rollbackFor = Exception.class
+    )
+    public BillingProcessingContext recalculateInsuranceResponsibility(
+            BillingChargeLine chargeLine,
+            VisitMaxLimitTracker visitMaxLimitTracker,
+            String reason
+    ) {
+        BillingProcessingContext context =
+                buildRefreshContext(
+                        chargeLine,
+                        chargeLine.getPatientServiceProduct(),
+                        "MAX_LIMIT_REDISTRIBUTION"
+                );
+
+        context.setVisitMaxLimitTracker(visitMaxLimitTracker);
+
+        supersedeActiveResponsibilities(
+                context,
+                reason
+        );
+
+        calculate(context);
+
+        return context;
+    }
+
     private BillingProcessingContext buildRefreshContext(
             BillingChargeLine chargeLine,
             PatientServiceAndProduct item
     ) {
-        BigDecimal netAmount = money(chargeLine.getNetAmount());
+        return buildRefreshContext(
+                chargeLine,
+                item,
+                "ELIGIBILITY_REFRESH"
+        );
+    }
+
+    private BillingProcessingContext buildRefreshContext(
+            BillingChargeLine chargeLine,
+            PatientServiceAndProduct item,
+            String idempotencyPrefix
+    ) {
+        /*
+         * Rebuild the amounts as they were before the party toggles removed
+         * any tax and before the coverage contract discount, so the new split
+         * starts from the full item again.
+         * Lines billed before the toggles existed have no calculated tax and
+         * carried the whole tax already.
+         */
+        BigDecimal appliedTax = money(chargeLine.getTaxAmount());
+
+        BigDecimal calculatedTax =
+                chargeLine.getCalculatedTaxAmount() == null
+                        ? appliedTax
+                        : money(chargeLine.getCalculatedTaxAmount());
+
+        BigDecimal contractDiscount = money(chargeLine.getContractDiscountAmount());
+
+        BigDecimal netAmount =
+                money(chargeLine.getNetAmount())
+                        .add(calculatedTax.subtract(appliedTax))
+                        .add(contractDiscount);
 
         PriceCalculationResult pricingResult =
                 new PriceCalculationResult(
                         money(chargeLine.getQuantity()),
                         money(chargeLine.getUnitPrice()),
                         money(chargeLine.getGrossAmount()),
-                        money(chargeLine.getDiscountAmount()),
+                        money(chargeLine.getDiscountAmount()).subtract(contractDiscount),
                         money(chargeLine.getExemptionAmount()),
                         BigDecimal.ZERO,
-                        money(chargeLine.getTaxAmount()),
+                        calculatedTax,
                         netAmount
                 );
 
         return BillingProcessingContext.builder()
                 .transactionGroupId(UUID.randomUUID())
                 .idempotencyKey(
-                        "ELIGIBILITY_REFRESH:"
+                        idempotencyPrefix
+                                + ":"
                                 + chargeLine.getId()
                                 + ":"
                                 + UUID.randomUUID()

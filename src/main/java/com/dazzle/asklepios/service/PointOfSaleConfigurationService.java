@@ -4,6 +4,7 @@ import com.dazzle.asklepios.client.NamiCloud.NamiCloudClient;
 import com.dazzle.asklepios.client.NamiCloud.dto.NamiGenerateWebhookUrlResponse;
 import com.dazzle.asklepios.client.NamiCloud.dto.NamiRegisterTerminalResponse;
 import com.dazzle.asklepios.client.NamiCloud.dto.NamiRegisterWebhookResponse;
+import com.dazzle.asklepios.client.NamiCloud.dto.NamiTerminalStatusResponse;
 import com.dazzle.asklepios.domain.PointOfSaleConfiguration;
 import com.dazzle.asklepios.repository.PointOfSaleCheckInRepository;
 import com.dazzle.asklepios.repository.PointOfSaleConfigurationRepository;
@@ -17,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.web.util.UriComponentsBuilder;
 import jakarta.persistence.criteria.Predicate;
 
 import java.util.ArrayList;
@@ -215,6 +217,26 @@ public class PointOfSaleConfigurationService {
         );
     }
 
+    public NamiTerminalStatusResponse getTerminalStatus(
+            Long configurationId
+    ) {
+
+        PointOfSaleConfiguration configuration =
+                pointOfSaleConfigurationRepository
+                        .findById(configurationId)
+                        .orElseThrow(() ->
+                                new BadRequestAlertException(
+                                        "POS configuration not found",
+                                        "pointOfSaleConfiguration",
+                                        "notFound"
+                                )
+                        );
+
+        return namiCloudClient.getTerminalBySerialNumber(
+                configuration
+        );
+    }
+
     public PointOfSaleWebhookRegistrationDTO registerTerminalWebhook(
             Long configurationId
     ) {
@@ -245,6 +267,15 @@ public class PointOfSaleConfigurationService {
                     "Generated callback URL is missing"
             );
         }
+
+        String webhookToken =
+                UriComponentsBuilder.fromUriString(callbackUrl)
+                        .build(true)
+                        .getQueryParams()
+                        .getFirst("token");
+
+        configuration.setWebhookToken(webhookToken);
+        pointOfSaleConfigurationRepository.save(configuration);
 
         NamiRegisterWebhookResponse registerWebhookResponse =
                 namiCloudClient.registerWebhook(

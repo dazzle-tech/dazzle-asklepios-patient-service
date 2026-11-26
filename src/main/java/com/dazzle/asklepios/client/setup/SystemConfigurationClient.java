@@ -14,5 +14,5 @@ public interface SystemConfigurationClient {
     String getResolvedValue(@PathVariable("key") SystemConfigKey key);
 
     @GetMapping("/api/setup/system-config")
-    Map<SystemConfigKey, String> getPublicConfigurations();
+    Map<String, String> getPublicConfigurations();
 }

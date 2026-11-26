@@ -10,6 +10,6 @@ public enum EncounterReason
     DIAGNOSTIC_TEST,
     FIRST_TIME_VISIT,
     VIRTUAL_VISIT,
-    REFERRAL
+    REFERRAL,
+    PRE_EMPLOYMENT
 }
-

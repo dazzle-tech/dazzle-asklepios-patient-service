@@ -3,6 +3,7 @@ package com.dazzle.asklepios.integration.waseel.service;
 import com.dazzle.asklepios.domain.ClaimEncounterCopy;
 import com.dazzle.asklepios.domain.BillingChargeLine;
 import com.dazzle.asklepios.domain.BillingPayment;
+import com.dazzle.asklepios.domain.BillingPricingSnapshot;
 import com.dazzle.asklepios.domain.EmergencyTriage;
 import com.dazzle.asklepios.domain.FinancialDocument;
 import com.dazzle.asklepios.domain.FinancialDocumentItem;
@@ -11,8 +12,12 @@ import com.dazzle.asklepios.domain.PatientEncounter;
 import com.dazzle.asklepios.domain.PatientRelation;
 import com.dazzle.asklepios.domain.PatientServiceAndProduct;
 import com.dazzle.asklepios.domain.PreAuthorizationRequest;
+import com.dazzle.asklepios.domain.enumeration.BillingItemTypes;
 import com.dazzle.asklepios.domain.enumeration.EncounterType;
+import com.dazzle.asklepios.domain.enumeration.ServiceSource;
 import com.dazzle.asklepios.domain.enumeration.RelationType;
+import com.dazzle.asklepios.domain.enumeration.billing.BillingPricingSnapshotStatus;
+import com.dazzle.asklepios.domain.enumeration.billing.TaxType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimSubType;
 import com.dazzle.asklepios.domain.enumeration.waseelIntegration.WaseelClaimType;
 import com.dazzle.asklepios.integration.waseel.config.WaseelApiProperties;
@@ -26,15 +31,18 @@ import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimPreAuthoriza
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelClaimRequest;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelEmergencyEncounterMapper;
 import com.dazzle.asklepios.integration.waseel.dto.claim.WaseelEncounterEmergency;
+import com.dazzle.asklepios.integration.waseel.service.LaboratoryItemSupportingInfoLinker.LabTestSource;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalCareTeamMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalDiagnosisMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalItemMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalSubscriberMapper;
 import com.dazzle.asklepios.integration.waseel.service.mapper.ApprovalSupportingInfoMapper;
+import com.dazzle.asklepios.integration.waseel.service.mapper.DentalAttachmentSupportingInfoMapper;
 import com.dazzle.asklepios.repository.ClaimEncounterCopyRepository;
 import com.dazzle.asklepios.repository.ClaimEncounterDiagnosisRepository;
 import com.dazzle.asklepios.repository.BillingChargeLineRepository;
 import com.dazzle.asklepios.repository.BillingPaymentRepository;
+import com.dazzle.asklepios.repository.BillingPricingSnapshotRepository;
 import com.dazzle.asklepios.repository.EmergencyTriageRepository;
 import com.dazzle.asklepios.repository.FinancialDocumentItemRepository;
 import com.dazzle.asklepios.repository.PatientDiagnosisRepository;
@@ -53,6 +61,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -88,6 +97,7 @@ public class ClaimRequestBuilderService {
     private final FinancialDocumentItemRepository financialDocumentItemRepository;
     private final BillingChargeLineRepository billingChargeLineRepository;
     private final BillingPaymentRepository billingPaymentRepository;
+    private final BillingPricingSnapshotRepository billingPricingSnapshotRepository;
     private final PreAuthorizationRequestRepository preAuthorizationRequestRepository;
     private final EmergencyTriageRepository emergencyTriageRepository;
 
@@ -96,6 +106,7 @@ public class ClaimRequestBuilderService {
     private final ApprovalCareTeamMapper approvalCareTeamMapper;
     private final ApprovalItemMapper approvalItemMapper;
     private final ApprovalSupportingInfoMapper approvalSupportingInfoMapper;
+    private final DentalAttachmentSupportingInfoMapper dentalAttachmentSupportingInfoMapper;
     private final ApprovalSubscriberMapper approvalSubscriberMapper;
 
     private final WaseelApiProperties waseelApiProperties;
@@ -210,6 +221,14 @@ public class ClaimRequestBuilderService {
                 ? List.of()
                 : billingChargeLineRepository.findAllById(chargeLineIds);
 
+        Map<Long, BigDecimal> taxPercentByChargeLine = chargeLineIds.isEmpty()
+                ? Map.of()
+                : taxPercentByChargeLine(billingPricingSnapshotRepository
+                        .findAllByChargeLine_IdInAndStatusOrderByIdDesc(
+                                chargeLineIds,
+                                BillingPricingSnapshotStatus.ACTIVE
+                        ));
+
         List<BillingPayment> payments =
                 billingPaymentRepository.findAllByEncounter_IdOrderByIdAsc(encounterId);
 
@@ -240,7 +259,14 @@ public class ClaimRequestBuilderService {
             );
         }
 
-        var supportingInfo = approvalSupportingInfoMapper.toClaimSupportingInfo(encounter);
+        Map<Integer, LabTestSource> labTestSources = new LinkedHashMap<>();
+        var supportingInfo = ApprovalSupportingInfoMapper.withOnsetCode(
+                dentalAttachmentSupportingInfoMapper.withDentalAttachments(
+                        approvalSupportingInfoMapper.toClaimSupportingInfo(encounter, labTestSources),
+                        encounter
+                ),
+                diagnoses
+        );
 
         List<PatientServiceAndProduct> products = invoiceItems.stream()
                 .map(FinancialDocumentItem::getPatientServiceProductId)
@@ -249,12 +275,16 @@ public class ClaimRequestBuilderService {
                 .filter(Objects::nonNull)
                 .toList();
 
+        // A dental (oral) claim sends its dental treatment as ORAL-HEALTH-OP with the tooth, as the pre-authorization does.
+        boolean oralClaim = claimType == WaseelClaimType.DENTAL;
+
         List<WaseelApprovalItem> mappedItems = approvalItemMapper.toWaseelItems(
                 products,
                 snapshot.insurancePlan() == null ? null : snapshot.insurancePlan().patientShare(),
                 encounter,
                 supportingInfo,
-                true
+                true,
+                oralClaim
         );
 
         Map<Long, WaseelApprovalItem> mappedByPspId = alignMappedItemsByProductOrder(
@@ -282,6 +312,7 @@ public class ClaimRequestBuilderService {
                 .toList();
 
         List<WaseelApprovalItem> claimItems = new ArrayList<>();
+        Set<Integer> consumedLabTestSequences = new LinkedHashSet<>();
         int sequence = 1;
         for (FinancialDocumentItem invoiceItem : invoiceItems) {
             Long pspId = invoiceItem.getPatientServiceProductId();
@@ -303,7 +334,8 @@ public class ClaimRequestBuilderService {
                                     : snapshot.insurancePlan().patientShare(),
                             encounter,
                             supportingInfo,
-                            true
+                            true,
+                            oralClaim
                     );
                     base = single.isEmpty() ? null : single.get(0);
                 }
@@ -331,13 +363,72 @@ public class ClaimRequestBuilderService {
                     ? base.quantity()
                     : invoiceItem.getQuantity().intValue();
 
+            int itemSequence = sequence++;
+            boolean laboratoryItem = isLaboratoryClaimItem(base.type(), invoiceProduct);
+            LaboratoryItemSupportingInfoLinker.ItemSupportingInfoLink supportingInfoLink =
+                    LaboratoryItemSupportingInfoLinker.sequencesForItem(
+                            laboratoryItem,
+                            invoiceProduct == null ? null : invoiceProduct.getDiagnosticTestId(),
+                            laboratoryOrderTestId(invoiceProduct),
+                            supportingInfo,
+                            supportingInfoSequences,
+                            labTestSources,
+                            consumedLabTestSequences
+                    );
+            if (laboratoryItem) {
+                if (supportingInfoLink.labTestsOnClaim() > 1 && !supportingInfoLink.matchedByIdentity()) {
+                    log.warn(
+                            "[CLAIM_BUILD] Laboratory item {} code {} had no result match. Another test's lab result was not linked. diagnosticTestId={} orderTestId={} encounterId={}",
+                            itemSequence,
+                            base.itemCode(),
+                            invoiceProduct == null ? null : invoiceProduct.getDiagnosticTestId(),
+                            laboratoryOrderTestId(invoiceProduct),
+                            encounterId
+                    );
+                } else {
+                    log.info(
+                            "[CLAIM_BUILD] Laboratory item {} code {} linkedLabTestSequence={} encounterId={}",
+                            itemSequence,
+                            base.itemCode(),
+                            supportingInfoLink.linkedLabTestSequence(),
+                            encounterId
+                    );
+                }
+            }
+
+            boolean medicationItem = isMedicationClaimItem(base.type(), invoiceProduct);
+            MedicationDaysSupplyLinker.ItemDaysSupplyLink daysSupplyLink =
+                    MedicationDaysSupplyLinker.sequencesForItem(
+                            medicationItem,
+                            supportingInfoLink.sequences(),
+                            base.supportingInfoSequence(),
+                            supportingInfo
+                    );
+            if (base.type() != null
+                    && "MEDICATION-CODES".equalsIgnoreCase(base.type().trim())
+                    && daysSupplyLink.daysSupplySequence() == null) {
+                log.warn(
+                        "[CLAIM_BUILD] Medication item {} code {} has no days-supply link. encounterId={}",
+                        itemSequence,
+                        base.itemCode(),
+                        encounterId
+                );
+            }
+
             WaseelApprovalItem enriched = approvalItemMapper.withInvoiceAmounts(
-                    withSequences(base, sequence++, supportingInfoSequences, careTeamSequences, diagnosisSequences),
+                    withSequences(
+                            base,
+                            itemSequence,
+                            daysSupplyLink.sequences(),
+                            careTeamSequences,
+                            diagnosisSequences
+                    ),
                     insuranceInvoice.getDocumentNumber(),
                     invoiceItem.getUnitPrice(),
                     invoiceItem.getGrossAmount(),
                     invoiceItem.getDiscountAmount(),
                     invoiceItem.getTaxAmount(),
+                    taxPercentByChargeLine.get(invoiceItem.getBillingChargeLineId()),
                     net,
                     patientShare,
                     payerShare,
@@ -430,6 +521,25 @@ public class ClaimRequestBuilderService {
         );
     }
 
+    /**
+     * The applied tax rate of each charge line, from its latest active pricing snapshot.
+     * Fixed-amount tax has no rate, so it is left out.
+     */
+    static Map<Long, BigDecimal> taxPercentByChargeLine(List<BillingPricingSnapshot> latestFirst) {
+        Map<Long, BigDecimal> rates = new HashMap<>();
+        for (BillingPricingSnapshot snapshot : latestFirst) {
+            Long chargeLineId = snapshot.getChargeLine().getId();
+            if (rates.containsKey(chargeLineId)) {
+                continue;
+            }
+            rates.put(
+                    chargeLineId,
+                    snapshot.getTaxType() == TaxType.PERCENTAGE ? snapshot.getTaxRate() : BigDecimal.ZERO
+            );
+        }
+        return rates;
+    }
+
     private Map<Long, WaseelApprovalItem> alignMappedItemsByProductOrder(
             List<PatientServiceAndProduct> products,
             List<WaseelApprovalItem> mappedItems
@@ -481,6 +591,31 @@ public class ClaimRequestBuilderService {
             ordered.add(product);
         }
         return ordered;
+    }
+
+    private boolean isMedicationClaimItem(String waseelType, PatientServiceAndProduct product) {
+        if (waseelType != null && "MEDICATION-CODES".equalsIgnoreCase(waseelType.trim())) {
+            return true;
+        }
+        return product != null && product.getBillingItemType() == BillingItemTypes.MEDICATION;
+    }
+
+    private boolean isLaboratoryClaimItem(String waseelType, PatientServiceAndProduct product) {
+        if (waseelType != null && "LABORATORY".equalsIgnoreCase(waseelType.trim())) {
+            return true;
+        }
+        if (product == null || product.getBillingItemType() == null) {
+            return false;
+        }
+        BillingItemTypes billingType = product.getBillingItemType();
+        return billingType == BillingItemTypes.LABORATORY || billingType == BillingItemTypes.PATHOLOGY;
+    }
+
+    private Long laboratoryOrderTestId(PatientServiceAndProduct product) {
+        if (product == null || product.getServiceSource() != ServiceSource.LABORATORY) {
+            return null;
+        }
+        return product.getSourceId();
     }
 
     private WaseelApprovalItem withSequences(
@@ -638,7 +773,7 @@ public class ClaimRequestBuilderService {
     }
 
     private List<WaseelApprovalDiagnosis> resolveClaimDiagnoses(Long encounterId) {
-        return claimEncounterCopyRepository.findByEncounterId(encounterId)
+        List<WaseelApprovalDiagnosis> visitDiagnoses = claimEncounterCopyRepository.findByEncounterId(encounterId)
                 .map(ClaimEncounterCopy::getId)
                 .map(copyId -> approvalDiagnosisMapper.toWaseelClaimDiagnosisList(
                         claimEncounterDiagnosisRepository.findByClaimEncounterCopyId(copyId)
@@ -646,6 +781,7 @@ public class ClaimRequestBuilderService {
                 .orElseGet(() -> approvalDiagnosisMapper.toWaseelDiagnosisList(
                         patientDiagnosisRepository.findByEncounterId(encounterId)
                 ));
+        return ApprovalDiagnosisMapper.withSinglePrincipal(visitDiagnoses);
     }
 
     private WaseelClaimEncounter buildClaimEncounter(
