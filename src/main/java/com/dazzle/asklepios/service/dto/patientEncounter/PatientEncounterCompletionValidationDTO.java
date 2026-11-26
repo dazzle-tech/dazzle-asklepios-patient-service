@@ -36,9 +36,6 @@ public record PatientEncounterCompletionValidationDTO(
         boolean hospitalizations,
         boolean currentMedication,
 
-        /** At least one saved, non-cancelled, non-blank Progress Note on this encounter. */
-        boolean progressNotes,
-
         /** False when a Waseel insurance visit without investigations has no reason why none was done. */
         boolean investigationNotPerformedReason,
 

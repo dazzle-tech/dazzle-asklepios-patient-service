@@ -28,6 +28,4 @@ public interface ProgressNoteRepository
     Optional<ProgressNote> findTopByEncounterIdAndCancelledDateIsNullOrderByCreatedDateDesc(Long encounterId);
 
     List<ProgressNote> findByEncounterIdAndCancelledDateIsNull(Long encounterId);
-
-    boolean existsByEncounterIdAndCancelledDateIsNull(Long encounterId);
 }

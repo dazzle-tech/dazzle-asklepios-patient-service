@@ -11,7 +11,6 @@ import com.dazzle.asklepios.domain.BodyMeasurements;
 import com.dazzle.asklepios.domain.EncounterDischargeLog;
 import com.dazzle.asklepios.domain.EncounterPlan;
 import com.dazzle.asklepios.domain.enumeration.DiagnosisType;
-import com.dazzle.asklepios.repository.ProgressNoteRepository;
 import com.dazzle.asklepios.domain.PainAssessment;
 import com.dazzle.asklepios.domain.Patient;
 import com.dazzle.asklepios.domain.PatientDocument;
@@ -172,7 +171,6 @@ public class PatientEncounterService {
     private final PatientActivityService patientActivityService;
     private final InsuranceRegistrationGuard insuranceRegistrationGuard;
     private final EncounterInvestigationReasonGuard encounterInvestigationReasonGuard;
-    private final ProgressNoteRepository progressNoteRepository;
 
     public PatientEncounterService(
             PatientEncounterRepository patientEncounterRepository,
@@ -210,9 +208,7 @@ public class PatientEncounterService {
             InsuranceCheckoutDiagnosticApprovalService insuranceCheckoutDiagnosticApprovalService,
             @Lazy PatientActivityService patientActivityService,
             InsuranceRegistrationGuard insuranceRegistrationGuard,
-            EncounterInvestigationReasonGuard encounterInvestigationReasonGuard,
-            ProgressNoteRepository progressNoteRepository) {
-        this.progressNoteRepository = progressNoteRepository;
+            EncounterInvestigationReasonGuard encounterInvestigationReasonGuard) {
         this.insuranceRegistrationGuard = insuranceRegistrationGuard;
         this.encounterInvestigationReasonGuard = encounterInvestigationReasonGuard;
         this.patientEncounterRepository = patientEncounterRepository;
@@ -1355,7 +1351,6 @@ public class PatientEncounterService {
                     true, // familyHistory
                     true, // hospitalizations
                     true, // currentMedication
-                    true, // progressNotes
                     true, // investigationNotPerformedReason
                     true, // canComplete
                     Collections.emptyList(),
@@ -1417,9 +1412,6 @@ public class PatientEncounterService {
         boolean bodyMeasurements =
                 bodyMeasurementsRepository.existsByEncounterIdAndIsActiveTrue(encounterId);
 
-        boolean progressNotes =
-                progressNoteRepository.existsByEncounterIdAndCancelledDateIsNull(encounterId);
-
         List<PatientEncounterCompletionValidationDTO.Requirement> requirements = new ArrayList<>(List.of(
                 requirement("CHIEF_COMPLAINT", "Chief Complaint", chiefComplaint),
                 requirement("HISTORY_OF_PRESENT_ILLNESS", "History Of Present Illness", historyOfPresentIllness),
@@ -1433,7 +1425,6 @@ public class PatientEncounterService {
                 requirement("CURRENT_MEDICATION", "Medical History - Current Medication", currentMedication),
                 requirement("SURGICAL_HISTORY", "Surgical History", surgicalHistory),
                 requirement("SOCIAL_HISTORY", "Social History", socialHistory),
-                requirement("PROGRESS_NOTES", "Progress Notes", progressNotes),
                 requirement("VITAL_SIGNS", "Vital Signs", vitalSigns),
                 requirement("BODY_MEASUREMENTS", "Body Measurements", bodyMeasurements)
         ));
@@ -1481,7 +1472,6 @@ public class PatientEncounterService {
                 familyHistory,
                 hospitalizations,
                 currentMedication,
-                progressNotes,
                 investigationNotPerformedReason,
                 canComplete,
                 missing,
