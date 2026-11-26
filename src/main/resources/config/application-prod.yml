@@ -156,6 +156,8 @@ patient:
       cron: "0 0 7 * * *"
       zone: "Asia/Gaza"
       lead-days: 7
+    reminder:
+      cron: "0 0 * * * *"
   ambient-scribe:
     audio-retention:
       cron: "0 30 2 * * *"
